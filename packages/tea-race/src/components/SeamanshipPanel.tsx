@@ -97,7 +97,7 @@ export default function SeamanshipPanel({ state, captain, ships, dispatch, enabl
                       title={`Throw one more die and add it to her run. On ${risk === 1 ? 'a 1' : `${risk} or less`} she carries away a spar instead: nothing gained, and ${DAMAGE_SPEED_PENALTY} points slower every roll until repaired.`}
                       style={{ alignSelf: 'flex-start', padding: '0.25rem 0.55rem' }}
                     >
-                      Crack on — +1d6, {risk === 1 ? '1 in 6' : `${risk} in 6`} to lose a spar
+                      Crack on: +1d6, {risk === 1 ? '1 in 6' : `${risk} in 6`} to lose a spar
                     </Button>
                   )}
                 </div>
@@ -118,9 +118,10 @@ export default function SeamanshipPanel({ state, captain, ships, dispatch, enabl
                 <Button
                   onClick={() => dispatch({ type: 'REPAIR_SHIP', shipId: ship.id })}
                   disabled={!enabled || captain.cash < REPAIR_PRICE}
+                  disabledReason={enabled && captain.cash < REPAIR_PRICE ? `Needs ${money(REPAIR_PRICE)}` : ''}
                   style={{ alignSelf: 'flex-start', padding: '0.25rem 0.55rem' }}
                 >
-                  Make her good at {portName(ship.location)} — {money(REPAIR_PRICE)}
+                  Make her good at {portName(ship.location)} ({money(REPAIR_PRICE)})
                 </Button>
               )}
             </div>
@@ -154,8 +155,8 @@ function EncounterCard({
   const accept: Record<Encounter['kind'], string> = {
     derelict: 'Heave to and board her',
     castaways: 'Stand in and take them off',
-    trader: `Buy the lot — ${money(enc.price ?? 0)}`,
-    pilot: `Take the pilot — ${money(enc.price ?? 0)}`,
+    trader: `Buy the lot (${money(enc.price ?? 0)})`,
+    pilot: `Take the pilot (${money(enc.price ?? 0)})`,
   };
   return (
     <div style={encounterCard}>

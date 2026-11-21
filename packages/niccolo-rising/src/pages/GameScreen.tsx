@@ -66,6 +66,16 @@ function gainsOf(prev: GameState, next: GameState): Gain[] {
   return out.slice(0, 3);
 }
 
+/** The two portal toggles, dressed to match the quiet place buttons beside them. */
+const TOGGLE: React.CSSProperties = {
+  borderColor: UI.rule,
+  color: UI.textSoft,
+  borderRadius: 0,
+  padding: '0.35rem 0.7rem',
+  fontFamily: FONT.body,
+  fontSize: '0.8rem',
+};
+
 /** The client ticks this often. A TICK that changes nothing returns the same state and is not saved. */
 const TICK_MS = 60_000;
 
@@ -192,45 +202,62 @@ export default function GameScreen() {
       <div style={{ display: 'flex', minHeight: '100vh', background: UI.ground, color: UI.text, fontFamily: FONT.body }} className="nr-board">
         <StatusRail s={view} now={now} />
         <main style={{ flex: 1, minWidth: 0, padding: '1rem 1.2rem' }}>
-          <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '1rem', alignItems: 'center' }}>
-            <Link to="/" style={{ color: UI.textSoft, fontSize: '0.78rem', marginRight: '0.6rem', textDecoration: 'none' }}>
-              ← Characters
-            </Link>
-            <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
-            <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
-            {tourCandidate && (
-              <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} style={{ marginRight: '0.6rem' }}>
-                Guided first hour
-              </Button>
-            )}
-            {PLACES.map(p => (
-              <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
-                {p.name}
-              </Button>
-            ))}
+          <nav className="nr-topbar" aria-label="Places in Bruges">
+            <div className="nr-util">
+              <Link to="/" style={{ color: UI.textSoft, fontSize: '0.8rem', marginRight: 'auto', textDecoration: 'none' }}>
+                ← Characters
+              </Link>
+              {tourCandidate && (
+                <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)}>
+                  Guided first hour
+                </Button>
+              )}
+              <MotionToggle style={TOGGLE} />
+              <ThemeToggle style={TOGGLE} />
+            </div>
+            <div className="nr-places">
+              {PLACES.map(p => (
+                <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} current={p.id === place} onClick={() => setPlace(p.id)}>
+                  {p.name}
+                </Button>
+              ))}
+            </div>
           </nav>
 
-          {error && <p style={{ fontSize: '0.8rem', color: UI.bad, margin: '0 0 0.8rem' }}>{error}</p>}
+          {error && (
+            <p role="alert" style={{ fontSize: '0.8rem', color: UI.bad, background: UI.tintBad, border: `1px solid ${UI.badRule}`, padding: '0.55rem 0.8rem', margin: '0 0 0.9rem' }}>
+              {error}
+            </p>
+          )}
 
+          {/* Away from Bruges most buttons are refused for the same reason. Said once here rather than
+              under every one of them (components/places/ActButton.tsx). */}
+          {(st.kind === 'travelling' || st.kind === 'abroad') && (
+            <p style={{ fontSize: '0.8rem', color: UI.text, background: UI.tintVerdigris, borderLeft: `3px solid ${UI.verdigris}`, padding: '0.5rem 0.8rem', margin: '0 0 0.9rem' }}>
+              {st.kind === 'travelling'
+                ? 'On the road. Anything greyed out waits until you arrive.'
+                : 'Abroad. Anything greyed out waits until you are back in Bruges.'}
+            </p>
+          )}
           {st.kind === 'infirmary' && (
             <Panel title="The Infirmary of St John" style={{ borderColor: UI.bad }}>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-                Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay.
+                Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay; anything else greyed out waits until you are out.
               </p>
               <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }}>Use bandages ({view.inventory.bandage ?? 0})</ActButton>
-                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }}>Use theriac ({view.inventory.theriac ?? 0})</ActButton>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }} align="start">Use bandages ({view.inventory.bandage ?? 0})</ActButton>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }} align="start">Use theriac ({view.inventory.theriac ?? 0})</ActButton>
               </div>
             </Panel>
           )}
           {st.kind === 'steen' && (
             <Panel title="The Steen" style={{ borderColor: UI.bad }}>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-                Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid.
+                Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid. Anything else greyed out waits until you are free.
               </p>
               <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
-              <ActButton p={props} verb={{ type: 'BRIBE' }}>Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
+              <ActButton p={props} verb={{ type: 'BRIBE' }} align="start">Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
             </Panel>
           )}
 

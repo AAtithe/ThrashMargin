@@ -64,6 +64,6 @@ export function canPlaceAgent(state: GameState, captainId: string, port: PortId)
 
 /** The line the log wants when one is installed. */
 export const agentInstalledText = (name: string, port: PortId, held: number): string =>
-  `${name} sets up an agent at ${portName(port)} — ${held} of ${MAX_AGENTS}. ` +
+  `${name} sets up an agent at ${portName(port)}, ${held} of ${MAX_AGENTS}. ` +
   `He lades ${Math.round(AGENT_LADING_DISCOUNT * 100)}% under the asking price, sells ` +
   `${Math.round(AGENT_SALE_UPLIFT * 100)}% over it, and sends word ahead of the market.`;

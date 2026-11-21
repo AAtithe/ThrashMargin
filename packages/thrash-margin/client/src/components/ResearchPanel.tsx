@@ -24,10 +24,10 @@ export default function ResearchPanel({ state, act }: { state: GameState; act: (
               const why = done ? null : explain(state, a);
               const locked = !done && !!t.prereq && !me.research.includes(t.prereq);
               return (
-                <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 9px', borderRadius: 6, background: done ? UI.goodBg : UI.panel, border: `1px solid ${done ? UI.goodRule : UI.rule}`, opacity: locked ? 0.55 : 1 }}>
+                <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 9px', borderRadius: 6, background: done ? UI.goodBg : UI.panel, border: `1px ${locked ? 'dashed' : 'solid'} ${done ? UI.goodRule : locked ? UI.ruleStrong : UI.rule}` }}>
                   <span style={{ fontFamily: FONT.data, fontSize: 10.5, color: UI.textFaint, width: 14 }}>{t.tier}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, color: locked ? UI.textSoft : UI.text }}>
                       {t.name}{done && <Icon name="check" size={12} color={UI.good} />}
                     </div>
                     <div style={{ fontSize: 11, color: UI.textSoft }}>{t.desc}</div>
@@ -36,7 +36,7 @@ export default function ResearchPanel({ state, act }: { state: GameState; act: (
                     <div style={{ textAlign: 'right' }}>
                       <Cost gold={t.cost.gold} mat={t.cost.mat} have={me.resources} />
                       <div style={{ marginTop: 4 }}>
-                        <Button small icon="research" disabled={!!why} onClick={() => act(a)} title={why ?? undefined}>Research</Button>
+                        <Button small icon="research" disabled={!!why} disabledReason={why} reasonEnd wrapStyle={{ maxWidth: 150 }} onClick={() => act(a)}>Research</Button>
                       </div>
                     </div>
                   )}

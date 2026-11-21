@@ -131,11 +131,11 @@ const SHAPE_TITLE: Record<string, string> = {
 
 const SHAPE_PROSE: Record<string, string> = {
   shape_scottish_house:
-    'The company became ground. Tenancies near a Scottish burgh, a house that needed work, and an entry in a register that will outlast every ledger the house ever kept — the least intelligent use of capital Master Julius ever drafted, and the only one that cannot be repriced by a prince.',
+    'The company became ground. Tenancies near a Scottish burgh, a house that needed work, and an entry in a register that will outlast every ledger the house ever kept: the least intelligent use of capital Master Julius ever drafted, and the only one that cannot be repriced by a prince.',
   shape_venetian_bank:
     'The company became an institution. Deposits, branches, a constitution that survives its founder, and a name on a door in the Rialto honoured by clerks who will never meet anybody who built it. The most durable thing the house ever made, and the least like itself.',
   shape_dissolution:
-    'The company was wound up while it was still worth something. The agencies closed in order, every officer was settled in person, the ships went to men who would sail them — and what remained was a name, a boy, and money that would never again be at risk from anybody’s war.',
+    'The company was wound up while it was still worth something. The agencies closed in order, every officer was settled in person, the ships went to men who would sail them, and what remained was a name, a boy, and money that would never again be at risk from anybody’s war.',
 };
 
 export default function EpilogueScreen({ state, onReturn }: { state: GameState; onReturn: () => void }) {
@@ -161,7 +161,7 @@ export default function EpilogueScreen({ state, onReturn }: { state: GameState; 
       <p style={PROSE}>
         {parentage.provable
           ? 'The question the dyeworks yard opened was answered, in writing, in more than one city at once. Jordan de Ribérac was the boy’s grandfather and always had been, and there is now a file that says so which cannot be quietly lost.'
-          : 'The question the dyeworks yard opened was never actually settled. The house knows the answer. It could not, in the end, make anybody else know it — and the man who could have confirmed it had no reason on earth to.'}
+          : 'The question the dyeworks yard opened was never actually settled. The house knows the answer. It could not, in the end, make anybody else know it, and the man who could have confirmed it had no reason on earth to.'}
       </p>
 
       <div style={LEDGER}>

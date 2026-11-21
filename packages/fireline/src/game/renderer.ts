@@ -18,7 +18,7 @@ import {
   type MapType,
 } from '../sim/rules';
 import { sidesOf } from '../sim/sides';
-import { buildTicksFor, powerOf, producerFor, teamVisibility } from '../sim/state';
+import { buildTicksFor, powerOf, productionLines, sabotaged, teamVisibility } from '../sim/state';
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { AIR_LIFT, drawAirShadow, drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
@@ -1177,10 +1177,13 @@ export class Renderer {
     for (const owner of [0, 1] as const) {
       const q = s.players[owner].queues;
       for (const cat of ['building', 'infantry', 'vehicle', 'air', 'naval'] as const) {
-        const head = q[cat]?.[0];
-        if (!head || head.progress >= buildTicksFor(s, owner, head.kind)) continue;
-        const b = producerFor(s, owner, cat);
-        if (b) set.add(b.id);
+        const items = q[cat];
+        if (!items?.length) continue;
+        // One line per producer: each one with an unfinished item on its line is at work.
+        const lines = productionLines(s, owner, cat);
+        items.slice(0, lines.length).forEach((it, i) => {
+          if (it.progress < buildTicksFor(s, owner, it.kind) && !sabotaged(s, lines[i])) set.add(lines[i].id);
+        });
       }
     }
     // A Research Lab at work: every Lab of a side researching.

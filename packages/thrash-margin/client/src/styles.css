@@ -16,22 +16,22 @@
   --ui-rule-strong: #b6ab95;
   --ui-text: #221e17;
   --ui-text-soft: #575245;
-  --ui-text-faint: #857d6b;
-  --ui-accent: #9a6f1c;
+  --ui-text-faint: #635c4d;
+  --ui-accent: #7c5a17;
   --ui-accent-ink: #fffaf0;
-  --ui-gold: #9a6a10;
-  --ui-food: #45792d;
+  --ui-gold: #7e560a;
+  --ui-food: #3b6a26;
   --ui-mat: #6a52a6;
-  --ui-influence: #a6426a;
-  --ui-pop: #27758c;
+  --ui-influence: #9a3c62;
+  --ui-pop: #22677c;
   --ui-troops: #5a4b2c;
-  --ui-ap: #9a6f1c;
-  --ui-good: #3d7530;
-  --ui-warn: #95650d;
-  --ui-bad: #b0372f;
+  --ui-ap: #7c5a17;
+  --ui-good: #346628;
+  --ui-warn: #835808;
+  --ui-bad: #a6332b;
   --ui-move: #1d8072;
   --ui-attack: #b4501f;
-  --ui-annex: #a6426a;
+  --ui-annex: #9a3c62;
   --ui-danger-bg: #f7e1dd;
   --ui-danger-text: #7d1f19;
   --ui-move-bg: #dcf0ec;
@@ -43,6 +43,29 @@
   --ui-accent-bg: #f4e8cc;
   --ui-scrim: rgba(40, 34, 24, 0.45);
   --ui-shadow: rgba(60, 45, 20, 0.2);
+
+  /* UI kit (lib/kit.css): the game's Button look, mapped onto the kit's variables. Every line is a
+     --ui-* reference, so the dark block below needs no copy. */
+  --kit-radius: 6px;
+  --kit-font-size: 13px;
+  --kit-font-size-small: 12px;
+  --kit-pad: 7px 12px;
+  --kit-pad-small: 4px 9px;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-panel-sunk);
+  --kit-rule: var(--ui-rule-strong);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-accent);
+  --kit-on-accent: var(--ui-accent-ink);
+  --kit-danger: var(--ui-bad);
+
+  /* Text in the portal chrome's action blue and warning amber, a shade darker or lighter than the
+     portal's own fill colours so it meets AA as small text on the portal's panels. */
+  --tm-portal-link-text: #0860c4;
+  --tm-portal-warn-text: #845800;
 
   --map-sea: #c4d3da;
   --map-sea-deep: #afc2cb;
@@ -72,7 +95,7 @@
   --ui-rule-strong: #3a4653;
   --ui-text: #ebe5d6;
   --ui-text-soft: #a7afb9;
-  --ui-text-faint: #6e7782;
+  --ui-text-faint: #848d98;
   --ui-accent: #e3c27a;
   --ui-accent-ink: #1a1408;
   --ui-gold: #d9a64a;
@@ -99,6 +122,9 @@
   --ui-accent-bg: #2a2414;
   --ui-scrim: rgba(5, 7, 10, 0.72);
   --ui-shadow: rgba(0, 0, 0, 0.5);
+
+  --tm-portal-link-text: #4493f8;
+  --tm-portal-warn-text: #d29922;
 
   --map-sea: #0b1420;
   --map-sea-deep: #070c14;
@@ -189,12 +215,68 @@ input[type="range"].tm-range { width: 100%; accent-color: var(--ui-accent); }
 }
 
 /* Lobby grids collapse to one column on narrow screens */
+/* minmax(0, 1fr), not 1fr: a plain 1fr track is at least as wide as its longest unbreakable line,
+   so one long campaign name pushed the whole lobby wider than a phone. */
 @media (max-width: 760px) {
-  .tm-lobby-grid { grid-template-columns: 1fr !important; }
-  .tm-map-grid { grid-template-columns: 1fr 1fr !important; }
+  .tm-lobby-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .tm-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (max-width: 460px) {
-  .tm-map-grid { grid-template-columns: 1fr !important; }
+  .tm-map-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+.tm-lobby-grid > *, .tm-map-grid > * { min-width: 0; }
+
+/* Segmented controls clip their children (rounded ends), so their focus ring sits inside. */
+.tm-seg { transition: background 0.12s, color 0.12s; }
+.tm-seg:focus-visible { outline-offset: -3px; }
+.tm-seg:not([aria-pressed="true"]):hover { background: var(--ui-panel-raised) !important; color: var(--ui-text) !important; }
+
+/* A bare icon button (delete a save, close a panel): quiet until pointed at. */
+.tm-icon-quiet { transition: color 0.12s, background 0.12s; border-radius: 6px; }
+.tm-icon-quiet:hover { color: var(--ui-text) !important; background: var(--ui-panel-raised) !important; }
+.tm-icon-quiet.tm-icon-danger:hover { color: var(--ui-bad) !important; background: var(--ui-danger-bg) !important; }
+
+.tm-link-btn { transition: color 0.12s; }
+.tm-link-btn:hover, .tm-tab:hover { color: var(--ui-text) !important; }
+.tm-tab { transition: color 0.12s, border-color 0.12s; }
+.tm-tab:focus-visible, .tm-sheet-handle:focus-visible { outline-offset: -3px; }
+
+/* The game's Button renders through the UI kit (lib/kit.css gives it hover, press, focus, disabled
+   and 40px phone targets); these are the weights and tones the kit does not have. */
+.tm-kbtn { gap: 6px; line-height: 1.2; }
+.tm-kbtn--primary { font-weight: 700; }
+.tm-kbtn--quiet { --kit-btn-edge: var(--ui-rule); }
+.tm-kbtn--danger { --kit-btn-face: var(--ui-danger-bg); --kit-btn-ink: var(--ui-danger-text); --kit-btn-edge: var(--ui-bad); }
+.tm-kbtn--move { --kit-btn-face: var(--ui-move-bg); --kit-btn-ink: var(--ui-move-text); --kit-btn-edge: var(--ui-move); }
+.tm-kbtn--attack { --kit-btn-face: var(--ui-attack-bg); --kit-btn-ink: var(--ui-attack-text); --kit-btn-edge: var(--ui-attack); }
+
+/* Touch screens: bring the game's own small controls (the ones not drawn by the kit) up to a
+   fingertip. */
+@media (max-width: 720px), (pointer: coarse) {
+  .tm-icon-btn { width: 40px !important; height: 40px !important; }
+  .tm-btn, .tm-seg, .tm-link-btn, .tm-tab, .tm-tour-btn { min-height: 40px; }
+  .tm-step-btn, .tm-back { min-width: 40px; }
+  .tm-zoom > button { min-width: 40px; min-height: 40px; }
+  .tm-icon-quiet { min-width: 40px; min-height: 40px; display: inline-flex !important; align-items: center; justify-content: center; }
+}
+
+/* Portal pages (sign-in, profile, feedback, admin) are styled inline in portal colours; these are
+   the states inline styles cannot express. */
+.tm-portal button, .tm-portal a { transition: filter 0.12s, background 0.12s, border-color 0.12s, color 0.12s; }
+.tm-portal button:not(:disabled):hover { filter: brightness(1.15); }
+:root:not([data-theme="dark"]) .tm-portal button:not(:disabled):hover { filter: brightness(0.94); }
+.tm-portal button:disabled:not([role="switch"]) { opacity: 0.5; cursor: not-allowed !important; }
+.tm-portal input:focus-visible, .tm-portal select:focus-visible, .tm-portal textarea:focus-visible { outline: 2px solid var(--portal-action) !important; outline-offset: 1px; border-color: var(--portal-action) !important; }
+.tm-portal :focus-visible { outline-color: var(--portal-action); }
+.tm-portal a:hover { text-decoration: underline; }
+.tm-portal ::placeholder { color: var(--portal-faint); opacity: 1; }
+@media (max-width: 720px), (pointer: coarse) {
+  .tm-portal button:not([role="switch"]), .tm-portal select, .tm-portal textarea,
+  .tm-portal input:not([type="checkbox"]):not([type="radio"]) { min-height: 40px; }
+  /* 16px field text: below it, iOS zooms the page on focus. */
+  .tm-portal input, .tm-portal select, .tm-portal textarea { font-size: 16px !important; }
+  /* The admin switches keep their drawn size; an invisible layer takes the fingertip. */
+  .tm-portal [role="switch"]::after { content: ""; position: absolute; inset: -12px -4px; }
 }
 
 * { scrollbar-width: thin; scrollbar-color: var(--ui-rule-strong) transparent; }

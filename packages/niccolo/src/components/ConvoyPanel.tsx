@@ -84,7 +84,7 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
         </p>
         {convoy.escorted ? (
           <p style={{ fontSize: '0.75rem', color: UI.good, margin: '0 0 0.4rem' }}>
-            Under escort{convoy.escortName ? ` — ${convoy.escortName}` : ''} · {ESCORT_UPKEEP_PER_WEEK}f a week.
+            Under escort{convoy.escortName ? ` (${convoy.escortName})` : ''} · {ESCORT_UPKEEP_PER_WEEK}f a week.
             Storm and piracy losses run well under half their usual chance.
           </p>
         ) : (
@@ -104,14 +104,14 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
                 setEscortName('');
               }}
             >
-              Hire an escort — {ESCORT_HIRE_COST}f, then {ESCORT_UPKEEP_PER_WEEK}f a week
+              Hire an escort: {ESCORT_HIRE_COST}f, then {ESCORT_UPKEEP_PER_WEEK}f a week
               {underWay ? ' (only in port)' : ESCORT_HIRE_COST > state.cash ? ' (not enough cash)' : ''}
             </button>
           </>
         )}
         {state.escortLapsed && (
           <p style={{ fontSize: '0.72rem', color: UI.bad, margin: '0 0 0.4rem' }}>
-            The escort was paid off this week — there was nothing to pay it with.
+            The escort was paid off this week: there was nothing to pay it with.
           </p>
         )}
         <button style={SMALL_BUTTON} onClick={onDisband}>
@@ -141,9 +141,9 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
         >
           <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />
           <span>
-            {v.name}{' '}
+            {v.name}
             <span style={{ color: UI.textSoft }}>
-              — {v.destination ? 'at sea' : `in port at ${findCity(v.location)?.name ?? v.location}`}
+              , {v.destination ? 'at sea' : `in port at ${findCity(v.location)?.name ?? v.location}`}
             </span>
           </span>
         </label>

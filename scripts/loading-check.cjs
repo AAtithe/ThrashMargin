@@ -68,7 +68,9 @@ function startServer(g) {
     let out = '';
     const timer = setTimeout(() => reject(new Error(`${g.key}: dev server did not start\n${out}`)), 60000);
     const onData = d => {
-      out += d;
+      // Vite colours its output where colour is supported (GitHub Actions is), which puts an escape
+      // code between "Local" and ":"; strip colour before looking for the ready line.
+      out += String(d).replace(/\x1b\[[0-9;]*m/g, '');
       if (out.includes('Local:')) { clearTimeout(timer); resolve(child); }
     };
     child.stdout.on('data', onData);
@@ -106,7 +108,11 @@ function serve(page, { delay = 0, game }) {
   });
 }
 
-const opacity = (page, sel) => page.locator(sel).first().evaluate(e => Number(getComputedStyle(e).opacity)).catch(() => null);
+// A loader React removed between the locator finding it and the evaluate reading it is detached, and
+// a detached element's computed opacity is "" (which Number() made 0, a false blink). It is no
+// longer on screen, so it is no sample: null, the same as not found.
+const opacity = (page, sel) =>
+  page.locator(sel).first().evaluate(e => (e.isConnected ? Number(getComputedStyle(e).opacity) : null)).catch(() => null);
 
 async function checkGame(browser, g) {
   const base = `http://localhost:${g.port}`;

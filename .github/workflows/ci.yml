@@ -55,6 +55,35 @@ jobs:
           name: tour-failures
           path: ${{ runner.temp }}/tours
 
+  ui:
+    name: Contrast, tap targets and sideways scroll in a browser
+    runs-on: ubuntu-24.04
+    # About 4 minutes locally: every game's lobby, tour card and main screen plus the landing page,
+    # at 375 and 1440 wide, light and dark.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/thrash-margin/client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/thrash-margin/client
+      # Installed globally, as in the tours job; scripts/ui-check.cjs falls back to the global install.
+      - run: npm install -g playwright@1.63.0 && npx -y playwright@1.63.0 install --with-deps chromium
+      - run: npm run check:ui -- --report ${{ runner.temp }}/ui-check/report.json
+        env:
+          UI_OUT: ${{ runner.temp }}/ui-check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-check-failures
+          path: ${{ runner.temp }}/ui-check
+
   api:
     name: Server tests against a Supabase-shaped Postgres
     runs-on: ubuntu-24.04

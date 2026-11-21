@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
@@ -21,7 +21,8 @@ import type { Hazards } from '../sim/types';
 import { VOYAGE_ROUNDS } from '../sim/voyage';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
-import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
+import { Button, ButtonLink, Label, Panel, bodySmall, dataText, labelStyle } from '../components/ui';
+import { Field } from '../lib/Kit';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 /**
@@ -310,15 +311,15 @@ export default function Lobby() {
               stopped being true when cards lost their source, and this paragraph still claimed it. */}
           <p style={{ ...bodySmall, maxWidth: '58ch', margin: 0 }}>
             {FACE_UP_CONTRACTS} commissions are posted on the exchange at all times, each naming a
-            cargo, the port that wants it and the price it is reckoned at — load it wherever you can
+            cargo, the port that wants it and the price it is reckoned at. Load it wherever you can
             get it. Only the first two ships home are paid: {PAYOUT_MULTIPLIERS[1]}× the commission
             price a lot, then {PAYOUT_MULTIPLIERS[2]}×, then nothing. Carry {SHARE_MAJORITY} of the{' '}
             {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a ship still afloat, and the
             company is yours.
           </p>
-          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
-            <Button tone="quiet">How to play →</Button>
-          </Link>
+          <ButtonLink to="/how-to-play" tone="quiet" style={{ marginTop: '1rem' }}>
+            How to play →
+          </ButtonLink>
         </header>
 
         {error && (
@@ -349,28 +350,27 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               {mode === 'classic'
                 ? `The published game. ${FACE_UP_CONTRACTS} commissions, only the first two ships home paid, and ${SHARE_MAJORITY} of the ${TOTAL_SHARES} shares to take the company.`
-                : `No commissions and nothing to declare. Every port has its own price for every good, producing ports are cheap and consuming ports are dear, and the market moves as cargo actually changes hands — your own trade included. ${VOYAGE_ROUNDS} rounds, and the largest fortune at the close takes the honours.`}
+                : `No commissions and nothing to declare. Every port has its own price for every good, producing ports are cheap and consuming ports are dear, and the market moves as cargo actually changes hands, your own trade included. ${VOYAGE_ROUNDS} rounds, and the largest fortune at the close takes the honours.`}
             </p>
           </div>
 
-          <div style={field}>
-            <Label>Name this voyage</Label>
-            <input
-              style={input}
-              value={name}
-              placeholder="The 1866 season"
-              onChange={e => setName(e.target.value)}
-            />
-          </div>
+          <Field
+            wrapStyle={field}
+            label={<span style={labelStyle}>Name this voyage</span>}
+            className="tr-input"
+            value={name}
+            placeholder="The 1866 season"
+            onChange={e => setName(e.target.value)}
+          />
 
           <div style={{ display: 'flex', gap: '1.2rem', flexWrap: 'wrap' }}>
             <div style={field}>
               <Label>Human captains</Label>
-              <Counter value={humans} min={1} max={MAX_CAPTAINS} onChange={setHumanCount} />
+              <Counter label="human captains" value={humans} min={1} max={MAX_CAPTAINS} onChange={setHumanCount} />
             </div>
             <div style={field}>
               <Label>Computer rivals</Label>
-              <Counter value={ai} min={0} max={MAX_CAPTAINS - 1} onChange={setAi} />
+              <Counter label="computer rivals" value={ai} min={0} max={MAX_CAPTAINS - 1} onChange={setAi} />
             </div>
           </div>
 
@@ -381,7 +381,9 @@ export default function Lobby() {
                 {humanNames.slice(0, humans).map((n, i) => (
                   <input
                     key={i}
-                    style={{ ...input, width: 150 }}
+                    className="kit-input tr-input"
+                    aria-label={`Captain ${i + 1}'s name`}
+                    style={{ width: 150 }}
                     value={n}
                     onChange={e =>
                       setHumanNames(prev => prev.map((x, j) => (j === i ? e.target.value : x)))
@@ -391,24 +393,21 @@ export default function Lobby() {
               </div>
               <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
                 One device, passed round. Everything on the board is public, so the handover is just
-                a pause — nobody has to look away.
+                a pause: nobody has to look away.
               </p>
             </div>
           )}
 
-          <div style={field}>
-            <Label>Seed (optional)</Label>
-            <input
-              style={{ ...input, width: 180 }}
-              value={seed}
-              placeholder="leave blank for a fresh one"
-              onChange={e => setSeed(e.target.value)}
-            />
-            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-              The same seed always deals the same cards and rolls the same wind — useful for playing
-              the identical season twice.
-            </p>
-          </div>
+          <Field
+            wrapStyle={field}
+            label={<span style={labelStyle}>Seed (optional)</span>}
+            className="tr-input"
+            style={{ width: 240 }}
+            value={seed}
+            placeholder="leave blank for a fresh one"
+            onChange={e => setSeed(e.target.value)}
+            hint="The same seed always deals the same cards and rolls the same wind: useful for playing the identical season twice."
+          />
 
           <div style={field}>
             <Label>How to play</Label>
@@ -430,13 +429,14 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               {chosen
                 ? PRESETS[chosen].blurb
-                : 'A mixture of your own — set the switches below however you like.'}
+                : 'A mixture of your own: set the switches below however you like.'}
             </p>
           </div>
 
           <div style={field}>
             <button
               type="button"
+              className="tr-disclosure"
               onClick={() => setTinkering(t => !t)}
               style={{ ...sectionHead, borderBottom: 'none', paddingLeft: 0 }}
               aria-expanded={tinkering}
@@ -467,7 +467,7 @@ export default function Lobby() {
                 ))}
               </div>
               <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
-                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline — the computer
+                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline: the computer
                 captains never roll better than you do. Fewer rivals is the other dial: against three,
                 one of them takes the company three times in four even when everybody plays equally.
               </p>
@@ -481,6 +481,7 @@ export default function Lobby() {
                 <div key={group} style={{ width: '100%' }}>
                   <button
                     type="button"
+                    className="tr-disclosure"
                     onClick={() => setOpenGroup(isOpen ? null : group)}
                     style={sectionHead}
                     aria-expanded={isOpen}
@@ -507,7 +508,7 @@ export default function Lobby() {
                             style={{ accentColor: UI.brass }}
                           />
                           <span>
-                            <strong style={{ color: UI.text }}>{sw.name}</strong> — {sw.blurb}
+                            <strong style={{ color: UI.text }}>{sw.name}</strong>: {sw.blurb}
                           </span>
                         </label>
                       ))}
@@ -526,7 +527,7 @@ export default function Lobby() {
 
           {tooMany && (
             <p style={{ ...bodySmall, color: UI.bad, margin: 0 }}>
-              {total} captains — the table seats {MAX_CAPTAINS}.
+              {total} captains, but the table seats {MAX_CAPTAINS}.
             </p>
           )}
 
@@ -542,7 +543,7 @@ export default function Lobby() {
             <LoadingRows rows={2} label="Loading your voyages" />
           ) : saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
-              No voyages yet. These are saved to your account.
+              No voyages yet. Begin one above and it will be kept here, on your account.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
@@ -566,6 +567,7 @@ export default function Lobby() {
                               friction for no reason, and it lets the row be one line instead of two. */}
                           <button
                             type="button"
+                            className="tr-row-btn"
                             style={saveOpen}
                             onClick={() => open(save.id)}
                             title={`Open ${save.name}`}
@@ -600,6 +602,7 @@ export default function Lobby() {
                           ) : (
                             <button
                               type="button"
+                              className="tr-icon-btn"
                               style={saveDelete}
                               title={`Delete ${save.name}`}
                               aria-label={`Delete ${save.name}`}
@@ -638,11 +641,13 @@ function relTime(ts: number): string {
 }
 
 function Counter({
+  label,
   value,
   min,
   max,
   onChange,
 }: {
+  label: string;
   value: number;
   min: number;
   max: number;
@@ -650,18 +655,20 @@ function Counter({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <Button tone="quiet" disabled={value <= min} onClick={() => onChange(value - 1)}>
+      <Button tone="quiet" ariaLabel={`Fewer ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)} style={counterBtn}>
         −
       </Button>
-      <span style={{ ...dataText, fontSize: '1rem', minWidth: '1.2rem', textAlign: 'center' }}>
+      <span aria-live="polite" style={{ ...dataText, fontSize: '1rem', minWidth: '1.2rem', textAlign: 'center' }}>
         {value}
       </span>
-      <Button tone="quiet" disabled={value >= max} onClick={() => onChange(value + 1)}>
+      <Button tone="quiet" ariaLabel={`More ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)} style={counterBtn}>
         +
       </Button>
     </div>
   );
 }
+
+const counterBtn: React.CSSProperties = { minWidth: 32, fontFamily: FONT.data };
 
 const page: React.CSSProperties = {
   minHeight: '100vh',
@@ -705,19 +712,6 @@ const field: React.CSSProperties = {
   alignItems: 'flex-start',
 };
 
-const input: React.CSSProperties = {
-  fontFamily: FONT.body,
-  fontSize: '0.9rem',
-  padding: '0.4rem 0.55rem',
-  background: UI.ground,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
-  width: '100%',
-  maxWidth: 320,
-  boxSizing: 'border-box',
-};
-
 const saveRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -738,7 +732,9 @@ const saveOpen: React.CSSProperties = {
   minWidth: 0,
   background: 'transparent',
   border: 'none',
-  padding: '0.32rem 0',
+  padding: '0.45rem 0.4rem',
+  margin: '0 0 0 -0.4rem',
+  borderRadius: 2,
   cursor: 'pointer',
   textAlign: 'left',
 };
@@ -766,7 +762,12 @@ const saveDelete: React.CSSProperties = {
   color: UI.textFaint,
   fontSize: '0.8rem',
   lineHeight: 1,
-  padding: '0.3rem 0.35rem',
+  width: 32,
+  height: 32,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 2,
   cursor: 'pointer',
   flex: '0 0 auto',
 };
@@ -795,7 +796,7 @@ const errorBanner: React.CSSProperties = {
 
 const sectionHead: React.CSSProperties = {
   display: 'flex',
-  alignItems: 'baseline',
+  alignItems: 'center',
   gap: '0.4rem',
   width: '100%',
   background: 'transparent',

@@ -726,7 +726,7 @@ export const PRESETS = {
     blurb:
       'Money, not weather. Driver wages to pay, loans to raise, vehicle classes to choose between, ' +
       'cargo you can sell off at a loss, and an exchange to read. Nothing random but the dice, and ' +
-      'the longest of the four — wages make every season count.',
+      'the longest of the four, as wages make every season count.',
     hazards: {
       weather: false,
       theft: false,
@@ -745,7 +745,7 @@ export const PRESETS = {
     blurb:
       'Weather, not money. A seasonal forecast, delays on the fog- and flood-prone legs, theft worth ' +
       'fitting a tracker against, a world that throws strikes and gluts at you, and commissions that ' +
-      'will not wait. Quick and dangerous — the expiring cards keep everybody moving.',
+      'will not wait. Quick and dangerous: the expiring cards keep everybody moving.',
     hazards: {
       weather: true,
       theft: true,
@@ -762,7 +762,7 @@ export const PRESETS = {
   full: {
     label: 'The full haul',
     blurb:
-      'Everything at once, and the one with the most to go wrong. Not the longest, though — the ' +
+      'Everything at once, and the one with the most to go wrong. Not the longest, though: the ' +
       "expiring commissions drive it along faster than a haulier's game.",
     hazards: {
       weather: true,

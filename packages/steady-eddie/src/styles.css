@@ -17,12 +17,12 @@
   --ui-rule-strong: #b0a38a;
   --ui-text: #2a251e;
   --ui-text-soft: #5a5345;
-  --ui-text-faint: #847b68;
-  --ui-brass: #8b5e17;
-  --ui-verdigris: #2c6f66;
+  --ui-text-faint: #6a614f;
+  --ui-brass: #82570f;
+  --ui-verdigris: #28665d;
   --ui-ensign: #a8342f;
-  --ui-good: #3d7434;
-  --ui-warn: #8f6210;
+  --ui-good: #376a2f;
+  --ui-warn: #7d550c;
   --ui-bad: #a8342f;
   --ui-scrim: rgba(42, 37, 30, 0.45);
   --ui-scrim-light: rgba(42, 37, 30, 0.18);
@@ -33,6 +33,30 @@
   --ui-tint-bad: rgba(168, 52, 47, 0.08);
   --ui-tint-brass: rgba(139, 94, 23, 0.1);
   --ui-bad-rule: rgba(168, 52, 47, 0.35);
+  /* Laid over a control's own background on hover (an inset shadow), so it works on any tone. */
+  --ui-hover-wash: rgba(42, 37, 30, 0.07);
+  --ui-press-wash: rgba(42, 37, 30, 0.14);
+
+  /* UI kit (lib/kit.css). Every line is a --ui-* reference, so dark mode follows on its own. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 2px;
+  --kit-font-size: 0.82rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.65rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-ground);
+  /* Fields keep the stronger edge they always had. */
+  --kit-rule: var(--ui-rule-strong);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
+  --kit-hover: var(--ui-hover-wash);
+  --kit-press: var(--ui-press-wash);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -42,13 +66,13 @@
   --ui-rule-strong: #3a4b56;
   --ui-text: #e6ddc9;
   --ui-text-soft: #93a3ad;
-  --ui-text-faint: #63737d;
+  --ui-text-faint: #7f8f99;
   --ui-brass: #d09a4e;
   --ui-verdigris: #6fb0a4;
-  --ui-ensign: #c2606a;
+  --ui-ensign: #d0727c;
   --ui-good: #7fb069;
   --ui-warn: #d9a441;
-  --ui-bad: #c2606a;
+  --ui-bad: #d0727c;
   --ui-scrim: rgba(13, 20, 25, 0.78);
   --ui-scrim-light: rgba(13, 20, 25, 0.35);
   --ui-cover: rgba(6, 11, 14, 0.92);
@@ -57,7 +81,9 @@
   --ui-tint-warn: rgba(217, 164, 65, 0.09);
   --ui-tint-bad: rgba(194, 96, 106, 0.1);
   --ui-tint-brass: rgba(208, 154, 78, 0.09);
-  --ui-bad-rule: rgba(194, 96, 106, 0.4);
+  --ui-bad-rule: rgba(208, 114, 124, 0.4);
+  --ui-hover-wash: rgba(230, 221, 201, 0.08);
+  --ui-press-wash: rgba(230, 221, 201, 0.16);
 }
 
 body {
@@ -82,6 +108,69 @@ body {
 
 button:focus:not(:focus-visible) {
   outline: none;
+}
+
+/*
+ * Interactive states for the few controls that are not kit buttons (lib/kit.css covers those).
+ * Components set their colours inline, which a stylesheet cannot override without !important, so
+ * the hover is an inset wash over whatever background the control has, and the border warms to
+ * brass. Pressing nudges it down a pixel.
+ */
+.tr-launcher,
+.se-zoom,
+.se-save,
+.se-icon-btn {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+.se-zoom:hover,
+.se-icon-btn:hover {
+  box-shadow: inset 0 0 0 999px var(--ui-hover-wash);
+  border-color: var(--ui-brass) !important;
+}
+.se-zoom:active,
+.tr-launcher:active {
+  transform: translateY(1px);
+}
+.tr-launcher:hover {
+  border-color: var(--ui-brass) !important;
+}
+.se-icon-btn:hover {
+  color: var(--ui-bad) !important;
+}
+.se-save:hover,
+.se-save:focus-within {
+  border-color: var(--ui-rule-strong) !important;
+  box-shadow: inset 0 0 0 999px var(--ui-hover-wash);
+}
+/* The run's name and seed are kit fields (lib/kit.css); the placeholder keeps its italic. */
+.kit-input::placeholder {
+  font-style: italic;
+}
+.se-check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+/* Sizes live here rather than inline, so the phone rules below can raise them. */
+.se-icon-btn { min-width: 32px; min-height: 32px; }
+.se-square { min-width: 34px; min-height: 32px; padding: 0; }
+
+/* Fingers, not pointers: every control at least 40px on a phone (kit buttons and fields get this
+   from lib/kit.css). */
+@media (max-width: 720px), (pointer: coarse) {
+  .se-icon-btn,
+  .se-square,
+  .se-save-open,
+  .tr-launcher {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .se-save {
+    min-height: 44px;
+  }
 }
 
 /* Event cards stack above the floating turn bar rather than over it. */

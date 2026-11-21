@@ -11,7 +11,7 @@
  * which the host wires to the server (api/game/coach.ts); the prompts and the key live there. With
  * `ai` false, or when a task returns null, every feature falls back to the built-in bank.
  */
-const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Take control: a 3-minute reset</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
+const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Take control: a 3-minute reset</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" class="tabbar" aria-label="Sections"></nav>\n  <nav id="subtabs" class="subtabs" aria-label="Pages in this section"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
 export function mountLedger(root, opts = {}) {
   return createLedger(opts.initial, { ...opts, root }).mount();
@@ -140,6 +140,8 @@ const WILD=[
 const RESET_CAP=6;
 /* Tom's rules: the directions he wrote for himself. Shown on every reset; he taps the one he is choosing.
    Reinforcement that points somewhere, not reassurance: each one is a direction he can act on. */
+const DEFAULT_SHIFTS=['Pilates or a walk outside','Two minutes of slow breathing','Write it out in Notes','Name the feeling out loud','Check the facts: firm pulse and deli numbers','Do one small thing I control','Three things I appreciate right now','Ask: what can I learn from this?','Call Sam or someone I trust','Phone off for an hour','Reread my 2030 letter','An early night'];
+const DEFAULT_PEOPLE=['My operations lead','My finance manager','A client manager','The deli manager'];
 const DEFAULT_HABITS=[{id:'pilates',name:'Pilates class',target:1}];
 const DEFAULT_RULES=['Profit is a good thing.','Taking time off is vital.','My systems run on profit and space, not on working all the time.','I am enough, and I can trace it in this ledger.','I control the next move, not the outcome.'];
 const RULE_IDEAS=['The firm does not need me to check my email to be safe.','Quiet is space, not danger.','When I am away, the team decides.','A fear is not a fact until the numbers say so.','Rest is part of the job, not a reward for finishing it.'];
@@ -178,7 +180,7 @@ const MOVES={
   quiet:['Use the quiet for one thinking question, written down','Walk for twenty minutes, no phone','Read my 2030 letter','Call a client who is doing well, just to listen'],
   away:['Name who decides while I am away, and tell them','Reply once with an owner and a date, then close the laptop','Write what can wait until I am back, and let it wait','Ask the team for one update at a set time, not all day'],
   firm:['Write three facts about the firm today: cash, clients, pipeline','Look at one real number, not the feeling','List the clients who paid us this month','Write the one decision that would move the firm most this quarter'],
-  deli:['Write the deli’s three real numbers this week','Name the one thing that would fix the deli most','Decide fix, hold or exit, and by what date','Book thirty minutes to look at the deli properly, not now'],
+  deli:['Log this week’s deli numbers in the Deli tab','Start the next turnaround lever','Ask the deli manager for yesterday’s takings and labour','Look at this week’s cash position, actual not feared'],
   not:['Write it down and park it until Friday','Name who does own it and tell them','Ten-minute walk, no phone']
 };
 /* When the same thing is loud on three days in a week it is a system problem, and the Friday review says so. */
@@ -187,7 +189,7 @@ const FIX={
   quiet:{text:'Keep a list of three thinking questions for when it goes quiet.',type:'Start',h:'week',hours:1},
   away:{text:'Write who decides what while I am away, and send it before I go.',type:'Start',h:'month',hours:3},
   firm:{text:'Put cash, debtors and pipeline on one page and read it every Monday.',type:'Start',h:'week',hours:1},
-  deli:{text:'Set the deli’s three numbers and a date to decide fix, hold or exit.',type:'Start',h:'month',hours:1},
+  deli:{text:'Hold a 30-minute deli numbers meeting every Monday: sales, margin, labour, cash.',type:'Start',h:'week',hours:1},
   cash:{text:'Build a 13-week cash flow and read it every Monday at 9.',type:'Start',h:'week',hours:1},
   client:{text:'Write the client standard: what we do, what we charge, and when we walk away.',type:'Start',h:'month',hours:1},
   person:{text:'Hold the overdue conversation: gap, standard, thirty days, support.',type:'Start',h:'week',hours:1},
@@ -306,12 +308,12 @@ const PRESSURE=[
  {id:'p-firm3',k:'firm',title:'Saving the firm',scene:'You feel it is all on you to save WS, alone.',
   opts:[{t:'Work every hour until it turns.',v:'trap',n:'That is the system that tired you out in the first place.'},{t:'Name the three numbers that matter and give each one an owner.',v:'best',n:'Saving a firm is a system, not a sacrifice.'},{t:'Keep it to yourself so nobody panics.',v:'ok',n:'Steady, and lonely. Tell one person you trust.'}],
   coach:['You are in control of the next move, not the outcome. Profit and space are what save firms, not hours.']},
- {id:'p-deli1',k:'deli',title:'The deli drain',scene:'The deli is not working and it is taking more of your head than the firm.',
-  opts:[{t:'Throw more of your own hours at it.',v:'trap',n:'Now neither business gets your best.'},{t:'Set its three numbers and a date to decide fix, hold or exit.',v:'best',n:'It becomes a decision with a date, not a weight.'},{t:'Ignore it and hope it turns.',v:'ok',n:'It might. Hope is not a plan.'}],
-  coach:['You tell clients to judge a site on its numbers, not its story. Do the same with the deli.']},
- {id:'p-deli2',k:'deli',title:'Sunk cost',scene:'You have put a lot into the deli and walking away would feel like failing.',
-  opts:[{t:'Keep going because of what it has cost.',v:'trap',n:'Past money cannot be saved, only future money can.'},{t:'Judge it on what it will make from here, as you would for a client.',v:'best',n:'The decision gets clearer the moment the past is out of it.'},{t:'Ask someone else to decide for you.',v:'ok',n:'Advice helps. The call is still yours.'}],
-  coach:['Sunk cost is a story, not a number. Your job is the next twelve months, not the last twelve.']},
+ {id:'p-deli1',k:'deli',title:'The deli drain',scene:'The deli is losing money this week and it is taking more of your head than the firm.',
+  opts:[{t:'Throw more of your own hours at it.',v:'trap',n:'Now neither business gets your best.'},{t:'Log the week’s numbers, pick the one lever that moves profit most, and give it an owner.',v:'best',n:'The worry becomes a plan with a number on it.'},{t:'Wait for a better week before looking.',v:'ok',n:'Hope is not a turnaround plan.'}],
+  coach:['You tell clients to run a site on its numbers, not its story. The deli gets the same treatment: weekly numbers, one lever at a time, an owner for each.']},
+ {id:'p-deli2',k:'deli',title:'Cash before profit',scene:'The deli’s bank balance is lower than you expected and supplier payments are due.',
+  opts:[{t:'Put your own money in quietly and say nothing.',v:'trap',n:'It buys a week and hides the problem.'},{t:'Build a 13-week cash flow, talk to suppliers early, and cut stock to a week of cover.',v:'best',n:'Cash is managed, not hoped for.'},{t:'Delay a payment and hope nobody notices.',v:'ok',n:'They notice. Early conversations keep goodwill.'}],
+  coach:['Profit is the score, cash is the oxygen. Fix the cash first, then the margin, then the growth.']},
  {id:'p-deli3',k:'deli',title:'Two businesses',scene:'Worry about the deli is spilling into your time at WS.',
   opts:[{t:'Switch between them all day.',v:'trap',n:'Both get half of you, all day.'},{t:'Give the deli one fixed slot a week and keep it there.',v:'best',n:'Each business gets your full attention in its own time.'},{t:'Put the deli out of your mind for a month.',v:'ok',n:'Restful, if someone else is watching it.'}],
   coach:['Attention is the scarce resource. Ration it on purpose, or worry will ration it for you.']},
@@ -492,21 +494,32 @@ const LETTER_PICKS={
   thank:['Writing the finance manager job spec.','Blocking my mornings for thinking.','Repricing the clients that lose us money.','Booking two weeks fully off.'],
 };
 /* One row of tap targets. `act` makes a tap act at once; otherwise the row is read with picked() on submit. */
+/* Choices tapped but not yet saved. They used to live only on screen, so any redraw of the page (a tap
+   elsewhere, a quick button, the coach answering) wiped them. Kept per row until the page changes or
+   the row leaves the screen; rows that act at once are not kept, their tap is the save. */
+let PICKS={};      // group -> values tapped
+let OTHERS={};     // group -> words typed in "Something else", while it is open
+function rememberRow(row){if(!row||row.querySelector('[data-pact]'))return;const g=row.dataset.group;if(!g)return;PICKS[g]=[...row.querySelectorAll('.pick.sel:not(.other)')].map(x=>x.dataset.val);}
+function prunePicks(){for(const g of Object.keys(PICKS))if(!ROOT.querySelector(`.chips-row[data-group="${CSS.escape(g)}"]`))delete PICKS[g];for(const g of Object.keys(OTHERS))if(!byId('other-'+g))delete OTHERS[g];}
 function chipRow(group,options,o={}){
-  const sel=[].concat(o.selected||[]);
-  return `<div class="chips-row" data-group="${group}" data-multi="${o.multi?1:0}" data-max="${o.max||0}">${options.map(v=>`<button type="button" class="pick ${sel.includes(v)?'sel':''}" data-pick-group="${group}" data-val="${esc(v)}"${o.act?` data-pact="${o.act}"`:''}>${esc(v)}</button>`).join('')}${o.other?`<button type="button" class="pick other" data-other="${group}">Something else</button>`:''}</div>${o.other?`<input type="text" class="other-in" id="other-${group}" hidden placeholder="In your own words" aria-label="Something else">`:''}`;
+  const sel=PICKS[group]?PICKS[group].filter(v=>options.includes(v)):[].concat(o.selected||[]);
+  const oth=OTHERS[group];
+  return `<div class="chips-row" data-group="${group}" data-multi="${o.multi?1:0}" data-max="${o.max||0}">${options.map(v=>`<button type="button" class="pick ${sel.includes(v)?'sel':''}" data-pick-group="${group}" data-val="${esc(v)}"${o.act?` data-pact="${o.act}"`:''}>${esc(v)}</button>`).join('')}${o.other?`<button type="button" class="pick other ${oth?'sel':''}" data-other="${group}">Something else</button>`:''}</div>${o.other?`<input type="text" class="other-in" id="other-${group}"${oth?` value="${esc(oth.text)}"`:' hidden'} placeholder="In your own words" aria-label="Something else">`:''}`;
 }
 function picked(group){
   const vals=[...ROOT.querySelectorAll(`[data-pick-group="${group}"].sel`)].map(b=>b.dataset.val);
   const o=ROOT.querySelector('#other-'+group);
-  if(o&&!o.hidden&&o.value.trim())vals.push(o.value.trim());
+  const typed=o&&!o.hidden&&o.value.trim();
+  const row=ROOT.querySelector(`.chips-row[data-group="${group}"]`);
+  if(typed&&row&&row.dataset.multi!=='1')return [typed];
+  if(typed)vals.push(typed);
   return vals;
 }
 const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x,10));let best=opts[0];opts.forEach(x=>{if(Math.abs(x-n)<Math.abs(best-n))best=x;});return best>=70?'70+':String(best);};
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],mornings:[],evenings:[],pulse:[],people:DEFAULT_PEOPLE.slice(),handovers:[],monthCloses:[],honourAt:{},journal:[],reminderDay:'',wts:{objective:{},principles:[],procs:[],started:0},line:[],shifts:DEFAULT_SHIFTS.slice(),deli:{weeks:[],targets:{cogs:32,labour:30}},offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -555,6 +568,12 @@ function points(){
   p+=10*new Set((S.letterReads||[]).map(monthKey)).size;
   habits().forEach(h=>{p+=HABIT_PTS*habitMet(h);});
   p+=fullDayPoints();
+  p+=BOOKEND_PTS*bookendDays().length;
+  p+=PULSE_PTS*new Set((S.pulse||[]).map(x=>weekNo(x.ts))).size;
+  p+=DELI_PTS*new Set(deliWeeks().map(x=>weekNo(x.ts))).size;
+  p+=MONTH_PTS*(S.monthCloses||[]).length;
+  p+=WTS_PTS*wtsProcs().reduce((a,x)=>a+(x.log||[]).length,0);
+  p+=LINE_PTS*lineLog().filter(e=>e.where==='below'&&e.worked).length;
   const sessWeeks=new Set();(S.sessions||[]).forEach(s=>{if(s.status==='done'&&s.takeaway&&!sessWeeks.has(weekNo(s.doneTs))){sessWeeks.add(weekNo(s.doneTs));p+=SESSION_PTS;}});
   return p;
 }
@@ -571,8 +590,8 @@ function lastN(n){return S.reviews.slice(-n);}
 function levels(){
   const st=streak(),done=doneBy(()=>true),stops=doneBy(t=>t.type==='Stop');
   const target=Number(S.future.targetHours)||45;
-  const l4=lastN(4);
-  const hrsOk=l4.length===4&&l4.every(r=>Number(r.hours)<=target);
+  const l4=lastN(4);const w4=workedReviews().slice(-4);
+  const hrsOk=w4.length===4&&w4.every(r=>Number(r.hours)<=target);
   const cfo=doneBy(t=>t.source==='cfo'||t.source==='wcfo')>0;
   const off=doneBy(t=>t.source==='woff')>0;
   const focus=l4.length===4&&l4.every(r=>Number(r.focus)>=8);
@@ -580,7 +599,7 @@ function levels(){
   const L=[
     {name:'Operator',checks:[]},
     {name:'Leader',checks:[['Four Friday reviews in a row',st>=4,`${Math.min(st,4)}/4`],['Five actions done',done>=5,`${Math.min(done,5)}/5`],['Two Stop actions done',stops>=2,`${Math.min(stops,2)}/2`]]},
-    {name:'Architect',checks:[['Hours at or under your target ('+target+') for four reviews running',hrsOk,`${l4.filter(r=>Number(r.hours)<=target).length}/4`],['Fifteen actions done',done>=15,`${Math.min(done,15)}/15`],['CFO execution handed over',cfo,cfo?'done':'open']]},
+    {name:'Architect',checks:[['Hours at or under your target ('+target+') for four working weeks running',hrsOk,`${w4.filter(r=>Number(r.hours)<=target).length}/4`],['Fifteen actions done',done>=15,`${Math.min(done,15)}/15`],['CFO execution handed over',cfo,cfo?'done':'open']]},
     {name:'Owner',checks:[['Twelve Friday reviews in a row',st12,`${Math.min(st,12)}/12`],['Two weeks fully off taken',off,off?'done':'open'],['Focus at 8 or above for four reviews running',focus,`${l4.filter(r=>Number(r.focus)>=8).length}/4`]]}
   ];
   let cur=0;for(let i=1;i<L.length;i++){if(L[i].checks.every(c=>c[1]))cur=i;else break;}
@@ -589,7 +608,7 @@ function levels(){
 
 /* ---------- The Reset: derived numbers ---------- */
 function resetsToday(now=Date.now()){const k=dayKey(now);return (S.resets||[]).filter(r=>dayKey(r.ts)===k).length;}
-const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+const plural=(n,w,many)=>`${n} ${n===1?w:(many||w+'s')}`;
 /* Facts from the player's own ledger, never a slogan. Each one can be traced to something they did. */
 function receipts(){
   const out=[];
@@ -611,6 +630,12 @@ function receipts(){
   habits().forEach(h=>{const st=habitStreak(h);const met=habitMet(h);if(st>=2)out.push(`${h.name}: ${st} weeks running. You kept a promise to yourself that nobody else checks.`);else if(met)out.push(`${h.name}: target met in ${plural(met,'week')}. You made room for it while the firm kept going.`);});
   const sess=(S.sessions||[]).filter(s=>s.status==='done').length;
   if(sess)out.push(`You have walked into ${plural(sess,'coaching session')} with an agenda. Founders who prepare get more from every hour of help.`);
+  const hols=S.reviews.filter(r=>r.weekType==='Holiday');
+  if(hols.length){const off=hols.filter(r=>r.switchOff==='Fully'||r.switchOff==='Mostly').length;out.push(`You have taken ${plural(hols.length,'holiday week')}${off?`, ${off===hols.length?'all':off} of them properly switched off`:''}. The firm was still there when you came back.`);}
+  if(pulseLine())out.push(`Your firm pulse, last logged: ${pulseLine()}. That is the firm, in facts.`);
+  const handed=(S.handovers||[]).filter(handoverDone).length;
+  if(handed)out.push(`You have handed over ${plural(handed,'thing')} you used to be pulled into. Each one is a decision someone else now makes.`);
+  const ds=deliStatus();if(ds&&ds.run)out.push(`The deli has been in profit ${plural(ds.run,'week')} running. The turnaround is working.`);
   const ruled=(S.resets||[]).filter(r=>r.rule).length;
   if(ruled)out.push(`${ruled===1?'Once':ruled+' times'} on a hard moment you chose one of your own rules over the feeling. That is you setting the direction.`);
   const ot=offTotals();
@@ -726,7 +751,7 @@ function habitMet(h){const by=habitWeeks(h.id);return Object.values(by).filter(c
 /* ---------- Coaching sessions: an agenda built from the ledger, and what he brings back ---------- */
 const SESSION_WHEN=['Today','Tomorrow','This week','Next week'];
 const SESSION_WANT=['Clarity on one decision','A plan for the next 30 days','To be challenged','To offload and reset'];
-const SESSION_TOPICS=['How I protect profit and space','Being needed while I am away','Fear the firm is failing: facts against feelings','The deli: fix, hold or exit','Is my 2030 letter still true?','Who could take something off me next'];
+const SESSION_TOPICS=['How I protect profit and space','Work the System: the next procedure and who owns it','The deli turnaround: profit and cash','Being needed while I am away','Fear the firm is failing: facts against feelings','Is my 2030 letter still true?','Who could take something off me next'];
 const TAKEAWAYS=['Decide one thing this week and tell the team','Hand one task over for good','Protect one thinking block a week','Book next month’s days off now'];
 const SESSION_PTS=10;
 const openSession=()=>(S.sessions||[]).find(s=>s.status==='planned')||null;
@@ -747,7 +772,8 @@ function sessionBrief(now=Date.now()){
     if(ups.length)lines.push(ups.map(x=>`${x.n} ${x.d>0?'up':'down'} ${Math.abs(x.d)}`).join(', '));
     const gs={};rv.forEach(r=>{if(r.game)gs[r.game]=(gs[r.game]||0)+1;});const g=Object.entries(gs).sort((a,b)=>b[1]-a[1])[0];
     if(g){const G=GAMES.find(x=>x.id===g[0]);if(G){lines.push(`The game that ran my weeks: ${G.name.toLowerCase()}`);if(G.kind==='default')topics.push(`The system I keep running: ${G.name.toLowerCase()}`);}}
-    const hrs=rv.map(r=>Number(r.hours)).filter(Boolean);if(hrs.length)lines.push(`Hours: ${hrs.join(', ')} against a target of ${S.future.targetHours}`);}
+    const hrs=rv.filter(r=>typeof r.hours==='number'&&r.weekType!=='Holiday'&&r.weekType!=='Off sick').map(r=>Number(r.hours)).filter(Boolean);if(hrs.length)lines.push(`Hours: ${hrs.join(', ')} against a target of ${S.future.targetHours}`);
+    const hol=rv.filter(r=>r.weekType==='Holiday');if(hol.length){lines.push(`${plural(hol.length,'holiday week')}: ${hol.map(r=>(r.switchOff||'').toLowerCase()).filter(Boolean).join(', ')||'logged'} switched off`);const pulled=hol.filter(r=>r.pulledIn&&r.pulledIn!=='None').length;if(pulled)topics.push('Being pulled in while I was away');}}
   // Weeks are counted from the later of the last session and the day the ledger began, and this week
   // only counts once its target is met: an unfinished week is not a missed one.
   const start=Math.max(since,S.baselineTs||0);
@@ -758,6 +784,12 @@ function sessionBrief(now=Date.now()){
   stuck.forEach(t=>topics.push(`Stuck for ${Math.floor((now-t.createdAt)/WEEK)} weeks: ${t.text}`));
   const goods=S.notes.filter(n=>n.kind==='good'&&n.ts>since);if(goods.length){lines.push(`${plural(goods.length,'good thing')} logged`);topics.push(`What is working: ${goods[goods.length-1].text}`);}
   const ruled=rs.filter(r=>r.rule);if(ruled.length)lines.push(`Chose my own rules on ${plural(ruled.length,'hard moment')}`);
+  if(pulseLine())lines.push('Firm pulse: '+pulseLine());
+  {const P=linePatterns(now,Math.max(1,Math.ceil((now-since)/DAY)));if(P.checks){lines.push(`Above the line ${P.above} times, below ${P.below}${P.signs[0]?`; most often ${P.signs[0][0].toLowerCase()}`:''}${P.triggers[0]?`, set off by ${P.triggers[0][0].toLowerCase()}`:''}`);const best=P.shifts[0];if(best)lines.push(`What brings me back: ${P.shifts.slice(0,3).map(s=>`${s.name.toLowerCase()} (${Math.round(s.rate*100)}%)`).join(', ')}`);if(P.below)topics.push('Getting back above the line: what works and what I need more of');}}
+  if(S.wts&&(S.wts.started||wtsProcs().length)){const sm=wtsSummary();lines.push(`Work the System: ${sm.by.written+sm.by.handed+sm.by.runs} of ${plural(sm.total,'procedure')} written, ${sm.by.runs} running without me, ${plural(sm.streak,'week')} in a row`);if(!wtsMovedThisWeek(now))topics.push('Work the System: what stopped me this week');}
+  const jr=(S.journal||[]).filter(e=>e.ts>since);if(jr.length){const P=journalPatterns(now);lines.push(`${plural(jr.length,'note')} written${P.themes[0]&&P.themes[0].n?`, mostly about ${P.themes[0].name.toLowerCase()}`:''}`);if(P.stale)topics.push(`${plural(P.stale,'idea')} I have not decided on`);}
+  const ds=deliStatus();if(ds){lines.push(`Deli: ${ds.profit>=0?'making':'losing'} ${gbp(Math.abs(ds.profit))} a week, cash ${gbp(ds.cash)}${ds.cashUp!==null?` (${ds.cashUp>=0?'up':'down'} ${gbp(Math.abs(ds.cashUp))})`:''}, ${ds.run?`in profit ${plural(ds.run,'week')} running`:`break-even ${gbp(ds.breakEven)} of sales a week`}`);if(ds.profit<0)topics.push('The deli: which lever next, and who owns it');}
+  const ho=(S.handovers||[]).filter(h=>h.ts>since);if(ho.length){const open=ho.filter(h=>!handoverDone(h));lines.push(`Pulled in ${plural(ho.length,'time')}; ${ho.length-open.length} handed over`);const nob=ho.filter(h=>h.who==='Nobody yet');if(nob.length)topics.push(`Nobody owns this yet: ${nob[nob.length-1].what.toLowerCase()}`);}
   SESSION_TOPICS.forEach(x=>topics.push(x));
   return {since,lines,topics:[...new Set(topics)]};
 }
@@ -767,6 +799,32 @@ function agendaText(s){
   out.push('','To discuss:',...s.items.map((x,i)=>`${i+1}. ${x}`));
   out.push('','I will leave with one decision and one action.');
   return out.join('\n');
+}
+
+/* ---------- Away: holidays the ledger knows about ----------
+   Time off is vital, so an away day closes the Space ring by itself and keeps the streak. The Friday
+   review stops asking about hours and asks how switched off he was instead. Being pulled in is logged
+   with one tap, as information about the being-needed system, never as a failure. */
+const AWAY_PLANS=['Until Sunday','Next 7 days','Next 14 days'];
+const WEEK_TYPES=['Working week','Holiday','Part holiday','Off sick'];
+const SWITCH_OFF=['Fully','Mostly','Pulled in a few times','Worked most days'];
+const HANDLED=['Client queries','The month end','A team problem','A decision I would have made','Everything','Not sure yet'];
+const DAYS_OFF=['1','2','3','4'];
+function awayOn(ts){const d=dayStart(ts);return (S.away||[]).find(a=>a.from<=d&&d<=a.to)||null;}
+function awayNow(now=Date.now()){return awayOn(now);}
+function awayNext(now=Date.now()){const d=dayStart(now);return (S.away||[]).filter(a=>a.from>d).sort((a,b)=>a.from-b.from)[0]||null;}
+/* Days of this week (Monday to Sunday) inside an away spell. */
+function awayDaysThisWeek(now=Date.now()){
+  const w=weekNo(now);let n=0;let d=dayStart(now);while(weekNo(d-DAY)===w)d=dayStart(d-DAY+3600000);
+  for(let i=0;i<7;i++){if(weekNo(d)===w&&awayOn(d))n++;d=dayStart(d+DAY+3600000);}return n;
+}
+function pullsThisWeek(now=Date.now()){const w=weekNo(now);return (S.away||[]).reduce((a,x)=>a+(x.pulls||[]).filter(ts=>weekNo(ts)===w).length,0);}
+const workedReviews=()=>S.reviews.filter(r=>typeof r.hours==='number'&&r.weekType!=='Holiday'&&r.weekType!=='Off sick');
+function planAway(label,now=Date.now()){
+  const from=dayStart(now);let to;
+  if(label==='Until Sunday'){to=from;while(new Date(to).getDay()!==0)to=dayStart(to+DAY+3600000);}
+  else to=dayStart(from+(label==='Next 14 days'?13:6)*DAY+3600000);
+  S.away=(S.away||[]).filter(a=>!(a.from<=to&&a.to>=from)).concat({id:'a'+uid(),from,to,pulls:[]});
 }
 
 /* ---------- The daily game: three rings, a day streak, rest days banked, honours ----------
@@ -787,6 +845,7 @@ function dayRings(){
   S.todos.forEach(t=>{if(t.done)mark(t.doneAt,'move');});
   (S.habitLog||[]).forEach(l=>mark(l.ts,'space'));
   (S.offDays||[]).forEach(o=>{if(o.status==='back')mark(o.day,'space');});
+  const today=dayStart(Date.now());(S.away||[]).forEach(a=>{for(let d=a.from;d<=Math.min(a.to,today);d=dayStart(d+DAY+3600000))mark(d,'space');});
   (S.resets||[]).forEach(r=>mark(r.ts,null));
   S.reviews.forEach(r=>mark(r.ts,null));
   (S.sysLog||[]).forEach(l=>mark(l.ts,null));
@@ -838,12 +897,224 @@ const HONOURS=[
   {id:'rule10',name:'My rules',desc:'Choose your own rule on ten hard moments',goal:10,v:()=>(S.resets||[]).filter(r=>r.rule).length},
   {id:'rev4',name:'Closes his own week',desc:'Four Friday reviews',goal:4,v:()=>S.reviews.length},
   {id:'rev12',name:'A quarter closed',desc:'Twelve Friday reviews',goal:12,v:()=>S.reviews.length},
+  {id:'book7',name:'Bookends',desc:'Morning and evening on seven days',goal:7,v:()=>bookendDays().length},
+  {id:'pulse4',name:'Facts over fear',desc:'Firm pulse logged four weeks',goal:4,v:()=>new Set((S.pulse||[]).map(x=>weekNo(x.ts))).size},
+  {id:'hand5',name:'Let go',desc:'Five handovers done',goal:5,v:()=>(S.handovers||[]).filter(handoverDone).length},
+  {id:'month1',name:'Month closed',desc:'Your first monthly close',goal:1,v:()=>(S.monthCloses||[]).length},
+  {id:'deli1',name:'Numbers, not feelings',desc:'First deli week logged',goal:1,v:()=>deliWeeks().length},
+  {id:'deli4',name:'Turning it round',desc:'The deli in profit four weeks running',goal:4,v:()=>{const s=deliStatus();return s?s.run:0;}},
+  {id:'wts1',name:'System builder',desc:'First procedure written down',goal:1,v:()=>wtsProcs().filter(p=>p.stage!=='spotted').length},
+  {id:'wts4',name:'Working on it',desc:'Four weeks in a row moving a system forward',goal:4,v:()=>wtsStreak()},
+  {id:'wts3',name:'Runs without me',desc:'Three procedures running without you',goal:3,v:()=>wtsProcs().filter(p=>p.stage==='runs').length},
+  {id:'line5',name:'Back above the line',desc:'Five times you shifted and it worked',goal:5,v:()=>lineLog().filter(e=>e.worked==='yes').length},
+  {id:'jr20',name:'Thinking on paper',desc:'Twenty notes written',goal:20,v:()=>(S.journal||[]).length},
+  {id:'idea3',name:'Idea to action',desc:'Three ideas made into actions',goal:3,v:()=>(S.journal||[]).filter(e=>e.status==='acted').length},
+  {id:'hol1',name:'Properly off',desc:'A holiday week, fully or mostly switched off',goal:1,v:()=>S.reviews.filter(r=>r.weekType==='Holiday'&&(r.switchOff==='Fully'||r.switchOff==='Mostly')).length},
   {id:'off1',name:'The firm held',desc:'Your first phone-off day',goal:1,v:()=>(S.offDays||[]).filter(o=>o.status==='back').length},
   {id:'coach3',name:'Prepared',desc:'Three coaching sessions with an agenda',goal:3,v:()=>(S.sessions||[]).filter(s=>s.status==='done').length},
   {id:'letter',name:'Written it down',desc:'A 2030 letter of 150 words',goal:1,v:()=>wc(S.future.letter)>=150?1:0}
 ];
 function honours(){return HONOURS.map(h=>{const v=Number(h.v())||0;return {...h,value:Math.min(v,h.goal),earned:v>=h.goal};});}
 function habitBest(h){const by=habitWeeks(h.id);const ws=Object.keys(by).map(Number).sort((a,b)=>a-b);let best=0,run=0,prev=null;ws.forEach(w=>{if(by[w]>=h.target){run=prev!==null&&w===prev+1&&run>0?run+1:1;prev=w;}else{run=0;prev=w;}best=Math.max(best,run);});return best;}
+
+/* ---------- Morning and evening bookends: sixty seconds each, a start and a finish to the day ---------- */
+const BOOKEND_PTS=3;
+const REMINDERS=[
+  {id:'am',name:'Morning, 7:40 weekdays',on:true,rule:'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',h:7,m:40,title:'Founder’s Ledger: set the day'},
+  {id:'pm',name:'Evening, 18:00 weekdays',on:true,rule:'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',h:18,m:0,title:'Founder’s Ledger: close the day'},
+  {id:'review',name:'Friday review, 15:00',on:true,rule:'FREQ=WEEKLY;BYDAY=FR',h:15,m:0,title:'Founder’s Ledger: Friday review'},
+  {id:'pilates',name:'Book Pilates, Thursday 12:00',on:true,rule:'FREQ=WEEKLY;BYDAY=TH',h:12,m:0,title:'Book this week’s Pilates class'},
+  {id:'deli',name:'Deli numbers, Monday 9:00',on:true,rule:'FREQ=WEEKLY;BYDAY=MO',h:9,m:0,title:'Deli numbers: sales, margin, labour, cash'},
+  {id:'wts',name:'Systems hour, Tuesday 7:30',on:true,rule:'FREQ=WEEKLY;BYDAY=TU',h:7,m:30,title:'Work the System: move one procedure forward'},
+  {id:'month',name:'Monthly close, the 1st at 8:00',on:true,rule:'FREQ=MONTHLY;BYMONTHDAY=1',h:8,m:0,title:'Founder’s Ledger: close the month'}
+];
+function icsFor(ids,now=Date.now()){
+  const pad=n=>String(n).padStart(2,'0');const d=new Date(now);const day=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  const stamp=new Date(now).toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+  const ev=REMINDERS.filter(r=>ids.includes(r.id)).map(r=>['BEGIN:VEVENT',`UID:founders-ledger-${r.id}@thrash-margin`,`DTSTAMP:${stamp}`,`DTSTART;TZID=Europe/London:${day}T${pad(r.h)}${pad(r.m)}00`,'DURATION:PT15M',`RRULE:${r.rule}`,`SUMMARY:${r.title}`,'URL:https://thrash-margin.vercel.app/founders-ledger/','BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${r.title}`,'TRIGGER:PT0M','END:VALARM','END:VEVENT'].join('\r\n'));
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Williams Stanley//Founders Ledger//EN','CALSCALE:GREGORIAN',...ev,'END:VCALENDAR'].join('\r\n')+'\r\n';
+}
+const MORNING_HOURS=[4,13], EVENING_HOURS=[16,27];
+const hourNow=(now=Date.now())=>new Date(now).getHours();
+const inWindow=(w,now=Date.now())=>{const h=hourNow(now);return w[1]>24?(h>=w[0]||h<w[1]-24):(h>=w[0]&&h<w[1]);};
+const todayOf=list=>(list||[]).find(x=>dayKey(x.ts)===dayKey(Date.now()))||null;
+function bookendDays(){const am=new Set((S.mornings||[]).map(x=>dayKey(x.ts)));return (S.evenings||[]).filter(x=>am.has(dayKey(x.ts))).map(x=>dayKey(x.ts));}
+
+/* ---------- The firm pulse: three numbers a week, so facts beat the 3am story ---------- */
+const PULSE=[{k:'cash',name:'Cash in the bank'},{k:'fees',name:'Fees billed this week'},{k:'pipeline',name:'Pipeline'}];
+const PULSE_PTS=5;
+const pulseLatest=()=>(S.pulse||[]).slice(-1)[0]||null;
+function pulseChange(k,weeks=4){const ps=S.pulse||[];if(ps.length<2)return null;const last=ps[ps.length-1];const back=ps[Math.max(0,ps.length-1-weeks)];if(back===last)return null;return Number(last[k])-Number(back[k]);}
+function pulseLine(){const l=pulseLatest();if(!l)return '';return PULSE.map(x=>{const c=pulseChange(x.k);return `${x.name.toLowerCase()} ${gbp(l[x.k])}${c?` (${c>0?'up':'down'} ${gbp(Math.abs(c))} on four weeks)`:''}`;}).join(', ');}
+function sparkSvg(vals,label){
+  if(vals.length<2)return '';const w=120,h=32;const lo=Math.min(...vals),hi=Math.max(...vals),rg=hi-lo||1;
+  const pts=vals.map((v,i)=>`${Math.round(i/(vals.length-1)*w)},${Math.round(h-2-(v-lo)/rg*(h-4))}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)} trend"><polyline points="${pts}"/></svg>`;
+}
+
+/* ---------- Handovers: every time he is pulled in, who could have decided it ---------- */
+const PULL_WHAT=['A client question','A pricing call','A staff issue','Checking someone’s work','A deli issue','A supplier question'];
+const handoverDone=h=>{const t=S.todos.find(x=>x.source==='ho-'+h.id);return !!(t&&t.done);};
+function logPull(what,who,now=Date.now()){
+  const a=awayOn(now);if(a)a.pulls=(a.pulls||[]).concat(now);
+  const h={id:'h'+uid(),ts:now,what,who};S.handovers=(S.handovers||[]).concat(h).slice(-400);
+  if(who&&who!=='Nobody yet')addTodo({text:`Hand over to ${who}: ${what.charAt(0).toLowerCase()+what.slice(1)}`,type:'Stop',h:'week',hours:1,source:'ho-'+h.id});
+  return h;
+}
+function handoverMap(){
+  const by={};(S.handovers||[]).forEach(h=>{const k=h.who||'Nobody yet';(by[k]=by[k]||{who:k,open:0,handed:0,items:[]});by[k].items.push(h);if(handoverDone(h))by[k].handed++;else by[k].open++;});
+  return Object.values(by).sort((a,b)=>b.items.length-a.items.length);
+}
+
+/* ---------- Monthly close: his own month end ---------- */
+const MONTH_PTS=20;
+const MONTH_FOCUS=['Profit','Space','The deli turnaround','Handing over','My health'];
+const monthOf=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+(d.getMonth()+1);};
+const monthName=key=>{const [y,m]=key.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});};
+function prevMonthKey(now=Date.now()){const d=new Date(now);d.setDate(1);d.setMonth(d.getMonth()-1);return monthOf(d.getTime());}
+function monthStats(key){
+  const inM=ts=>ts&&monthOf(ts)===key;const by=dayRings();
+  const days=Object.entries(by).filter(([k])=>{const [y,m]=k.split('-').map(Number);return `${y}-${m}`===key;}).map(([,r])=>r);
+  return {
+    active:days.filter(r=>r.any).length, full:days.filter(fullDay).length, rings:days.reduce((a,r)=>a+(r.notice?1:0)+(r.move?1:0)+(r.space?1:0),0),
+    actions:S.todos.filter(t=>t.done&&inM(t.doneAt)).length, stops:S.todos.filter(t=>t.done&&t.type==='Stop'&&inM(t.doneAt)).length,
+    resets:(S.resets||[]).filter(r=>inM(r.ts)).length, good:(S.notes||[]).filter(n=>n.kind==='good'&&inM(n.ts)).length,
+    pilates:(S.habitLog||[]).filter(l=>l.id==='pilates'&&inM(l.ts)).length, handed:(S.handovers||[]).filter(h=>handoverDone(h)&&inM((S.todos.find(x=>x.source==='ho-'+h.id)||{}).doneAt)).length
+  };
+}
+const monthClosed=key=>(S.monthCloses||[]).some(m=>m.month===key);
+function monthDue(now=Date.now()){const k=prevMonthKey(now);const start=S.baselineTs||now;return new Date(now).getDate()<=10&&!monthClosed(k)&&monthOf(start)!==monthOf(now)?k:null;}
+
+/* ---------- The deli turnaround: keeping it, so profit and cash, urgently ---------- */
+const DELI_PTS=5;
+const DELI_FIELDS=[{k:'sales',name:'Sales this week',unit:'£'},{k:'cogs',name:'Cost of sales',unit:'%'},{k:'labour',name:'Labour this week',unit:'£'},{k:'overheads',name:'Other costs this week',unit:'£'},{k:'cash',name:'Cash in the bank',unit:'£'}];
+const DELI_LEVERS=[
+  {id:'price',name:'Price review: every item to target margin',h:'week'},
+  {id:'menu',name:'Menu engineering: cut the bottom 20 percent of sellers',h:'month'},
+  {id:'rota',name:'Rota to sales by hour: cut the dead shifts',h:'week'},
+  {id:'waste',name:'Waste log every day for two weeks',h:'week'},
+  {id:'supplier',name:'Renegotiate the top three suppliers',h:'month'},
+  {id:'hours',name:'Opening hours: close the hours that lose money',h:'month'},
+  {id:'spend',name:'Average spend: one add-on offered at every till',h:'week'},
+  {id:'cashflow',name:'13-week cash flow and a weekly cash call',h:'week'},
+  {id:'stock',name:'Stock down to a week of cover',h:'week'},
+  {id:'owner',name:'The deli manager owns the P&L, with a Monday numbers meeting',h:'week'},
+  {id:'early',name:'Talk to HMRC or the landlord early about time to pay, if cash needs it',h:'month'}
+];
+const deliWeeks=()=>((S.deli&&S.deli.weeks)||[]);
+function deliCalc(w){
+  if(!w)return null;const sales=Number(w.sales)||0,cogs=Number(w.cogs)||0,labour=Number(w.labour)||0,over=Number(w.overheads)||0;
+  const gp=sales*(1-cogs/100);const profit=gp-labour-over;const fixed=labour+over;const be=cogs<100?fixed/(1-cogs/100):0;
+  return {sales,gp,gpPct:sales?gp/sales*100:0,labourPct:sales?labour/sales*100:0,profit,breakEven:be,gap:be-sales,cash:Number(w.cash)||0};
+}
+function deliStatus(){
+  const ws=deliWeeks();if(!ws.length)return null;const c=deliCalc(ws[ws.length-1]);const prev=ws.length>1?deliCalc(ws[ws.length-2]):null;
+  let run=0;for(let i=ws.length-1;i>=0&&deliCalc(ws[i]).profit>0;i--)run++;
+  const cashUp=prev?c.cash-prev.cash:null;
+  const last4=ws.slice(-4).map(deliCalc);const avg=last4.reduce((a,x)=>a+x.profit,0)/last4.length;
+  return {...c,run,cashUp,avg,weeks:ws.length,cashPositive:cashUp!==null&&cashUp>0};
+}
+function saveDeliWeek(vals,now=Date.now()){const wk=weekNo(now);S.deli=S.deli||{weeks:[],targets:{cogs:32,labour:30}};S.deli.weeks=(S.deli.weeks||[]).filter(w=>weekNo(w.ts)!==wk).concat({ts:now,...vals}).slice(-260);return S.deli.weeks[S.deli.weeks.length-1];}
+function startLever(id){const l=DELI_LEVERS.find(x=>x.id===id);if(!l)return null;return addTodo({text:'Deli: '+l.name,type:'Start',h:l.h,hours:1,source:'deli-'+l.id});}
+function closeMonth(key,focus,changeRule,now=Date.now()){if(monthClosed(key))return null;const m={month:key,ts:now,focus:String(focus).slice(0,120)};S.monthCloses=(S.monthCloses||[]).concat(m);
+  if(changeRule)addTodo({text:'Change one of my rules: the one I broke most last month',type:'Start',h:'week',hours:0,source:'month-rule-'+key});return m;}
+const leverTodo=id=>S.todos.find(t=>t.source==='deli-'+id)||null;
+
+/* ---------- Notes: thoughts, ideas, worries, wins and voice notes, read for their patterns ---------- */
+const JOURNAL_KINDS=[{k:'thought',name:'Thought',many:'Thoughts'},{k:'idea',name:'Idea',many:'Ideas'},{k:'worry',name:'Worry',many:'Worries'},{k:'win',name:'Win',many:'Wins'},{k:'note',name:'Note',many:'Notes'}];
+const THEMES=[
+  {k:'firm',name:'The firm',re:/\b(ws|firm|clients?|fees?|pipeline|billing|proposals?|practice|accounts)\b/i},
+  {k:'deli',name:'The deli',re:/\b(deli|shop|till|takings|suppliers?|menu|stock)\b/i},
+  {k:'money',name:'Money and profit',re:/(\bcash\b|\bprofit|\bmoney\b|\bmargins?\b|\bpric(e|es|ing)\b|\bbank\b|£|\brevenue\b|\bcosts?\b|\bdebt\b)/i},
+  {k:'people',name:'People and handing over',re:/\b(team|staff|hir(e|ing)|managers?|delegat\w*|hand ?over|handed|people|recruit\w*)\b/i},
+  {k:'space',name:'Time and space',re:/\b(time|space|holiday|weekend|hours|rest|switch(ed)? off|tired|busy|overwhelm\w*)\b/i},
+  {k:'health',name:'Health and energy',re:/\b(pilates|gym|sleep|health|exercise|anxious|anxiety|stress\w*|energy|walk)\b/i},
+  {k:'family',name:'Family and life',re:/\b(family|kids|children|wife|partner|home|friends|life)\b/i},
+  {k:'growth',name:'Growth and new ideas',re:/\b(launch|grow\w*|product|service|marketing|sales|sell|offer|new client)\b/i}
+];
+const themesOf=text=>THEMES.filter(x=>x.re.test(text)).map(x=>x.k);
+const partOfDay=ts=>{const h=new Date(ts).getHours();return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night';};
+function journalAdd(text,kind,o={},now=Date.now()){
+  const v=String(text||'').trim().slice(0,4000);if(!v)return null;
+  const e={id:'j'+uid(),ts:now,text:v,kind:JOURNAL_KINDS.some(x=>x.k===kind)?kind:'thought',voice:!!o.voice,pin:false,status:kind==='idea'?'open':''};
+  S.journal=(S.journal||[]).concat(e).slice(-1500);return e;
+}
+function journalPatterns(now=Date.now()){
+  const all=S.journal||[];const recent=all.filter(e=>now-e.ts<=30*DAY),before=all.filter(e=>now-e.ts>30*DAY&&now-e.ts<=60*DAY);
+  const count=(list,f)=>list.filter(f).length;
+  const themes=THEMES.map(x=>({k:x.k,name:x.name,n:count(recent,e=>x.re.test(e.text)),was:count(before,e=>x.re.test(e.text))})).filter(x=>x.n||x.was).sort((a,b)=>b.n-a.n);
+  const kinds=Object.fromEntries(JOURNAL_KINDS.map(x=>[x.k,count(recent,e=>e.kind===x.k)]));
+  const parts={morning:0,afternoon:0,evening:0,night:0};recent.forEach(e=>{parts[partOfDay(e.ts)]++;});
+  const worryNight=count(recent,e=>e.kind==='worry'&&partOfDay(e.ts)==='night');
+  const ideas=all.filter(e=>e.kind==='idea');const open=ideas.filter(e=>e.status==='open');
+  const stale=open.filter(e=>now-e.ts>14*DAY);
+  const lines=[];
+  if(recent.length){
+    if(themes[0]&&themes[0].n)lines.push(`Most of what you have written this month is about ${themes[0].name.toLowerCase()}: ${themes[0].n} of ${plural(recent.length,'entry','entries')}.`);
+    const rising=themes.filter(x=>x.was&&x.n>=x.was+3)[0];if(rising)lines.push(`${rising.name} is rising: ${rising.n} entries this month against ${rising.was} the month before. Worth an agenda item.`);
+    if(kinds.worry>kinds.win*2&&kinds.worry>=3)lines.push(`Worries outnumber wins ${kinds.worry} to ${kinds.win}. The wins are happening; log one each evening so the ledger tells the whole story.`);
+    else if(kinds.win>=kinds.worry&&kinds.win>=2)lines.push(`Wins match or beat worries, ${kinds.win} to ${kinds.worry}. That is the evidence that you are enough, written in your own hand.`);
+    if(worryNight>=2)lines.push(`${plural(worryNight,'worry','worries')} written at night. Night is when the story is loudest and the facts are furthest away; park it and read it again in the morning.`);
+    if(kinds.idea>=3&&!ideas.some(e=>e.status==='acted'&&now-(e.decidedAt||e.ts)<=30*DAY))lines.push(`${plural(kinds.idea,'idea')} this month and none turned into an action yet. Pick the best one and give it a first step.`);
+  }
+  if(stale.length)lines.push(`${plural(stale.length,'idea')} waiting more than two weeks for a decision. An undecided idea becomes another thing to carry: act, park or drop.`);
+  return {total:all.length,recent:recent.length,themes,kinds,parts,ideasOpen:open.length,ideasActed:ideas.filter(e=>e.status==='acted').length,stale:stale.length,voice:count(recent,e=>e.voice),lines};
+}
+function decideIdea(id,how,now=Date.now()){
+  const e=(S.journal||[]).find(x=>x.id===id);if(!e)return null;
+  if(how==='acted'){e.status='acted';e.decidedAt=now;return addTodo({text:e.text.length>140?e.text.slice(0,137)+'...':e.text,type:'Start',h:'month',hours:1,source:'jr-'+e.id});}
+  if(how==='parked'||how==='dropped'){e.status=how;e.decidedAt=now;return e;}
+  return null;
+}
+
+/* ---------- The daily reminder: the first thing he sees on his first open of the day ---------- */
+function dailyReminder(now=Date.now()){
+  const n=Math.floor(dayStart(now)/DAY);
+  const pinned=(S.journal||[]).filter(e=>e.pin).map(e=>e.text);
+  const pool=pinned.length?pinned:rules();
+  const line=pool[n%pool.length]||'';
+  const rs=receipts();const fact=rs.length?rs[n%rs.length]:'';
+  const nudges=[];
+  if(!todayOf(S.mornings)&&inWindow(MORNING_HOURS,now))nudges.push('Set today\u2019s one thing before the inbox.');
+  const open=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;if(open)nudges.push(`${plural(open,'idea')} waiting for a decision in Notes.`);
+  const ds=deliStatus();if(ds&&weekNo(deliWeeks().slice(-1)[0].ts)!==weekNo(now)&&new Date(now).getDay()===1)nudges.push('Monday: log last week\u2019s deli numbers.');
+  if(reviewDue()&&new Date(now).getDay()===5)nudges.push('Friday review is due.');
+  return {line,pinned:pinned.length>0,fact,nudges};
+}
+const reminderDue=(now=Date.now())=>S.reminderDay!==dayKey(now);
+
+/* ---------- Above the line: locate yourself, name it, shift, and learn which shifts work ---------- */
+const LINE_SIGNS=['Defensive','Blaming','Feeling like a victim','Anxious','Controlling','Rushing','Need to be right','Numbing out','Withdrawn','Irritable'];
+const LINE_TRIGGERS=['The firm','The deli','Cash','A client','The team','Being needed','Tiredness','Too much on','Home','Nothing obvious'];
+const LINE_PTS=5;
+const lineLog=()=>(S.line||[]);
+function lineCheck(where,o={},now=Date.now()){
+  const e={id:'l'+uid(),ts:now,where:where==='below'?'below':'above',signs:(o.signs||[]).slice(0,4),trigger:o.trigger||'',shift:'',worked:''};
+  S.line=lineLog().concat(e).slice(-1000);return e;
+}
+function lineShift(id,shift,now=Date.now()){const e=lineLog().find(x=>x.id===id);if(!e||e.where!=='below')return null;e.shift=String(shift||'').slice(0,120);e.shiftAt=now;return e;}
+function lineResult(id,worked,now=Date.now()){const e=lineLog().find(x=>x.id===id);if(!e||!e.shift||!['yes','partly','no'].includes(worked))return null;e.worked=worked;e.backAt=now;return e;}
+function lineOpen(){const e=lineLog().slice(-1)[0];return e&&e.where==='below'&&!e.worked?e:null;}
+function linePatterns(now=Date.now(),days=60){
+  const L=lineLog().filter(e=>now-e.ts<=days*DAY);const below=L.filter(e=>e.where==='below');
+  const tally=xs=>Object.entries(xs.reduce((a,x)=>(a[x]=(a[x]||0)+1,a),{})).sort((a,b)=>b[1]-a[1]);
+  const shifts={};below.filter(e=>e.shift&&e.worked).forEach(e=>{const s=shifts[e.shift]=shifts[e.shift]||{name:e.shift,used:0,score:0};s.used++;s.score+=e.worked==='yes'?1:e.worked==='partly'?0.5:0;});
+  const ranked=Object.values(shifts).map(s=>({...s,rate:s.score/s.used})).sort((a,b)=>b.rate-a.rate||b.used-a.used);
+  const mins=below.filter(e=>e.backAt&&e.worked!=='no').map(e=>Math.round((e.backAt-e.ts)/60000));
+  return {checks:L.length,above:L.length-below.length,below:below.length,signs:tally(below.flatMap(e=>e.signs)),triggers:tally(below.map(e=>e.trigger).filter(Boolean)),
+    parts:tally(below.map(e=>partOfDay(e.ts))),shifts:ranked,back:below.filter(e=>e.worked==='yes').length,medianMins:mins.length?mins.sort((a,b)=>a-b)[Math.floor(mins.length/2)]:null};
+}
+function lineLines(P){
+  const out=[];if(!P.below)return out;
+  if(P.signs[0])out.push(`Your most common sign below the line: ${P.signs[0][0].toLowerCase()} (${P.signs[0][1]} of ${P.below}).`);
+  if(P.triggers[0]&&P.triggers[0][0]!=='Nothing obvious')out.push(`What most often takes you there: ${P.triggers[0][0].toLowerCase()}.`);
+  if(P.parts[0]&&P.parts[0][1]>=2)out.push(`It happens most ${P.parts[0][0]==='night'?'at night':'in the '+P.parts[0][0]}.`);
+  const best=P.shifts.filter(s=>s.used>=2)[0];if(best)out.push(`Your most reliable shift: ${best.name.toLowerCase()}, back above ${Math.round(best.rate*100)}% of the time.`);
+  const worst=P.shifts.filter(s=>s.used>=2&&s.rate<0.4).slice(-1)[0];if(worst&&worst!==best)out.push(`${worst.name} rarely works for you. Try another first.`);
+  if(P.medianMins!=null)out.push(`Typical time back above the line: ${P.medianMins<5?'a few minutes':P.medianMins<90?`${P.medianMins} minutes`:`${Math.round(P.medianMins/60)} hours`}.`);
+  return out;
+}
+const shiftsFirst=()=>{const P=linePatterns();const known=P.shifts.filter(s=>s.rate>=0.5).map(s=>s.name);const mine=(S.shifts||DEFAULT_SHIFTS);return [...new Set([...known.filter(x=>mine.includes(x)),...mine])];};
 
 function fearGap(){
   const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
@@ -857,7 +1128,7 @@ function renderBoard(){
   $('#board').innerHTML=`
    <div class="tile lvl"><span class="lab">Level</span><span class="fig">${lv.L[lv.cur].name}</span><span class="sub">${lv.next?'Next: '+lv.next.name+', '+lv.next.checks.filter(c=>c[1]).length+' of '+lv.next.checks.length+' met':'Top of the ladder'}</span></div>
    <div class="tile ${st===0&&S.reviews.length?'warn':''}"><span class="lab">Friday streak</span><span class="fig">${st} wk${st===1?'':'s'}</span><span class="sub">${due?(S.reviews.length?'Review due now':'Start it this Friday'):'Next review from '+fmtDate(S.reviews[S.reviews.length-1].ts+6*DAY)}</span></div>
-   <div class="tile"><span class="lab">Hours bought back</span><span class="fig">${bb.perWeek.toFixed(1)}<span style="font-size:15px;font-weight:500"> hrs/wk</span></span><span class="sub">Worth ${gbp(bb.perWeek*46*(Number(S.future.hourly)||0))} a year at ${gbp(S.future.hourly||0)}/hr &middot; ${bb.total.toFixed(1)} hrs banked so far</span></div>
+   <div class="tile"><span class="lab">Hours bought back</span><span class="fig">${bb.perWeek.toFixed(1)}<span class="u" style="font-weight:500"> hrs/wk</span></span><span class="sub">Worth ${gbp(bb.perWeek*46*(Number(S.future.hourly)||0))} a year at ${gbp(S.future.hourly||0)}/hr &middot; ${bb.total.toFixed(1)} hrs banked so far</span></div>
    <div class="tile"><span class="lab">Ledger points</span><span class="fig">${points()}</span><span class="sub">Earned by doing, never by answering</span></div>`;
 }
 function renderTabs(){
@@ -865,9 +1136,26 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const tabs=[['today','Today',sysWaiting?'1':''],['stats','Stats',''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['coach','Coach session',openSession()?'1':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
-  $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
+  const ideasOpen=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;
+  const badge={journal:ideasOpen?String(ideasOpen):'',today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
+  const mark=n=>n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:'';
+  const g=groupOf(S.view);
+  $('#tabs').innerHTML=GROUPS.map(G=>{const bs=G.pages.map(([k])=>badge[k]).filter(Boolean);const n=bs.includes('due')?'due':bs.length?String(bs.reduce((a,x)=>a+(Number(x)||0),0)):'';
+    return `<button data-tab="${G.k}" data-group="1" aria-current="${g.k===G.k}"><span class="tab-ico" aria-hidden="true">${G.ico}</span><span class="tab-lbl">${G.label}${mark(n)}</span></button>`;}).join('');
+  const sub=$('#subtabs');sub.hidden=g.pages.length<2||g.k==='today';
+  sub.innerHTML=g.pages.length<2?'':g.pages.map(([k,l])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${mark(badge[k])}</button>`).join('');
 }
+
+/* Five sections, each with its pages. The tab bar goes to the page last used in a section. */
+const GROUPS=[
+  {k:'today',label:'Today',ico:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',pages:[['today','Today'],['reset','Reset']]},
+  {k:'week',label:'Week',ico:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',pages:[['actions','Actions'],['systems','Systems'],['review','Friday review'],['off','Phone off']]},
+  {k:'numbers',label:'Numbers',ico:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',pages:[['deli','Deli'],['stats','Stats'],['month','Month']]},
+  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['journal','Notes'],['line','The line'],['coach','Session'],['calls','Play']]},
+  {k:'future',label:'Future',ico:'<svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',pages:[['future','2030']]}
+];
+const groupOf=view=>GROUPS.find(G=>G.pages.some(([k])=>k===view))||GROUPS[0];
+function openGroup(k){const G=GROUPS.find(x=>x.k===k);if(!G)return null;const last=(S.lastPage||{})[k];return G.pages.some(([p])=>p===last)&&last!=='reset'?last:G.pages[0][0];}
 
 function addTodo(t){
   if(t.source){const ex=S.todos.find(x=>x.source===t.source);if(ex){ex.text=t.text;ex.type=t.type;ex.h=t.h;return ex;}}
@@ -877,29 +1165,112 @@ function addTodo(t){
 /* ---------- Today ---------- */
 function vToday(){
   if(!S.baseline)return vBaseline();
-  const lv=levels();const stars=S.todos.filter(t=>t.star&&!t.done);
-  const l=latest();const b=S.baseline;
-  const call=S.calls.find(c=>S.answers[c.id]==null);
-  const chosen=GAMES.find(g=>g.id===S.future.game);
-  const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
-  const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
+  const items=nowItems();
+  const bookend=vBookendCard();const bookendDue=bookend&&!/bookend done/.test(bookend);
+  // Below the line comes first, even before the morning or evening card.
+  const below=items[0]&&items[0].k==='line';
+  const hero=below?vNowHero(items[0])+(bookendDue?bookend:''):bookendDue?bookend:items.length?vNowHero(items[0]):vNowClear();
+  const rest=bookendDue&&!below?items:items.slice(1);
+  const stars=S.todos.filter(t=>t.star&&!t.done);
+  return `<section class="today">
+  ${vReminderCard()}
+  ${awayNow()?vAwayCard():''}
+  ${hero}
+  ${vProgressCard(bookendDue?'':bookend)}
+  ${rest.length?`<div class="card up-next"><div class="eyebrow">Also today</div>${rest.slice(0,5).map(vNowRow).join('')}${rest.length>5?`<p class="small muted">and ${rest.length-5} more in Week and Numbers.</p>`:''}</div>`:''}
+  ${stars.length?`<div class="card big3-mini"><div class="spread"><div class="eyebrow">This week’s big three</div><button class="btn small ghost" data-tab="actions">Actions</button></div><ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol></div>`:''}
+  </section>`;
+}
+/* ---------- Work the System: the business as a set of systems, written down and handed over ---------- */
+const WTS_PTS=10;
+const WTS_STAGES=[{k:'spotted',name:'Spotted'},{k:'written',name:'Written down'},{k:'handed',name:'Handed to an owner'},{k:'runs',name:'Runs without me'}];
+const WTS_SEED=[
+  {name:'Client onboarding',area:'Firm'},{name:'Weekly close and KPI pack',area:'Firm'},{name:'Month-end close',area:'Firm'},{name:'Payroll run',area:'Firm'},
+  {name:'VAT returns',area:'Firm'},{name:'Proposals and pricing',area:'Firm'},{name:'Credit control',area:'Firm'},{name:'New starter onboarding',area:'Firm'},
+  {name:'Client review meeting',area:'Firm'},{name:'Recruitment',area:'Firm'},
+  {name:'Opening and closing checks',area:'Deli'},{name:'Cash-up and banking',area:'Deli'},{name:'Ordering and stock count',area:'Deli'},
+  {name:'Rota to sales',area:'Deli'},{name:'Waste log',area:'Deli'},{name:'Weekly deli numbers',area:'Deli'}
+];
+const WTS_OBJECTIVE=[
+  {id:'what',q:'What the firm is, in one line',picks:['The finance team for hospitality businesses','Hospitality accountants who drive action, not just compliance','The special forces of hospitality finance']},
+  {id:'who',q:'Who it is for',picks:['Independent restaurants, bars and caf\u00E9s','Multi-site hospitality groups','Operators who want weekly numbers, not annual accounts']},
+  {id:'deliver',q:'What every client gets',picks:['A 3-day close and weekly KPIs','Numbers that tell them what to start, stop and keep','A named team who know their business']},
+  {id:'profit',q:'The profit standard',picks:['Every client profitable at our price','A firm margin we hold before we grow','Fees reviewed every year against the work']},
+  {id:'tom',q:'Tom\u2019s role',picks:['Sets direction and the standard, not the work','Works on the system, not in it','Out of the day-to-day; in the room for the big calls']},
+  {id:'not',q:'What we will not do',picks:['Take clients outside hospitality','Compete on price','Let any process live only in one person\u2019s head']}
+];
+const WTS_PRINCIPLES=['Every recurring task has a written procedure and an owner','A decision a procedure can make never comes to Tom','Numbers within three days of the week end','Profit before growth','Fix the system, not the person','Done to the standard, first time','Checklists over memory','Improve one procedure a week','Clients hear from us before they have to ask','Time off is protected and planned'];
+const wtsProcs=()=>((S.wts&&S.wts.procs)||[]);
+function wtsMovedThisWeek(now=Date.now()){const w=weekNo(now);return wtsProcs().some(p=>(p.log||[]).some(x=>weekNo(x.ts)===w));}
+function wtsWeeks(){return new Set(wtsProcs().flatMap(p=>(p.log||[]).map(x=>weekNo(x.ts)))).size;}
+function wtsStreak(now=Date.now()){const ws=new Set(wtsProcs().flatMap(p=>(p.log||[]).map(x=>weekNo(x.ts))));let w=weekNo(now);if(!ws.has(w))w--;let n=0;while(ws.has(w)){n++;w--;}return n;}
+function wtsAdd(name,area,now=Date.now()){
+  const v=String(name||'').trim().slice(0,80);if(!v)return null;S.wts=S.wts||{objective:{},principles:[],procs:[]};
+  if(wtsProcs().some(p=>p.name.toLowerCase()===v.toLowerCase()))return null;
+  const p={id:'w'+uid(),name:v,area:area||'Firm',stage:'spotted',owner:'',log:[]};S.wts.procs=wtsProcs().concat(p);if(!S.wts.started)S.wts.started=now;return p;
+}
+function wtsAdvance(id,now=Date.now()){
+  const p=wtsProcs().find(x=>x.id===id);if(!p)return null;const i=WTS_STAGES.findIndex(s=>s.k===p.stage);if(i>=WTS_STAGES.length-1)return null;
+  if(WTS_STAGES[i+1].k==='handed'&&!p.owner)return null;
+  p.stage=WTS_STAGES[i+1].k;p.log=(p.log||[]).concat({ts:now,stage:p.stage});
+  const td=S.todos.find(t=>t.source==='wts-'+p.id);
+  if(p.stage==='written'&&td&&!td.done){td.done=true;td.doneAt=now;}
+  if(p.stage==='handed')addTodo({text:`Check in with ${p.owner}: is the ${p.name.toLowerCase()} procedure running to the standard?`,type:'Keep',h:'month',hours:0,source:'wts-chk-'+p.id});
+  return p;
+}
+function wtsStartWriting(id){const p=wtsProcs().find(x=>x.id===id);if(!p)return null;return addTodo({text:`Write the ${p.name.toLowerCase()} procedure: purpose, steps, checklist, owner`,type:'Start',h:'week',hours:1,source:'wts-'+p.id});}
+function wtsObjectiveText(){const o=(S.wts&&S.wts.objective)||{};return WTS_OBJECTIVE.filter(x=>o[x.id]).map(x=>`${x.q}: ${o[x.id]}`).join('\n');}
+function wtsSummary(){const ps=wtsProcs();const by=Object.fromEntries(WTS_STAGES.map(s=>[s.k,ps.filter(p=>p.stage===s.k).length]));return {total:ps.length,by,objective:WTS_OBJECTIVE.filter(x=>((S.wts&&S.wts.objective)||{})[x.id]).length,principles:((S.wts&&S.wts.principles)||[]).length,weeks:wtsWeeks(),streak:wtsStreak()};}
+let WTSV={add:false};
+function vSystems(){
+  const sm=wtsSummary();const o=(S.wts&&S.wts.objective)||{};const pr=(S.wts&&S.wts.principles)||[];
+  const ps=wtsProcs();const moved=wtsMovedThisWeek();const people=(S.people||DEFAULT_PEOPLE);
+  const stalled=S.wts&&S.wts.started&&!moved&&Date.now()-Math.max(S.wts.started,...ps.flatMap(p=>(p.log||[]).map(x=>x.ts)))>14*DAY;
   return `<section>
-  ${vDayCard()}
-  ${vResetCard()}
-  ${vHabitCard()}
-  ${vSessionCard()}
-  ${vSysCard()}
-  ${vMomentum()}
-  ${reviewDue()?`<div class="card call-to"><div class="spread"><div><div class="eyebrow">Friday review ${S.reviews.length?'due':'not started'}</div><h2>Close your own week. Ten minutes.</h2></div><button class="btn" data-tab="review">Start the review</button></div><p class="muted">The review is the game. It keeps the streak alive, earns ${15+Math.min(5*streak(),25)} points, and unlocks next week’s call.</p></div>`:''}
-  ${S.pendingCall||call?`<div class="card"><div class="spread"><div><div class="eyebrow">This week’s call</div><h3>${call?esc(call.title):'Your review unlocked a new call'}</h3></div>${call?`<button class="btn small" data-opencall="${call.id}">Play it</button>`:`<button class="btn small" data-act="dealCall">Deal this week’s call</button>`}</div>${call?`<p class="muted">${esc(call.scene)}</p>`:`<p class="muted">${AI?'Written from what you logged this week.':'Dealt from the coaching bank after your review.'} It adds one action to your list.</p>`}</div>`:''}
-  <div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>
-  <div class="card"><div class="eyebrow">Notice</div><h3>What went well? Where was there space?</h3>
+  <div class="card"><div class="eyebrow">Work the System</div><h2>Your business is a set of systems</h2>
+   <p class="muted">Step outside the business and look down on it. Every result comes from a system, good or bad. Write down where you are going, the principles you run on, and then the procedures, one at a time, each handed to an owner. You work on the systems; the team works in them.</p>
+   ${stalled||!ps.length?`<div class="receipt"><div class="eyebrow">Back from holiday with a plan</div><p>Coming back fired up and then nothing for weeks is the most common pattern there is. The fix is not more willpower. It is one procedure a week, at the same hour each week, moved one stage forward.</p></div>`:''}
+   <div class="mo-grid">
+    <div class="mo"><span class="lab">This week</span><span class="fig ${moved?'delta-up':''}">${moved?'Moved':'Not yet'}</span><span class="sub">one procedure forward</span></div>
+    <div class="mo"><span class="lab">Weeks in a row</span><span class="fig">${sm.streak}</span><span class="sub">${sm.weeks} weeks in all</span></div>
+    <div class="mo"><span class="lab">Written down</span><span class="fig">${sm.by.written+sm.by.handed+sm.by.runs}</span><span class="sub">of ${sm.total} procedures</span></div>
+    <div class="mo"><span class="lab">Run without you</span><span class="fig">${sm.by.runs}</span><span class="sub">the score that counts</span></div>
+   </div></div>
+  <div class="card"><div class="eyebrow">1. Strategic objective</div><h3>${sm.objective===WTS_OBJECTIVE.length?'Written':'Where the firm is going, on one page'}</h3>
+   <p class="small muted">Six answers. Tap one, or write your own. ${sm.objective} of ${WTS_OBJECTIVE.length} done.</p>
+   ${WTS_OBJECTIVE.map((x,i)=>`<details class="own"${i===WTS_OBJECTIVE.findIndex(y=>!o[y.id])?' open':''}><summary>${esc(x.q)}${o[x.id]?`: <span style="color:var(--ink)">${esc(o[x.id])}</span>`:''}</summary>${chipRow('wo-'+x.id,x.picks,{act:'wts-obj',other:true,selected:o[x.id]?[o[x.id]]:[]})}<div class="row"><button class="btn small ghost" data-act="wtsObjOwn" data-id="${x.id}">Save my own words</button></div></details>`).join('')}
+   ${sm.objective?`<div class="row"><button class="btn small ghost" data-act="wtsCopy">Copy it to share with the team</button></div>`:''}</div>
+  <div class="card"><div class="eyebrow">2. Operating principles</div><h3>${pr.length?`${plural(pr.length,'principle')} you run on`:'The rules the firm runs on'}</h3>
+   <p class="small muted">Pick eight to twelve. They decide the small things so nobody has to ask you.</p>
+   ${chipRow('wp',[...new Set([...WTS_PRINCIPLES,...rules(),...pr])],{multi:true,max:14,selected:pr})}
+   <div class="row"><button class="btn small" data-act="wtsPrinciples">Save principles</button></div></div>
+  <div class="card"><div class="eyebrow">3. Working procedures</div><h3>One a week, one stage at a time</h3>
+   <p class="small muted">Spotted, written down, handed to an owner, runs without you. Each step forward scores ${WTS_PTS} points.</p>
+   ${ps.length?ps.slice().sort((a,b)=>WTS_STAGES.findIndex(s=>s.k===b.stage)-WTS_STAGES.findIndex(s=>s.k===a.stage)).map(p=>{const i=WTS_STAGES.findIndex(s=>s.k===p.stage);const nx=WTS_STAGES[i+1];const td=S.todos.find(x=>x.source==='wts-'+p.id);
+     return `<div class="proc"><div class="spread"><div><div class="lbl">${esc(p.name)}</div><div class="tiny muted">${esc(p.area)}${p.owner?` &middot; ${esc(p.owner)}`:''}</div></div><span class="tag ${p.stage==='runs'?'win':''}">${WTS_STAGES[i].name}</span></div>
+      <div class="stages">${WTS_STAGES.map((s,k)=>`<i class="${k<=i?'on':''}"></i>`).join('')}</div>
+      ${nx?`<div class="row">${p.stage==='spotted'&&!td?`<button class="btn small ghost" data-act="wtsWrite" data-id="${p.id}">Put writing it on my list</button>`:''}${nx.k==='handed'&&!p.owner?`<select data-wtsowner="${p.id}" aria-label="Owner for ${esc(p.name)}"><option value="">Choose an owner</option>${people.map(x=>`<option>${esc(x)}</option>`).join('')}</select>`:`<button class="btn small" data-act="wtsNext" data-id="${p.id}">${esc(nx.name)}</button>`}</div>`:''}</div>`;}).join(''):''}
+   ${WTSV.add||!ps.length?`<div class="lbl small" style="margin-top:10px">Pick the systems to work on</div>${chipRow('wts-seed',WTS_SEED.filter(s=>!ps.some(p=>p.name===s.name)).map(s=>s.name),{multi:true,max:16,other:true})}<div class="row"><button class="btn small" data-act="wtsAddPicked">Add them</button></div>`:`<div class="row"><button class="btn small ghost" data-act="wtsAddOpen">Add a system</button></div>`}
+  </div>
+  </section>`;
+}
+
+/* The pieces that used to stack up on Today, now on the page each belongs to. */
+function vNoticeCard(){
+  return `<div class="card"><div class="eyebrow">Notice</div><h3>What went well? Where was there space?</h3>
    <p class="muted small">One tap the moment you see it. Three a week score points.</p>
    <div class="lbl small">Went well</div>${chipRow('n-good',PICK.good,{act:'note-good'})}
    <div class="lbl small">Space</div>${chipRow('n-space',PICK.space.filter(x=>x!=='None this week'),{act:'note-space'})}
    <details class="own"><summary>Something else</summary><form class="row" id="noticeForm" style="flex-wrap:nowrap"><input type="text" id="noticeText" placeholder="In your own words" aria-label="What you noticed"><button class="btn small" type="submit" data-kind="good">Good</button><button class="btn small ghost" type="submit" data-kind="space">Space</button></form></details>
-   <div class="notes">${S.notes.slice(-5).reverse().map(n=>`<div class="note"><span class="kd ${n.kind}">${n.kind==='good'?'Good':'Space'}</span><span>${esc(n.text)} <span class="muted small">${fmtDate(n.ts)}</span></span></div>`).join('')||'<div class="empty">Nothing logged yet this week.</div>'}</div></div>
-  <div class="grid2">
+   <div class="notes">${S.notes.slice(-5).reverse().map(n=>`<div class="note"><span class="kd ${n.kind}">${n.kind==='good'?'Good':'Space'}</span><span>${esc(n.text)} <span class="muted small">${fmtDate(n.ts)}</span></span></div>`).join('')||'<div class="empty">Nothing logged yet this week.</div>'}</div></div>`;
+}
+function vGameLevel(){
+  if(!S.baseline)return '';
+  const lv=levels();const l=latest();const b=S.baseline;
+  const chosen=GAMES.find(g=>g.id===S.future.game);
+  const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
+  const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
+  return `<div class="grid2">
    <div class="card"><div class="eyebrow">The game you are playing</div>
     ${chosen?`<h3>You chose: ${esc(chosen.name)}</h3>`:'<h3>You have not chosen your game yet</h3>'}
     ${lastGame?`<p class="small">Last week the game that ran you was <span class="${lastGame.kind==='chosen'?'delta-up':'delta-down'}">${esc(lastGame.name)}</span>.</p><p class="small muted">${esc(lastGame.move)}</p>`:'<p class="small muted">Each Friday you name the game that actually ran your week. The gap between that and the one you chose is the coaching.</p>'}
@@ -911,14 +1282,16 @@ function vToday(){
     ${lv.next?`<ul class="checks">${lv.next.checks.map(c=>`<li class="${c[1]?'ok':''}"><span class="mk">${c[1]?'[x]':'[ ]'}</span><span>${c[0]}</span><span class="prog">${c[2]}</span></li>`).join('')}</ul><p class="small muted">Levels follow behaviour. Break the streak and the level can drop.</p>`:'<p>The firm runs without you and you have the life you wrote down. Keep the streak.</p>'}
    </div>
   </div>
-  ${vLetterNudge()}
-  ${vWildMonth()}
   <div class="card"><div class="spread"><h3>Your four lines</h3><span class="small muted">${S.reviews.length?'Latest review against your opening position':'Opening position'}</span></div>
    ${METERS.map(m=>{const v=Number(l[m.k])*10,d=(Number(l[m.k])-Number(b[m.k]))*10;return `<div class="meter"><span class="name">${m.name}</span><div class="bar"><i style="width:${v}%"></i></div><span class="val">${v}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</span></div>`;}).join('')}
-   <p class="small muted">CEO index ${ceoIndex()}. These move only when you re-score yourself on a Friday.</p></div>
-  </section>`;
+   <p class="small muted">CEO index ${ceoIndex()}. These move only when you re-score yourself on a Friday.</p></div>`;
+}
+function vBig3(){
+  const stars=S.todos.filter(t=>t.star&&!t.done);
+  return `<div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>`;
 }
 /* ---------- Reset ---------- */
+let PULL=false; // the pulled-in panel is open
 let RD=null; // the reset in progress; not saved until it ends in a move
 /* Shown when what the player wrote sounds like more than a hard day. The game steps back. */
 const SUPPORT=`<div class="support" role="note"><div class="eyebrow">Before anything else</div><p>What you have written sounds heavier than a hard day at work, and this ledger is not the right tool for it. Please talk to someone today: someone you trust, your GP, or Samaritans on 116 123, free and open day and night. If you are in danger now, call 999.</p><p class="small muted">The firm can wait an hour. You come first.</p></div>`;
@@ -960,6 +1333,7 @@ function vReset(){
     :RD.concern?SUPPORT:RD.talking?'<p class="muted ai-wait">Your coach is listening...</p>'
     :`<p class="muted">Say it the way you would say it out loud. Tap the microphone on your phone\u2019s keyboard and speak, for as long as you need.</p>
       <textarea id="rs-talk" class="talk" placeholder="What is going on, in your own words" aria-label="Talk it through">${esc(RD.talkText||'')}</textarea>
+      <div class="row"><button class="btn ghost small" data-act="rsSpeak" id="rs-speak" aria-pressed="false">Speak</button></div>
       <p class="small muted">${AI?'It goes to your coach with the facts from your ledger. Nobody at the firm sees it.':'Your coach is switched off on this portal, so the ledger will match what you say to a reset and take you through it.'}</p>
       <div class="row"><button class="btn" data-act="talkSend">${AI?'Coach me':'Take me through it'}</button><button class="btn small ghost" data-act="resetBack">Back</button></div>`}</div>`;}
   else if(RD.step==='sort'){const L=LOUD.find(x=>x.k===RD.loud);body=`<div class="card">${head(2,'Whose is it?')}
@@ -969,6 +1343,8 @@ function vReset(){
   else if(RD.step==='receipt'){const so=SORT.find(x=>x.k===RD.sort);body=`<div class="card">${head(3,'The receipts')}
     <div class="coach"><p>${esc(so.coach)}</p></div>
     <div class="receipt"><div class="eyebrow">From your ledger</div><p>${esc(RD.receipt)}</p></div>
+    ${RD.loud==='firm'?`<div class="receipt"><div class="eyebrow">The facts, not the feeling</div><p>${pulseLine()?esc('Firm pulse: '+pulseLine()+'.'):'Log your firm pulse in Stats and the facts will show here next time.'}</p></div>`:''}
+    ${RD.loud==='deli'&&deliStatus()?`<div class="receipt"><div class="eyebrow">The deli, in numbers</div><p>${esc(`${deliStatus().profit>=0?'Making':'Losing'} ${gbp(Math.abs(deliStatus().profit))} in the last week logged, cash ${gbp(deliStatus().cash)}${deliStatus().run?`, in profit ${plural(deliStatus().run,'week')} running`:''}.`)}</p></div>`:''}
     ${RD.concern?SUPPORT:RD.reading?'<p class="small muted ai-wait">Claude is reading your ledger...</p>':RD.read?`<div class="coach ai-read"><div class="eyebrow">Claude’s read</div><p>${esc(RD.read.read)}</p></div>`:''}
     <p class="small muted">Enough is not a feeling you wait for. It is a balance you can trace, and this is one line of it. You do not control how this turns out. You are in charge of the next move, and that part was always yours.</p>
     <div class="lbl small">Say it back: which of your rules are you choosing now?</div>${chipRow('rs-rule',rules(),{act:'reset-rule',selected:RD.rule||''})}
@@ -1030,12 +1406,26 @@ function vSysPanel(){
 function ringSvg(on,label){
   return `<svg class="ring ${on?'on':''}" viewBox="0 0 44 44" role="img" aria-label="${esc(label)}: ${on?'closed':'open'}"><circle cx="22" cy="22" r="18" class="ring-bg"/><circle cx="22" cy="22" r="18" class="ring-fg" stroke-dasharray="${on?113:0} 113"/></svg>`;
 }
+function vAwayCard(){
+  const a=awayNow();
+  if(a){const day=Math.round((dayStart(Date.now())-a.from)/DAY)+1,len=Math.round((a.to-a.from)/DAY)+1;const p=(a.pulls||[]).length;
+    return `<div class="card away-card"><div class="eyebrow">Away &middot; day ${day} of ${len}</div><h2>You are off. The firm is running without you.</h2>
+     <p class="muted">Today counts as a day in charge and your Space ring is closed. Taking time off is vital, and this is it.</p>
+     <p class="small">${p?`Pulled in ${plural(p,'time')} so far. Each one is information about the being-needed system, not a failure.`:'Not pulled in once so far.'}</p>
+     <div class="row"><button class="btn small ghost" data-act="pullStart">I got pulled in</button><button class="btn small ghost" data-act="awayEnd">Back early</button></div></div>`;}
+  const n=awayNext();
+  if(n)return `<div class="card"><div class="spread"><div><div class="eyebrow">Away soon</div><h3>Off from ${fmtDate(n.from)} to ${fmtDate(n.to)}</h3></div><button class="btn small ghost" data-act="awayCancel" data-id="${n.id}">Cancel</button></div><p class="small muted">Before you go: name who decides what while you are away.</p></div>`;
+  return `<div class="card"><div class="eyebrow">Going away?</div><h3>Tell the ledger, and it stops asking about hours</h3>
+   ${chipRow('away-plan',AWAY_PLANS,{act:'away-plan'})}
+   <details class="own"><summary>Other dates</summary><div class="row"><input type="date" id="away-from" aria-label="First day away"><input type="date" id="away-to" aria-label="Last day away"><button class="btn small" data-act="awayDates">Save</button></div></details></div>`;
+}
 function vDayCard(){
   const ds=dayStreak();const r=ringsOn(dayRings(),Date.now());const closed=RINGS.filter(x=>r[x.k]).length;
   const next=honours().filter(h=>!h.earned).sort((a,b)=>b.value/b.goal-a.value/a.goal)[0];
   return `<div class="card day-card"><div class="spread"><div><div class="eyebrow">Today</div><h2>${ds.current?`Day ${ds.current} in charge`:'Start your streak today'}</h2></div><button class="btn small ghost" data-tab="stats">Stats</button></div>
    <div class="rings">${RINGS.map(x=>`<div class="ring-cell">${ringSvg(r[x.k],x.name)}<span class="lbl small">${x.name}</span><span class="tiny muted">${r[x.k]?'closed':esc(x.hint)}</span></div>`).join('')}</div>
    <p class="small ${closed===3?'delta-up':'muted'}">${closed===3?`Full day. +${FULL_DAY_PTS} points.`:`${closed} of 3 rings closed. Close all three for a full day.`}${ds.rest?` &middot; ${plural(ds.rest,'rest day')} banked`:''}${ds.best>ds.current?` &middot; best ${ds.best}`:''}</p>
+   ${vPullPanel()}
    ${next?`<div class="honour-next"><span class="small">Next honour: <span style="font-weight:600">${esc(next.name)}</span>, ${esc(next.desc.toLowerCase())}</span><div class="bar"><i style="width:${Math.round(next.value/next.goal*100)}%"></i></div><span class="tiny muted">${next.value} of ${next.goal}</span></div>`:''}</div>`;
 }
 function vStats(){
@@ -1047,6 +1437,7 @@ function vStats(){
   const hs=honours();const earned=hs.filter(h=>h.earned);const next=hs.filter(h=>!h.earned).sort((a,b)=>b.value/b.goal-a.value/a.goal).slice(0,4);
   const tile=(lab,fig,sub)=>`<div class="mo"><span class="lab">${lab}</span><span class="fig">${fig}</span><span class="sub">${sub}</span></div>`;
   return `<section>
+  ${vPulseCard(true)}
   <div class="card"><div class="eyebrow">Your numbers</div><div class="mo-grid">
    ${tile('Days in charge',ds.current,`best ${ds.best}${ds.rest?` &middot; ${ds.rest} rest banked`:''}`)}
    ${tile('Full days',ds.fullDays,`all three rings &middot; ${ds.activeDays} active days`)}
@@ -1061,7 +1452,135 @@ function vStats(){
   <div class="card"><div class="eyebrow">Honours</div><h3>${earned.length?`${plural(earned.length,'honour')} earned`:'Your first honours are close'}</h3>
    ${next.length?`<div class="lbl small">Next up</div>${next.map(h=>`<div class="honour-next"><span class="small"><span style="font-weight:600">${esc(h.name)}</span>: ${esc(h.desc)}</span><div class="bar"><i style="width:${Math.round(h.value/h.goal*100)}%"></i></div><span class="tiny muted">${h.value} of ${h.goal}</span></div>`).join('')}`:''}
    ${earned.length?`<div class="lbl small">Earned</div><div class="chips-row">${earned.map(h=>`<span class="honour">${esc(h.name)}</span>`).join('')}</div>`:''}</div>
+  <div class="card"><div class="spread"><div><div class="eyebrow">Monthly close</div><h3>${(S.monthCloses||[]).length?`${plural(S.monthCloses.length,'month')} closed`:'Your own month end'}</h3></div><button class="btn small ghost" data-act="monthOpen" data-key="${prevMonthKey()}">Open last month</button></div></div>
+  ${vRemindersCard()}
   </section>`;
+}
+/* Today shows one thing first: the next thing due, in this order. Everything else waits on its page. */
+function nowItems(now=Date.now()){
+  const out=[];const wd=new Date(now).getDay();const wk=weekNo(now);
+  const push=(k,eyebrow,title,body,btn)=>out.push({k,eyebrow,title,body,btn});
+  const lo=lineOpen();if(lo)push('line','Below the line',lo.shift?'Back above the line?':'Pick a shift',lo.shift?`You chose: ${lo.shift}.`:'You named it. Now choose one thing that brings you back.',{label:lo.shift?'Check in':'Pick one',attr:'data-tab="line"'});
+  if(reviewDue()&&(wd===5||wd===6||wd===0||S.reviews.length===0))push('review','Friday review','Close your own week. Ten minutes.','It keeps the streak alive and unlocks next week\u2019s call.',{label:'Start the review',attr:'data-tab="review"'});
+  const md=monthDue(now);if(md)push('month','Month end',`Close ${monthName(md)}`,'Five minutes: the month in numbers, your letter, your rules, next month\u2019s focus.',{label:'Close it',attr:`data-act="monthOpen" data-key="${md}"`});
+  if(!wtsMovedThisWeek(now))push('wts','Work the System',wtsProcs().length?'Move one procedure forward this week':'Start working the system','One system a week, written down and handed over. That is the whole method.',{label:'Open Systems',attr:'data-tab="systems"'});
+  const dl=deliWeeks().slice(-1)[0];if(!dl||weekNo(dl.ts)!==wk)push('deli','Deli turnaround','Log this week\u2019s deli numbers','Five numbers: sales, cost of sales, labour, other costs, cash.',{label:'Log them',attr:'data-tab="deli"'});
+  const pl=pulseLatest();if(!pl||weekNo(pl.ts)!==wk)push('pulse','Firm pulse','Three numbers for the firm','Cash, fees billed, pipeline. Facts beat the 3am story.',{label:'Log them',attr:'data-tab="stats"'});
+  const pil=habits().find(h=>h.id==='pilates');if(pil&&!habitMet(pil.id)&&(wd>=3||wd===0))push('pilates','Non-negotiable',`${pil.name}: not done this week`,'Book it now, or log it if you went.',{label:'I went today',attr:`data-act="habitLog" data-id="${pil.id}"`});
+  const ideas=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;if(ideas)push('ideas','Notes',`${plural(ideas,'idea')} waiting for a decision`,'Act, park or drop.',{label:'Decide',attr:'data-tab="journal"'});
+  if(openSession())push('session','Coach session','Your agenda is ready','Close it after the session with what you are taking away.',{label:'Open it',attr:'data-tab="coach"'});
+  const sys=sysToday();if(sys.call&&!sys.played)push('sys','Today\u2019s system call',esc(sys.call.title),'One call a day. Make the world-class one and it is yours.',{label:'Play it',attr:'data-tab="calls"'});
+  const call=S.calls.find(c=>S.answers[c.id]==null);if(call||S.pendingCall)push('call','This week\u2019s call',call?call.title:'A new call is ready','A decision under pressure, scored.',{label:'Play it',attr:'data-tab="calls"'});
+  return out;
+}
+function vNowHero(x){return `<div class="card now-hero"><div class="eyebrow">Next</div><h2>${esc(x.title)}</h2><p class="muted">${esc(x.body)}</p><div class="row"><button class="btn" ${x.btn.attr}>${esc(x.btn.label)}</button></div></div>`;}
+function vNowRow(x){return `<div class="now-row"><div><div class="tiny muted">${esc(x.eyebrow)}</div><div class="lbl">${esc(x.title)}</div></div><button class="btn small ghost" ${x.btn.attr}>${esc(x.btn.label)}</button></div>`;}
+function vNowClear(){const am=todayOf(S.mornings);return `<div class="card now-hero clear"><div class="eyebrow">Next</div><h2>${am&&am.one?esc(am.one):'Nothing is due'}</h2><p class="muted">${am&&am.one?'Today\u2019s one thing. Everything else can wait.':'You are in charge, and the space is yours. Protect it.'}</p></div>`;}
+let QUICK=null; // which quick panel is open on Today
+function vProgressCard(doneLine){
+  const ds=dayStreak();const r=ringsOn(dayRings(),Date.now());const closed=RINGS.filter(x=>r[x.k]).length;
+  const panel=QUICK==='pull'?vPullPanel():QUICK==='good'?`<div class="pull-panel"><div class="lbl small">What went well?</div>${chipRow('n-good',PICK.good,{act:'note-good'})}</div>`:QUICK==='space'?`<div class="pull-panel"><div class="lbl small">Where was there space?</div>${chipRow('n-space',PICK.space.filter(x=>x!=='None this week'),{act:'note-space'})}</div>`:'';
+  return `<div class="card progress"><div class="spread"><div><div class="eyebrow">${ds.current?`Day ${ds.current} in charge`:'Start your streak today'}</div>
+     <div class="small ${closed===3?'delta-up':'muted'}">${closed===3?`Full day. +${FULL_DAY_PTS} points.`:`${closed} of 3 rings closed`}</div></div>
+     <div class="rings mini">${RINGS.map(x=>`<div class="ring-cell" title="${esc(x.hint)}">${ringSvg(r[x.k],x.name)}<span class="tiny">${x.name}</span></div>`).join('')}</div></div>
+   ${doneLine?`<div class="small muted done-line">${doneLine.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()}</div>`:''}
+   <div class="quick" role="group" aria-label="Quick log">
+     <button class="btn small ${QUICK==='good'?'':'ghost'}" data-act="quick" data-k="good" aria-pressed="${QUICK==='good'}">Went well</button>
+     <button class="btn small ${QUICK==='space'?'':'ghost'}" data-act="quick" data-k="space" aria-pressed="${QUICK==='space'}">Space</button>
+     <button class="btn small ${QUICK==='pull'?'':'ghost'}" data-act="quick" data-k="pull" aria-pressed="${QUICK==='pull'}">Pulled in</button>
+     <button class="btn small ghost" data-tab="line">The line</button>
+   </div>${panel}</div>`;
+}
+function vBookendCard(){
+  const am=todayOf(S.mornings),pm=todayOf(S.evenings);
+  if(!am&&inWindow(MORNING_HOURS)){
+    const open=S.todos.filter(t=>!t.done&&!isResetMove(t)).sort((a,b)=>(b.star?1:0)-(a.star?1:0)).slice(0,4).map(t=>t.text);
+    return `<div class="card bookend"><div class="eyebrow">Morning &middot; sixty seconds</div><h3>Set the day before the inbox does</h3>
+     <div class="field"><span class="lbl">Today’s one thing</span>${chipRow('am-one',open.length?open:['Protect a two-hour thinking block','The deli numbers','One handover'],{other:true})}</div>
+     <div class="field"><span class="lbl">Today’s rule</span>${chipRow('am-rule',rules())}</div>
+     <div class="row"><button class="btn" data-act="amSave">Set my day</button></div></div>`;}
+  if(!pm&&inWindow(EVENING_HOURS)){
+    return `<div class="card bookend"><div class="eyebrow">Evening &middot; sixty seconds</div><h3>Close the day</h3>
+     ${am&&am.one?`<div class="field"><span class="lbl">Did today’s one thing happen?</span><span class="hint">${esc(am.one)}</span>${chipRow('pm-one',['Yes','Not today'])}</div>`:''}
+     <div class="field"><span class="lbl">One good thing</span>${chipRow('pm-good',PICK.good,{other:true})}</div>
+     <div class="row"><button class="btn" data-act="pmSave">Laptop closed. Day done.</button></div></div>`;}
+  if(am||pm)return `<div class="card bookend done"><div class="small">${am?`Morning set: <span style="font-weight:600">${esc(am.one||'')}</span>${am.rule?` &middot; ${esc(am.rule)}`:''}`:''}${am&&pm?'<br>':''}${pm?'Evening closed. Laptop shut.':''}</div></div>`;
+  return '';
+}
+function vPullPanel(){
+  if(!PULL&&QUICK!=='pull')return `<div class="row"><button class="btn small ghost" data-act="pullStart">I got pulled in</button></div>`;
+  return `<div class="pull-panel"><div class="lbl small">What pulled you in?</div>${chipRow('pull-what',PULL_WHAT,{other:true})}
+   <div class="lbl small">Who could have decided it?</div>${chipRow('pull-who',(S.people||DEFAULT_PEOPLE).concat('Nobody yet'))}
+   <div class="row"><button class="btn small" data-act="pullSave">Log it</button><button class="btn small ghost" data-act="pullCancel">Cancel</button></div></div>`;
+}
+function vPulseCard(full){
+  const l=pulseLatest();const thisWeek=l&&weekNo(l.ts)===weekNo(Date.now());
+  if(!full&&thisWeek)return '';
+  const series=k=>(S.pulse||[]).slice(-12).map(x=>Number(x[k])||0);
+  return `<div class="card" id="pulse"><div class="spread"><div><div class="eyebrow">Firm pulse</div><h3>${thisWeek?'This week’s facts':'Three numbers, once a week'}</h3></div></div>
+   ${l?`<div class="pulse-grid">${PULSE.map(x=>{const c=pulseChange(x.k);return `<div class="mo"><span class="lab">${x.name}</span><span class="fig">${gbp(l[x.k])}</span><span class="sub ${c>0?'delta-up':c<0?'delta-down':''}">${c?`${c>0?'up':'down'} ${gbp(Math.abs(c))} on four weeks`:'first weeks'}</span>${sparkSvg(series(x.k),x.name)}</div>`;}).join('')}</div>`:'<p class="small muted">Facts beat the 3am story. When fear says the firm is failing, these are the numbers the Reset will show you.</p>'}
+   ${thisWeek&&!full?'':`<div class="num-row">${PULSE.map(x=>`<label class="num-field"><span class="small">${x.name} (£)</span><input type="number" inputmode="decimal" id="pulse-${x.k}" value="${thisWeek?esc(l[x.k]):''}" aria-label="${x.name}"></label>`).join('')}</div>
+   <div class="row"><button class="btn small" data-act="pulseSave">${thisWeek?'Update this week':'Log this week'}</button><span class="small muted">+${PULSE_PTS} points a week</span></div>`}</div>`;
+}
+function vDeliCard(){
+  const s=deliStatus();const thisWeek=s&&weekNo(deliWeeks().slice(-1)[0].ts)===weekNo(Date.now());
+  return `<div class="card"><div class="spread"><div><div class="eyebrow">Deli turnaround</div><h3>${s?(s.profit>=0?`Making ${gbp(s.profit)} this week`:`Losing ${gbp(-s.profit)} this week`):'Log the first week of numbers'}</h3></div><button class="btn small ${thisWeek?'ghost':''}" data-tab="deli">${thisWeek?'Open':'Log this week'}</button></div>
+   ${s?`<p class="small">Cash ${gbp(s.cash)}${s.cashUp!==null?`, ${s.cashUp>=0?'up':'down'} ${gbp(Math.abs(s.cashUp))} on last week`:''}${s.run?` &middot; ${plural(s.run,'week')} in profit`:''}</p>`:''}</div>`;
+}
+function vDeli(){
+  const ws=deliWeeks();const s=deliStatus();const tg=(S.deli&&S.deli.targets)||{cogs:32,labour:30};
+  const last=ws.slice(-1)[0];const thisWeek=last&&weekNo(last.ts)===weekNo(Date.now());
+  const series=f=>ws.slice(-12).map(w=>f(deliCalc(w)));
+  return `<section>
+  <div class="card"><div class="eyebrow">Deli turnaround</div><h2>Profitable and cash positive, urgently</h2>
+   <p class="muted">Keeping the deli means running it on its numbers every week, one lever at a time, with an owner for each. The same discipline you sell clients.</p></div>
+  ${s?`<div class="card"><div class="eyebrow">Where it stands</div><div class="mo-grid">
+    <div class="mo"><span class="lab">Profit this week</span><span class="fig ${s.profit>=0?'delta-up':'delta-down'}">${s.profit>=0?'':'-'}${gbp(Math.abs(s.profit))}</span><span class="sub">four-week average ${gbp(s.avg)}</span>${sparkSvg(series(c=>c.profit),'Profit')}</div>
+    <div class="mo"><span class="lab">Cash</span><span class="fig">${gbp(s.cash)}</span><span class="sub ${s.cashUp>0?'delta-up':s.cashUp<0?'delta-down':''}">${s.cashUp===null?'first week':`${s.cashUp>=0?'up':'down'} ${gbp(Math.abs(s.cashUp))} on last week`}</span>${sparkSvg(series(c=>c.cash),'Cash')}</div>
+    <div class="mo"><span class="lab">Gross margin</span><span class="fig ${100-s.gpPct<=tg.cogs?'delta-up':'delta-down'}">${s.gpPct.toFixed(0)}%</span><span class="sub">target ${100-tg.cogs}% or better</span></div>
+    <div class="mo"><span class="lab">Labour</span><span class="fig ${s.labourPct<=tg.labour?'delta-up':'delta-down'}">${s.labourPct.toFixed(0)}%</span><span class="sub">of sales, target ${tg.labour}% or less</span></div>
+   </div>
+   <p class="small">${s.gap>0?`Break-even is ${gbp(s.breakEven)} of sales a week at this week’s margin and costs. It is ${gbp(s.gap)} short of that.`:`Sales are ${gbp(-s.gap)} above break-even (${gbp(s.breakEven)} a week).`} ${s.run?`In profit ${plural(s.run,'week')} running.`:''} ${s.cashPositive?'Cash is going up.':'Cash positive means the bank balance going up week on week.'}</p></div>`:''}
+  <div class="card"><div class="eyebrow">${thisWeek?'This week’s numbers':'Log this week'}</div>
+   <div class="num-row">${DELI_FIELDS.map(f=>`<label class="num-field"><span class="small">${f.name} (${f.unit})</span><input type="number" inputmode="decimal" id="deli-${f.k}" value="${thisWeek?esc(last[f.k]):''}" aria-label="${f.name}"></label>`).join('')}</div>
+   <p class="small muted">Cost of sales as a percentage of sales. Other costs: rent, utilities and everything else for the week. +${DELI_PTS} points a week.</p>
+   <div class="row"><button class="btn" data-act="deliSave">${thisWeek?'Update this week':'Log this week'}</button></div></div>
+  <div class="card"><div class="eyebrow">The turnaround plan</div><h3>One lever at a time, each with an owner</h3>
+   <p class="small muted">Start a lever and it goes on your list; tick it there when it is done.</p>
+   ${DELI_LEVERS.map(l=>{const td=leverTodo(l.id);return `<div class="habit"><div><div class="lbl">${esc(l.name)}</div><div class="small ${td&&td.done?'delta-up':'muted'}">${td?(td.done?'Done':'Started, on your list'):'Not started'}</div></div>${td?'':`<button class="btn small" data-act="leverStart" data-id="${l.id}">Start it</button>`}</div>`;}).join('')}</div>
+  <div class="card"><details class="own"><summary>Targets</summary><div class="num-row">
+   <label class="num-field"><span class="small">Cost of sales target (%)</span><input type="number" inputmode="decimal" id="deli-t-cogs" value="${tg.cogs}"></label>
+   <label class="num-field"><span class="small">Labour target (% of sales)</span><input type="number" inputmode="decimal" id="deli-t-labour" value="${tg.labour}"></label></div>
+   <div class="row"><button class="btn small" data-act="deliTargets">Save targets</button></div><p class="small muted">Set at 32% and 30% to start: common deli benchmarks. Change them to yours.</p></details></div>
+  ${ws.length?`<div class="card"><h3>Weeks logged</h3><div class="tbl-wrap"><table><thead><tr><th>Week</th><th class="num">Sales</th><th class="num">Margin</th><th class="num">Labour</th><th class="num">Profit</th><th class="num">Cash</th></tr></thead><tbody>
+   ${ws.slice(-12).reverse().map(w=>{const c=deliCalc(w);return `<tr><td>${fmtDate(w.ts)}</td><td class="num">${gbp(c.sales)}</td><td class="num">${c.gpPct.toFixed(0)}%</td><td class="num">${c.labourPct.toFixed(0)}%</td><td class="num ${c.profit>=0?'delta-up':'delta-down'}">${c.profit>=0?'':'-'}${gbp(Math.abs(c.profit))}</td><td class="num">${gbp(c.cash)}</td></tr>`;}).join('')}
+  </tbody></table></div></div>`:''}
+  </section>`;
+}
+function vMonth(){
+  const key=S.monthView||prevMonthKey();const [y,m]=key.split('-').map(Number);const before=monthOf(new Date(y,m-2,1).getTime());
+  const a=monthStats(key),b=monthStats(before);const done=monthClosed(key);
+  const rows=[['Days in charge','active'],['Full days','full'],['Rings closed','rings'],['Actions done','actions'],['Stops done','stops'],['Resets','resets'],['Good things','good'],['Pilates classes','pilates'],['Handovers done','handed']];
+  const hon=Object.entries(S.honourAt||{}).filter(([,ts])=>monthOf(ts)===key).map(([id])=>(HONOURS.find(h=>h.id===id)||{}).name).filter(Boolean);
+  return `<section><div class="card"><div class="eyebrow">Monthly close</div><h2>${esc(monthName(key))}</h2>
+   <p class="muted">Your own month end: the numbers, what you earned, the letter, your rules, and next month’s focus.</p></div>
+  <div class="card"><h3>The month in numbers</h3><div class="tbl-wrap"><table><thead><tr><th></th><th class="num">${esc(monthName(key).split(' ')[0])}</th><th class="num">Month before</th></tr></thead><tbody>
+   ${rows.map(([n,k])=>{const d=a[k]-b[k];return `<tr><td>${n}</td><td class="num">${a[k]}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</td><td class="num">${b[k]}</td></tr>`;}).join('')}
+  </tbody></table></div>${hon.length?`<p class="small">Honours earned: ${hon.map(esc).join(', ')}.</p>`:''}${pulseLine()?`<p class="small">Firm pulse: ${esc(pulseLine())}.</p>`:''}${deliStatus()?`<p class="small">Deli: ${deliStatus().profit>=0?'making':'losing'} ${gbp(Math.abs(deliStatus().profit))} in the last week logged, cash ${gbp(deliStatus().cash)}.</p>`:''}</div>
+  ${done?`<div class="card"><p class="delta-up">Closed. Next month’s focus: ${esc(((S.monthCloses||[]).find(x=>x.month===key)||{}).focus||'')}.</p></div>`:`<div class="card"><h3>Close it</h3>
+   <div class="row"><button class="btn small ghost" data-goto="letter">Reread my 2030 letter</button></div>
+   <div class="field"><span class="lbl">Your rules</span>${chipRow('mc-rules',['Keep them as they are','Change one now'])}</div>
+   <div class="field"><span class="lbl">Next month’s focus</span>${chipRow('mc-focus',MONTH_FOCUS,{other:true})}</div>
+   <div class="row"><button class="btn" data-act="monthClose">Close ${esc(monthName(key).split(' ')[0])}</button><span class="small muted">+${MONTH_PTS} points</span></div></div>`}
+  </section>`;
+}
+function vMonthCard(){const k=monthDue();if(!k)return '';return `<div class="card call-to"><div class="spread"><div><div class="eyebrow">Month end</div><h3>Close ${esc(monthName(k))}</h3></div><button class="btn small" data-act="monthOpen" data-key="${k}">Close it</button></div><p class="small muted">Five minutes: the month in numbers, your letter, your rules, next month’s focus.</p></div>`;}
+function vRemindersCard(){
+  return `<div class="card" id="reminders"><div class="eyebrow">On your phone</div><h3>Open it like an app, with reminders that work</h3>
+   <p class="small">Add it to your home screen: in Safari tap Share, then Add to Home Screen. On Android, open the browser menu and tap Add to Home screen.</p>
+   <p class="small muted">Reminders go into your phone’s own calendar, so they arrive even when the ledger is closed. Pick the ones you want.</p>
+   ${chipRow('rem',REMINDERS.map(r=>r.name),{multi:true,max:REMINDERS.length,selected:REMINDERS.filter(r=>r.on).map(r=>r.name)})}
+   <div class="row"><button class="btn small" data-act="remindersIcs">Add to my calendar</button></div></div>`;
 }
 function vHabitCard(){
   if(!habits().length)return '';
@@ -1192,7 +1711,7 @@ function vLetter(){
    <div class="row"><button class="btn" data-act="draftLetter" ${n>=3?'':'disabled'}>Draft my letter from these answers</button><span class="small muted">${n>=3?'Your answers, your numbers, your pillars and your chosen game go into the draft.':'Answer at least three questions first.'}</span></div>
    ${S.letterDraft?`<div class="coach"><div class="eyebrow">First draft${S.letterDraftBy==='claude'?' by Claude':''}</div><div style="white-space:pre-wrap;max-width:66ch">${esc(S.letterDraft)}</div><div class="row"><button class="btn small" data-act="useDraft">${f.letter.trim()?'Replace my letter with this draft':'Use this draft'}</button><button class="btn small ghost" data-act="discardDraft">Discard</button></div></div>`:''}
    <div class="field"><label for="f-letter">Your letter</label><span class="hint">Edit until every line sounds like you. It saves as you type.</span><textarea class="letter" id="f-letter" data-future="letter" placeholder="Dear Tom, it is November 2030...">${esc(f.letter)}</textarea></div>
-   <div class="row"><button class="btn small" data-act="coachLetter" ${words>=40?'':'disabled'}>Coach my letter</button><button class="btn small ghost" data-act="readLetter" ${words>=40&&!read?'':'disabled'}>${read?'Read this month':'I have read it this month'}</button></div>
+   <div class="row"><button class="btn small" data-act="coachLetter" ${words>=40?'':'disabled'}>Coach my letter</button><button class="btn small ghost" data-act="readLetter" ${words>=40&&!read?'':'disabled'}>${read?'Read this month':'I have read it this month'}</button>${words<40?`<span class="small muted">Write at least 40 words first (${words} so far).</span>`:''}</div>
    ${c?`<div class="coach"><div class="eyebrow">Coaching on your letter &middot; ${fmtDate(c.ts)}</div>
      <ul class="checks">${c.checks.map(x=>`<li class="${x.ok?'ok':''}"><span class="mk">${x.ok?'[x]':'[ ]'}</span><span><span style="font-weight:600">${esc(x.label)}.</span> ${esc(x.note)}</span><span></span></li>`).join('')}</ul>
      ${c.ai?`${c.ai.strengths&&c.ai.strengths.length?`<p><span style="font-weight:600">What is working.</span> ${c.ai.strengths.map(esc).join(' ')}</p>`:''}
@@ -1223,19 +1742,34 @@ function vBaseline(){
 }
 
 /* ---------- Friday review ---------- */
+let reviewWeek=''; // the kind of week picked in this review, until it is logged
 function vReview(){
   const l=latest()||{happiness:5,earnings:5,time:5,focus:5,hours:50};
   const open=S.todos.filter(t=>!t.done&&(t.h==='week'||t.star));
   const sameWeek=S.reviews.length&&Date.now()-S.reviews[S.reviews.length-1].ts<4*DAY;
+  const ad=awayDaysThisWeek();if(!reviewWeek)reviewWeek=ad>=5?'Holiday':ad>0?'Part holiday':'Working week';
+  const away=reviewWeek==='Holiday'||reviewWeek==='Off sick';
+  const lw=workedReviews().slice(-1)[0];const pulls=pullsThisWeek();
+  const pullPick=pulls===0?'None':pulls<=2?'1 or 2':pulls<=5?'3 to 5':'6 or more';
+  const weekFields=reviewWeek==='Holiday'?`
+   <div class="field"><span class="lbl">How switched off were you?</span>${chipRow('rv-switch',SWITCH_OFF)}</div>
+   <div class="field"><span class="lbl">Times you were pulled in</span>${pulls?`<span class="hint">You logged ${plural(pulls,'time')} while away.</span>`:''}${chipRow('rv-pulled',['None','1 or 2','3 to 5','6 or more'],{selected:pullPick})}</div>
+   <div class="field"><span class="lbl">What did the firm handle without you?</span>${chipRow('rv-handled',HANDLED,{multi:true,max:4})}</div>`
+   :reviewWeek==='Off sick'?`<p class="small muted">No hours this week. Rest is part of the job, not a reward for finishing it.</p>`
+   :`<div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(lw?lw.hours:50)})}</div>
+   ${reviewWeek==='Part holiday'?`<div class="field"><span class="lbl">Days off</span>${chipRow('rv-daysoff',DAYS_OFF,{selected:String(Math.min(4,Math.max(1,ad||1)))})}</div>`:''}`;
   return `<section>
   <div class="card"><div><div class="eyebrow">Friday review &middot; ten minutes</div><h2>Close your own week in three days or less.</h2></div>
    <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same six steps every week.'}</p></div>
+  <div class="card"><div class="eyebrow">What kind of week was it?</div>
+   ${chipRow('rv-week',WEEK_TYPES,{act:'week-type',selected:reviewWeek})}
+   ${ad?`<p class="small muted">The ledger has you away on ${plural(ad,'day')} this week.</p>`:''}</div>
   ${vLoudWeek()}
 
-  <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
+  <div class="card"><div class="eyebrow">1. What you did</div><h3>${away?'Anything that got done':'Tick what got done'}</h3>
    ${habits().length?`<div class="field"><span class="lbl">Non-negotiables</span>${habits().map(h=>{const n=habitCount(h.id);return `<div class="small ${n>=h.target?'delta-up':'delta-down'}">${esc(h.name)}: ${n} of ${h.target}${n>=h.target?', done':', not this week'}</div>`;}).join('')}</div>`:''}
    ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${ptsFor(t)} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
-   <div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(l.hours)})}</div></div>
+   ${weekFields}</div>
 
   <div class="card"><div class="eyebrow">2. Re-score</div><h3>Where are the four lines now?</h3>
    <div class="grid2">${METERS.map(m=>`<div class="field"><label for="rv-${m.k}">${m.name}</label><div class="rate-line"><input type="range" id="rv-${m.k}" min="1" max="10" value="${l[m.k]}" data-out="ov-${m.k}"><output id="ov-${m.k}">${l[m.k]}</output></div></div>`).join('')}</div></div>
@@ -1261,12 +1795,97 @@ function vReview(){
    <div class="row"><button class="btn" data-act="review">Log the week</button></div></div>
 
   ${S.reviews.length?`<div class="card"><h3>The trend</h3><div class="tbl-wrap"><table><thead><tr><th>Week</th>${METERS.map(m=>`<th class="num">${m.name}</th>`).join('')}<th class="num">Hours</th><th>Game</th><th>Win</th></tr></thead><tbody>
-   ${[Object.assign({date:'Opening',game:''},S.baseline)].concat(S.reviews.map(r=>Object.assign({date:fmtDate(r.ts)},r))).map((r,i,arr)=>`<tr><td>${esc(r.date)}</td>${METERS.map(m=>{const d=i?r[m.k]-arr[i-1][m.k]:0;return `<td class="num">${r[m.k]}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</td>`;}).join('')}<td class="num ${i&&Number(r.hours)<=Number(S.future.targetHours)?'delta-up':''}">${r.hours}</td><td>${esc((GAMES.find(g=>g.id===r.game)||{}).name||'')}</td><td class="wrapc">${esc(r.win||r.note||'')}</td></tr>`).join('')}
+   ${[Object.assign({date:'Opening',game:''},S.baseline)].concat(S.reviews.map(r=>Object.assign({date:fmtDate(r.ts)},r))).map((r,i,arr)=>`<tr><td>${esc(r.date)}</td>${METERS.map(m=>{const d=i?r[m.k]-arr[i-1][m.k]:0;return `<td class="num">${r[m.k]}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</td>`;}).join('')}<td class="num ${i&&typeof r.hours==='number'&&Number(r.hours)<=Number(S.future.targetHours)?'delta-up':''}">${typeof r.hours==='number'?r.hours:esc(r.weekType||'Off')}</td><td>${esc((GAMES.find(g=>g.id===r.game)||{}).name||'')}</td><td class="wrapc">${esc(r.win||r.note||'')}</td></tr>`).join('')}
    </tbody></table></div></div>`:''}
   </section>`;
 }
 
 /* ---------- Actions ---------- */
+function vReminderCard(){
+  if(!reminderDue())return '';const r=dailyReminder();
+  return `<div class="card reminder" id="daily-reminder"><div class="eyebrow">Today\u2019s reminder</div>
+   <p class="reminder-line">${esc(r.line)}</p>
+   ${r.fact?`<p class="small">${esc(r.fact)}</p>`:''}
+   ${r.nudges.length?`<ul class="small nudges">${r.nudges.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+   <div class="row"><button class="btn small" data-act="reminderSeen">Got it</button><span class="small muted">${r.pinned?'From your pinned notes.':'From your rules. Pin any note in Notes to see it here.'}</span></div></div>`;
+}
+let JR={kind:'thought',filter:'all',voice:false,coach:null,asking:false};
+function vJournal(){
+  const P=journalPatterns();const list=(S.journal||[]).slice().reverse();
+  const F=JR.filter;const shown=list.filter(e=>F==='all'||(F==='voice'?e.voice:F==='pinned'?e.pin:e.kind===F)).slice(0,40);
+  const ideas=list.filter(e=>e.kind==='idea'&&e.status==='open');
+  const kindName=k=>(JOURNAL_KINDS.find(x=>x.k===k)||{}).name||k;
+  const time=ts=>new Date(ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  return `<section>
+  <div class="card"><div class="eyebrow">Notes</div><h2>Get it out of your head</h2>
+   <p class="muted small">Thoughts, ideas, worries and wins, typed or spoken. The ledger reads them for patterns so you can see what keeps coming up and do something about it.</p>
+   <div class="kinds" role="group" aria-label="What is it">${JOURNAL_KINDS.map(x=>`<button type="button" class="pick ${JR.kind===x.k?'sel':''}" data-act="jrKind" data-k="${x.k}" aria-pressed="${JR.kind===x.k}">${x.name}</button>`).join('')}</div>
+   <textarea id="jr-text" class="talk" placeholder="What is on your mind" aria-label="Your note">${esc(JR.draft||'')}</textarea>
+   <div class="row"><button class="btn ghost small" data-act="jrSpeak" id="jr-speak" aria-pressed="false">Speak</button><button class="btn" data-act="jrSave">Save</button></div>
+   <p class="small muted">Speak records your voice and writes it down as you talk. If your phone will not allow it, tap the microphone on the keyboard instead.</p></div>
+  <div class="card"><div class="eyebrow">Patterns</div><h3>${P.recent?`${plural(P.recent,'entry','entries')} in the last 30 days`:'Patterns appear after a few entries'}</h3>
+   ${P.recent?`<div class="mo-grid">${JOURNAL_KINDS.slice(0,4).map(x=>`<div class="mo"><span class="lab">${x.many}</span><span class="fig">${P.kinds[x.k]}</span></div>`).join('')}</div>`:''}
+   ${P.themes.filter(x=>x.n).length?`<div class="lbl small" style="margin-top:12px">What it is about</div>${P.themes.filter(x=>x.n).slice(0,6).map(x=>{const max=P.themes[0].n||1;return `<div class="bar-row"><span class="small">${esc(x.name)}</span><span class="bar"><span style="width:${Math.round(x.n/max*100)}%"></span></span><span class="small num">${x.n}${x.was?` <span class="muted">(${x.was})</span>`:''}</span></div>`;}).join('')}<p class="small muted">In brackets: the month before.</p>`:''}
+   ${P.recent?`<p class="small">When you write: ${['morning','afternoon','evening','night'].map(k=>`${k} ${P.parts[k]}`).join(', ')}.${P.voice?` ${plural(P.voice,'voice note')}.`:''}</p>`:''}
+   ${P.lines.length?`<div class="receipt"><div class="eyebrow">What the ledger sees</div>${P.lines.map(x=>`<p>${esc(x)}</p>`).join('')}</div>`:''}
+   ${AI&&(S.journal||[]).length>=5?`<div class="row"><button class="btn small" data-act="jrCoach"${JR.asking?' disabled':''}>${JR.asking?'Reading your notes':'Ask the coach to read the pattern'}</button></div>`:''}
+   ${JR.coach?vJournalCoach(JR.coach):''}</div>
+  ${ideas.length?`<div class="card"><div class="eyebrow">Ideas to decide</div><h3>${plural(ideas.length,'idea')} waiting</h3>
+   ${ideas.slice(0,8).map(e=>`<div class="idea"><p>${esc(e.text)}</p><div class="small muted">${time(e.ts)}</div><div class="row"><button class="btn small" data-act="jrDecide" data-id="${e.id}" data-how="acted">Make it an action</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="parked">Park</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="dropped">Drop</button></div></div>`).join('')}</div>`:''}
+  <div class="card"><div class="eyebrow">Everything</div>
+   <div class="chips-row" role="group" aria-label="Show">${[['all','All'],['idea','Ideas'],['thought','Thoughts'],['worry','Worries'],['win','Wins'],['note','Notes'],['voice','Voice'],['pinned','Pinned']].map(([k,l])=>`<button type="button" class="pick ${F===k?'sel':''}" data-act="jrFilter" data-k="${k}" aria-pressed="${F===k}">${l}</button>`).join('')}</div>
+   ${shown.length?shown.map(e=>`<div class="entry"><div class="entry-head"><span class="tag ${e.kind}">${kindName(e.kind)}</span>${e.voice?'<span class="tag">Voice</span>':''}${e.status&&e.status!=='open'?`<span class="tag">${e.status==='acted'?'Action':e.status==='parked'?'Parked':'Dropped'}</span>`:''}<span class="small muted">${time(e.ts)}</span></div>
+     <p>${esc(e.text)}</p>
+     <div class="small muted">${themesOf(e.text).map(k=>(THEMES.find(x=>x.k===k)||{}).name).join(' \u00B7 ')}</div>
+     <div class="row"><button class="icon-btn ${e.pin?'on':''}" data-act="jrPin" data-id="${e.id}" aria-pressed="${!!e.pin}">${e.pin?'Pinned as a reminder':'Pin as a reminder'}</button><button class="icon-btn" data-act="jrDel" data-id="${e.id}">Delete</button></div></div>`).join(''):'<p class="small muted">Nothing here yet.</p>'}
+  </div></section>`;
+}
+function vJournalCoach(c){
+  if(c.concern)return `<div class="receipt"><p>This sounds heavy. If you are struggling, talk to someone today: your GP, or Samaritans on 116 123, any time.</p></div>`;
+  return `<div class="receipt"><div class="eyebrow">The coach\u2019s read</div>${(c.patterns||[]).map(x=>`<p><span style="font-weight:600">${esc(x.theme)}.</span> ${esc(x.read)}</p>`).join('')}
+   ${(c.improve||[]).length?`<div class="lbl small">Three improvements</div>${c.improve.map((x,i)=>`<div class="habit"><span>${esc(x)}</span><button class="btn small" data-act="jrImprove" data-i="${i}">Add</button></div>`).join('')}`:''}
+   ${c.reminder?`<p class="small">Suggested reminder: ${esc(c.reminder)} <button class="icon-btn" data-act="jrPinCoach">Pin it</button></p>`:''}</div>`;
+}
+let LN={step:null,id:null};
+function vLine(){
+  const P=linePatterns();const open=lineOpen();const mine=S.shifts||DEFAULT_SHIFTS;const lines=lineLines(P);
+  let now='';
+  if(open&&!open.shift){
+    now=`<div class="card now-hero"><div class="eyebrow">Below the line</div><h2>Pick one shift and do it now</h2>
+     <p class="muted small">${open.signs.length?`You named: ${esc(open.signs.join(', ').toLowerCase())}. `:''}Nothing wrong with being here; the skill is noticing and choosing to shift.</p>
+     ${chipRow('ln-shift',shiftsFirst(),{act:'line-shift',other:true})}
+     <div class="row"><button class="btn small ghost" data-act="lineOther">Use what I typed</button></div></div>`;
+  }else if(open){
+    now=`<div class="card now-hero"><div class="eyebrow">Shift: ${esc(open.shift)}</div><h2>Back above the line?</h2>
+     <div class="row">${[['yes','Yes'],['partly','Partly'],['no','Not yet']].map(([k,l])=>`<button class="btn small ${k==='yes'?'':'ghost'}" data-act="lineResult" data-k="${k}">${l}</button>`).join('')}</div>
+     <p class="small muted">Not yet is useful too: pick another shift after.</p></div>`;
+  }else if(LN.step==='below'){
+    now=`<div class="card now-hero"><div class="eyebrow">Below the line</div><h2>Name it</h2>
+     <div class="field"><span class="lbl">What does it look like right now?</span>${chipRow('ln-signs',LINE_SIGNS,{multi:true,max:4})}</div>
+     <div class="field"><span class="lbl">What set it off?</span>${chipRow('ln-trigger',LINE_TRIGGERS,{other:true})}</div>
+     <div class="row"><button class="btn" data-act="lineBelow">Next: pick a shift</button><button class="btn small ghost" data-act="lineCancel">Cancel</button></div></div>`;
+  }else{
+    now=`<div class="card now-hero"><div class="eyebrow">Above the line</div><h2>Where are you right now?</h2>
+     <p class="muted small">Above: open, curious, learning. Below: closed, defensive, needing to be right. Everyone goes below many times a day. Locate, name, shift.</p>
+     <div class="row"><button class="btn" data-act="lineAbove">Above the line</button><button class="btn ghost" data-act="lineBelowStart">Below the line</button></div></div>`;
+  }
+  return `<section>${now}
+  <div class="card"><div class="eyebrow">Your pattern</div><h3>${P.checks?`${plural(P.checks,'check-in')} in 60 days: ${P.above} above, ${P.below} below`:'Check in a few times and the pattern appears'}</h3>
+   ${lines.length?`<div class="receipt">${lines.map(x=>`<p>${esc(x)}</p>`).join('')}</div>`:''}
+   ${P.shifts.length?`<div class="lbl small" style="margin-top:10px">What brings you back</div>${P.shifts.slice(0,6).map(s=>`<div class="bar-row"><span class="small">${esc(s.name)}</span><span class="bar"><span style="width:${Math.round(s.rate*100)}%"></span></span><span class="small num">${Math.round(s.rate*100)}% <span class="muted">(${s.used})</span></span></div>`).join('')}`:''}
+   <p class="small muted">Built for your sessions with Sam: it goes into the coach agenda.</p></div>
+  <div class="card"><details class="own"><summary>My shift moves (${mine.length})</summary>
+   ${mine.map((x,i)=>`<div class="note"><span class="kd">Shift</span><span>${esc(x)} <button class="icon-btn" data-act="shiftDel" data-i="${i}">Remove</button></span></div>`).join('')}
+   <div class="row" style="flex-wrap:nowrap"><input type="text" id="shift-own" placeholder="A habit that brings you back" aria-label="Add a shift move"><button class="btn small" data-act="shiftAdd">Add</button></div></details></div>
+  </section>`;
+}
+function vHandovers(){
+  const map=handoverMap();if(!map.length)return '';
+  return `<div class="card"><div class="eyebrow">Handover map</div><h3>What you get pulled into, and who could own it</h3>
+   ${map.map(p=>`<div class="habit"><div><div class="lbl">${esc(p.who)}</div><div class="small muted">${p.items.slice(-3).map(h=>esc(h.what)).join(', ')}</div></div><div class="small ${p.open?'delta-down':'delta-up'}">${p.handed} handed, ${p.open} open</div></div>`).join('')}
+   <details class="own"><summary>Edit people</summary>${(S.people||[]).map((x,i)=>`<div class="note"><span class="kd">Person</span><span>${esc(x)} <button class="icon-btn" data-act="personDel" data-i="${i}">Remove</button></span></div>`).join('')}
+   <div class="row" style="flex-wrap:nowrap"><input type="text" id="person-own" placeholder="A name or role" aria-label="Add a person"><button class="btn small" data-act="personAdd">Add</button></div></details></div>`;
+}
 function vActions(){
   const done=S.todos.filter(t=>t.done).length;const bb=boughtBack();
   const order={Stop:0,Start:1,Keep:2};
@@ -1411,15 +2030,16 @@ function vFuture(){
 function announceHonours(){
   const seen=new Set(S.honoursSeen||[]);const fresh=honours().filter(h=>h.earned&&!seen.has(h.id));
   if(!fresh.length)return;
-  S.honoursSeen=[...seen,...fresh.map(h=>h.id)];save();
+  S.honoursSeen=[...seen,...fresh.map(h=>h.id)];S.honourAt=S.honourAt||{};fresh.forEach(h=>{S.honourAt[h.id]=Date.now();});save();
   if(!seen.size&&fresh.length>1)setStatus(`${plural(fresh.length,'honour')} already earned. See them in Stats.`);
   else setStatus(`Honour earned: ${fresh.map(h=>h.name).join(', ')}.`);
 }
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,stats:vStats,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,stats:()=>vStats()+`<section>${vMomentum()}${vGameLevel()}</section>`,deli:vDeli,month:vMonth,journal:()=>vJournal()+`<section>${vNoticeCard()}</section>`,systems:vSystems,line:vLine,coach:vCoach,reset:vReset,off:()=>(awayNow()?'':`<section>${vAwayCard()}</section>`)+vOff(),review:vReview,actions:()=>`<section>${vBig3()}${vHabitCard()}</section>`+vActions(),calls:()=>`<section>${vSysCard()}</section>`+vCalls(),future:()=>`<section>${vLetterNudge()}${vWildMonth()}</section>`+vFuture()}[S.view]||vToday;
   $('#view').innerHTML=v();
+  prunePicks();
   announceHonours();
 }
 
@@ -1512,6 +2132,26 @@ async function coachLetter(btn){
 }
 
 /* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
+/* Speaking a note: the browser's own speech recognition where the phone allows it, writing into
+   the box as he talks. Anything else falls back to the keyboard's microphone. Nothing is recorded
+   or stored but the words. */
+let SPEECH=null;
+function stopSpeech(){if(SPEECH){try{SPEECH.stop();}catch{}SPEECH=null;}}
+function toggleSpeech(id,btn){
+  if(SPEECH){stopSpeech();return;}
+  const R=typeof window!=='undefined'&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+  const ta=byId(id);
+  if(!R||!ta){if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  let rec;try{rec=new R();}catch{if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  const base=ta.value?ta.value.replace(/\s*$/,' '):'';
+  rec.lang='en-GB';rec.continuous=true;rec.interimResults=true;
+  rec.onresult=ev=>{let txt='';for(let i=0;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;ta.value=base+txt.trim();if(id==='jr-text'){JR.draft=ta.value;JR.voice=true;}if(id==='rs-talk'&&RD)RD.talkText=ta.value;};
+  const done=()=>{SPEECH=null;const b=byId(btn.id)||btn;b.textContent='Speak';b.setAttribute('aria-pressed','false');b.classList.remove('live');};
+  rec.onend=done;
+  rec.onerror=ev=>{done();if(ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed'))setStatus('The microphone is not allowed here. Tap the microphone on your keyboard instead.');};
+  try{rec.start();}catch{done();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  SPEECH=rec;btn.textContent='Stop';btn.setAttribute('aria-pressed','true');btn.classList.add('live');setStatus('Listening. Tap Stop when you are done.');
+}
 function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
@@ -1530,6 +2170,8 @@ let reviewGame='';
 on('input',e=>{
   const t=e.target;
   if(t.dataset.out){const o=byId(t.dataset.out);if(o)o.textContent=t.value;}
+  if(t.id==='jr-text')JR.draft=t.value;
+  if(t.classList&&t.classList.contains('other-in')){const g=t.id.slice(6);if(OTHERS[g])OTHERS[g].text=t.value;}
   if(t.dataset.future){const k=t.dataset.future;S.future[k]=t.type==='number'?Number(t.value):t.value;save();if(t.type==='number')renderBoard();}
   if(t.dataset.lq){S.letterQ.answers[t.dataset.lq]=t.value;save();}
   if(t.dataset.pillar){S.future.pillars[t.dataset.pillar].now=Number(t.value);save();}
@@ -1542,13 +2184,18 @@ on('submit',e=>{
   if(e.target.id==='noticeForm'){const txt=$('#noticeText').value.trim();if(!txt)return;const kind=(e.submitter&&e.submitter.dataset.kind)||'good';S.notes.push({ts:Date.now(),kind,text:txt});if(S.notes.length>400)S.notes=S.notes.slice(-400);save();render();setStatus(kind==='good'?'Noticed. Find the cause and you can repeat it.':'Noticed. Protect the next one before it fills.');}
 });
 on('change',e=>{
+  if(e.target.dataset&&e.target.dataset.wtsowner){const p2=wtsProcs().find(x=>x.id===e.target.dataset.wtsowner);if(p2&&e.target.value){p2.owner=e.target.value;wtsAdvance(p2.id);save();render();setStatus(`Handed to ${p2.owner}. A check-in is on your list.`);}return;}
   const id=e.target.dataset.done;
   if(id){const t=S.todos.find(x=>x.id===id);t.done=e.target.checked;t.doneAt=t.done?Date.now():null;if(t.done)t.star=false;save();
     if(S.view==='review'){renderBoard();setStatus(t.done?`+${ptsFor(t)} points`:'Unticked');}else render();}
 });
 on('click',async e=>{
-  const b=e.target.closest('button');if(!b)return;const d=b.dataset;
-  if(d.other){const i=byId('other-'+d.other);if(i){i.hidden=!i.hidden;b.classList.toggle('sel',!i.hidden);if(!i.hidden)i.focus();}return;}
+  const b=e.target.closest('button');if(!b)return;const d=b.dataset.group?Object.assign({},b.dataset,{tab:openGroup(b.dataset.tab)||'today'}):b.dataset;
+  if(d.other){const i=byId('other-'+d.other);if(i){i.hidden=!i.hidden;b.classList.toggle('sel',!i.hidden);
+    const row=b.closest('.chips-row');
+    if(!i.hidden&&row&&row.dataset.multi!=='1')row.querySelectorAll('.pick.sel:not(.other)').forEach(x=>x.classList.remove('sel'));
+    if(i.hidden)delete OTHERS[d.other];else OTHERS[d.other]={text:i.value};
+    rememberRow(row);if(!i.hidden)i.focus();}return;}
   if(d.pickGroup){
     const row=b.closest('.chips-row');const multi=row&&row.dataset.multi==='1';const max=Number(row&&row.dataset.max)||0;
     if(multi){
@@ -1556,8 +2203,9 @@ on('click',async e=>{
       b.classList.toggle('sel');
     }else{
       row.querySelectorAll('.pick').forEach(x=>{if(x!==b)x.classList.remove('sel');});b.classList.add('sel');
-      const o=byId('other-'+d.pickGroup);if(o)o.hidden=true;
+      const o=byId('other-'+d.pickGroup);if(o)o.hidden=true;delete OTHERS[d.pickGroup];
     }
+    rememberRow(row);
     const v=d.val;
     switch(d.pact){
       case 'note-good':case 'note-space':{const kind=d.pact==='note-good'?'good':'space';S.notes.push({ts:Date.now(),kind,text:v});if(S.notes.length>400)S.notes=S.notes.slice(-400);save();render();setStatus(kind==='good'?'Noticed. Find the cause and you can repeat it.':'Noticed. Protect the next one before it fills.');break;}
@@ -1573,6 +2221,10 @@ on('click',async e=>{
         render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'reset-rule':if(RD)RD.rule=v;break;
+      case 'line-shift':{const o=lineOpen();if(!o)break;lineShift(o.id,v);save();render();toTop();setStatus('Go and do it. Come back and say if it worked.');break;}
+      case 'wts-obj':{const id=d.pickGroup.slice(3);S.wts.objective=Object.assign({},S.wts.objective,{[id]:v});if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus('Saved to your strategic objective.');break;}
+      case 'week-type':reviewWeek=v;render();break;
+      case 'away-plan':planAway(v);save();render();setStatus('Away logged. Enjoy it: the ledger will not ask about hours.');break;
       case 'habit-add':{const x=HABIT_IDEAS.find(h=>h.name===v);if(!x)break;S.habits=habits().concat({id:'h'+uid(),name:x.name,target:x.target});save();render();setStatus('Added to your non-negotiables.');break;}
       case 'session-take':closeSession(v);break;
       case 'rule-add':{if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();if(!S.rules.includes(v))S.rules.push(v);save();render();setStatus('Added to your rules.');break;}
@@ -1580,7 +2232,7 @@ on('click',async e=>{
     }
     return;
   }
-  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
+  if(d.tab){PICKS={};OTHERS={};const G=groupOf(d.tab);S.lastPage=Object.assign({},S.lastPage,{[G.k]:d.tab});if(d.tab==='month'&&!S.monthView)S.monthView=prevMonthKey();if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);
@@ -1606,16 +2258,20 @@ on('click',async e=>{
     case 'review':{
       const none=v=>v&&v!=='None this week'?v:'';
       const good=picked('rv-good').slice(0,3);
-      const r={ts:Date.now(),hours:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
+      const wt=reviewWeek||'Working week';const off=wt==='Holiday'||wt==='Off sick';
+      const r={ts:Date.now(),weekType:wt,hours:off?null:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
       {const fear=picked('rv-fear')[0]||'';const oc=OUTCOMES.find(x=>x.name===picked('rv-outcome')[0]);if(fear){r.fear=fear;if(oc&&fear!=='Nothing this week')r.fearOutcome=oc.k;}}
       METERS.forEach(m=>r[m.k]=Number($('#rv-'+m.k).value));
+      if(wt==='Holiday'){r.switchOff=picked('rv-switch')[0]||'';r.pulledIn=picked('rv-pulled')[0]||'';r.handled=picked('rv-handled').filter(x=>x!=='Not sure yet');}
+      if(wt==='Part holiday')r.daysOff=Number(picked('rv-daysoff')[0]||0);
       const before=points();
       if(S.reviews.length&&r.ts-S.reviews[S.reviews.length-1].ts<4*DAY)S.reviews[S.reviews.length-1]=r;else{S.reviews.push(r);S.pendingCall=true;}
       r.good.forEach(g=>S.notes.push({ts:r.ts,kind:'good',text:g}));
+      (r.handled||[]).forEach(h=>S.notes.push({ts:r.ts,kind:'good',text:h==='Everything'?'The firm handled everything without me':`The firm handled ${h.charAt(0).toLowerCase()+h.slice(1)} without me`}));
       if(r.space)S.notes.push({ts:r.ts,kind:'space',text:r.space});
       if(r.change)addTodo({text:r.change,type:'Start',h:'week',hours:0,source:'review-'+r.ts});
       if(r.inSystem)addTodo({text:'Design out: '+r.inSystem,type:'Stop',h:'month',hours:1,source:'review-sys-'+r.ts});
-      reviewGame='';S.view='today';save();render();toTop();
+      reviewGame='';reviewWeek='';S.view='today';save();render();toTop();
       const gained=points()-before;
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Week closed. +${gained} points, streak ${streak()} week${streak()===1?'':'s'}.</strong><span class="small">${S.pendingCall?'Your next call is ready to deal below.':'Review updated.'}</span></div>`);
       break;}
@@ -1656,6 +2312,73 @@ on('click',async e=>{
           if(r.learned){S.coachNotes=(S.coachNotes||[]).concat({ts:Date.now(),text:String(r.learned).slice(0,240)}).slice(-30);save();}
           render();toTop();});
       break;}
+    case 'awayPull':{const a=awayNow();if(a){a.pulls=(a.pulls||[]).concat(Date.now());save();render();setStatus('Logged. Next time, ask: who could have decided that?');}break;}
+    case 'pullStart':PULL=true;render();break;
+    case 'quick':QUICK=QUICK===d.k?null:d.k;PULL=QUICK==='pull';render();break;
+    case 'rsSpeak':toggleSpeech('rs-talk',b);break;
+    case 'wtsObjOwn':{const i=byId('other-wo-'+d.id);const v=i&&!i.hidden?i.value.trim().slice(0,200):'';if(!v){const o=ROOT.querySelector(`[data-other="wo-${d.id}"]`);if(o)o.click();setStatus('Write it in the box, then save.');break;}S.wts.objective=Object.assign({},S.wts.objective,{[d.id]:v});if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus('Saved in your own words.');break;}
+    case 'wtsCopy':{const txt='Strategic objective\n'+wtsObjectiveText()+(S.wts.principles.length?'\n\nOperating principles\n'+S.wts.principles.map(x=>'- '+x).join('\n'):'');(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>setStatus('Copied. Paste it into an email or the team handbook.'),()=>setStatus('Could not copy on this device.'));break;}
+    case 'wtsPrinciples':{const v=picked('wp');S.wts.principles=v.slice(0,14);if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus(v.length?`${plural(v.length,'principle')} saved.`:'Principles cleared.');break;}
+    case 'wtsAddOpen':WTSV.add=true;render();break;
+    case 'wtsAddPicked':{const v=picked('wts-seed');if(!v.length){setStatus('Pick at least one system.');break;}let n=0;v.forEach(name=>{const s=WTS_SEED.find(x=>x.name===name);if(wtsAdd(name,s?s.area:'Firm'))n++;});WTSV.add=false;save();render();setStatus(`${plural(n,'system')} added. Pick one and put writing it on your list.`);break;}
+    case 'wtsWrite':{const td=wtsStartWriting(d.id);if(!td)break;save();render();setStatus('On your list for this week.');break;}
+    case 'wtsNext':{const before=points();const p2=wtsAdvance(d.id);if(!p2)break;save();render();setStatus(`${p2.name}: ${(WTS_STAGES.find(s=>s.k===p2.stage)||{}).name.toLowerCase()}. +${points()-before} points.`);break;}
+    case 'lineAbove':{lineCheck('above');LN.step=null;save();render();setStatus('Above the line. Noticed and logged.');break;}
+    case 'lineBelowStart':LN.step='below';render();break;
+    case 'lineCancel':LN.step=null;render();break;
+    case 'lineBelow':{lineCheck('below',{signs:picked('ln-signs'),trigger:picked('ln-trigger')[0]||''});LN.step=null;save();render();toTop();setStatus('Named. That is the first shift.');break;}
+    case 'lineOther':{const o=lineOpen();const v=picked('ln-shift')[0];if(!o||!v){setStatus('Tap a shift, or write your own in Something else.');break;}lineShift(o.id,v);if(!(S.shifts||[]).includes(v))S.shifts=(S.shifts||DEFAULT_SHIFTS.slice()).concat(v).slice(0,30);save();render();toTop();setStatus('Go and do it. Come back and say if it worked.');break;}
+    case 'lineResult':{const o=lineOpen();if(!o)break;lineResult(o.id,d.k);save();render();toTop();setStatus(d.k==='yes'?`Back above the line. +${LINE_PTS} points.`:d.k==='partly'?'Partly is progress. Logged.':'Logged. Pick another shift.');
+      if(d.k==='no'){const n=lineCheck('below',{signs:o.signs,trigger:o.trigger});void n;save();render();}break;}
+    case 'shiftAdd':{const i=byId('shift-own');const v=i?i.value.trim().slice(0,80):'';if(!v)break;if(!(S.shifts||[]).includes(v))S.shifts=(S.shifts||DEFAULT_SHIFTS.slice()).concat(v);save();render();setStatus('Added to your shift moves.');break;}
+    case 'shiftDel':{const i=Number(d.i);S.shifts=(S.shifts||DEFAULT_SHIFTS.slice()).filter((_,k)=>k!==i);save();render();break;}
+    case 'reminderSeen':S.reminderDay=dayKey(Date.now());save();render();break;
+    case 'jrKind':JR.kind=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrFilter':JR.filter=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrSave':{stopSpeech();const ta=byId('jr-text');const v=ta?ta.value.trim():'';if(!v){setStatus('Write or say something first.');break;}
+      const e=journalAdd(v,JR.kind,{voice:JR.voice});JR.draft='';JR.voice=false;save();render();
+      setStatus(e.kind==='idea'?'Idea saved. Decide it within two weeks: act, park or drop.':e.kind==='worry'?'Out of your head and on paper. Now it is a fact you can sort.':e.kind==='win'?'Win logged. That is evidence.':'Saved.');break;}
+    case 'jrSpeak':toggleSpeech('jr-text',b);break;
+    case 'jrDecide':{const r=decideIdea(d.id,d.how);if(!r)break;save();render();setStatus(d.how==='acted'?'On your list as a Start.':d.how==='parked'?'Parked. It is still here when you want it.':'Dropped. One less thing to carry.');break;}
+    case 'jrPin':{const e=(S.journal||[]).find(x=>x.id===d.id);if(!e)break;e.pin=!e.pin;save();render();setStatus(e.pin?'Pinned. It will come round as your daily reminder.':'Unpinned.');break;}
+    case 'jrDel':{S.journal=(S.journal||[]).filter(x=>x.id!==d.id);save();render();setStatus('Deleted.');break;}
+    case 'jrCoach':{if(JR.asking)break;JR.asking=true;render();
+      const notes=(S.journal||[]).slice(-60).map(e=>({kind:e.kind,when:new Date(e.ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),text:e.text.slice(0,400)}));
+      askCoach('patterns',{notes,rules:rules()}).then(r=>{JR.asking=false;JR.coach=r||null;if(!r)setStatus('The coach could not answer just now. The ledger\u2019s own read is above.');render();});break;}
+    case 'jrImprove':{const x=JR.coach&&JR.coach.improve&&JR.coach.improve[Number(d.i)];if(!x)break;addTodo({text:x,type:'Start',h:'week',hours:0,source:'jri-'+uid()});save();render();setStatus('On your list.');break;}
+    case 'jrPinCoach':{if(!JR.coach||!JR.coach.reminder)break;const e=journalAdd(JR.coach.reminder,'note');e.pin=true;save();render();setStatus('Pinned as a daily reminder.');break;}
+    case 'pullCancel':PULL=false;QUICK=null;render();break;
+    case 'pullSave':{const what=picked('pull-what')[0],who=picked('pull-who')[0];if(!what||!who){setStatus('Pick what pulled you in and who could have decided it.');break;}
+      PULL=false;QUICK=null;logPull(what.slice(0,120),who.slice(0,80));save();render();
+      setStatus(who==='Nobody yet'?'Logged. Nobody owns that yet: that is the gap to fill.':`Logged. Handing it to ${who} is now a Stop on your list.`);break;}
+    case 'personAdd':{const i=byId('person-own');const v=i?i.value.trim().slice(0,80):'';if(!v)break;if(!(S.people||[]).includes(v))S.people=(S.people||[]).concat(v);save();render();break;}
+    case 'personDel':{const i=Number(d.i);S.people=(S.people||[]).filter((_,k)=>k!==i);save();render();break;}
+    case 'amSave':{const one=picked('am-one')[0],rule=picked('am-rule')[0]||'';if(!one){setStatus('Pick today\u2019s one thing.');break;}
+      if(todayOf(S.mornings))break;S.mornings=(S.mornings||[]).concat({ts:Date.now(),one:one.slice(0,160),rule}).slice(-400);save();render();setStatus('Day set. Do the one thing before the inbox.');break;}
+    case 'pmSave':{if(todayOf(S.evenings))break;const am=todayOf(S.mornings);const did=picked('pm-one')[0]==='Yes';const good=picked('pm-good')[0];
+      if(did&&am){const td=S.todos.find(x=>!x.done&&x.text===am.one);if(td){td.done=true;td.doneAt=Date.now();td.star=false;}}
+      if(good){S.notes.push({ts:Date.now(),kind:'good',text:good.slice(0,200)});if(S.notes.length>400)S.notes=S.notes.slice(-400);}
+      S.evenings=(S.evenings||[]).concat({ts:Date.now(),oneDone:did,good:good||'',closed:true}).slice(-400);save();render();
+      setStatus(am?`Day closed. +${BOOKEND_PTS} points for both bookends. Laptop shut.`:'Day closed. Laptop shut.');break;}
+    case 'pulseSave':{const vals={};for(const x of PULSE){const i=byId('pulse-'+x.k);const n=i&&i.value!==''?Number(i.value):NaN;if(!isFinite(n)){setStatus('Fill in all three numbers.');return;}vals[x.k]=Math.round(n);}
+      const wk=weekNo(Date.now());const ps=(S.pulse||[]).filter(p=>weekNo(p.ts)!==wk);S.pulse=ps.concat({ts:Date.now(),...vals}).slice(-200);save();render();setStatus('Firm pulse logged. Facts, not feelings.');break;}
+    case 'deliSave':{const vals={};for(const f of DELI_FIELDS){const i=byId('deli-'+f.k);const n=i&&i.value!==''?Number(i.value):NaN;if(!isFinite(n)){setStatus('Fill in all five numbers.');return;}vals[f.k]=f.unit==='%'?Math.round(n*10)/10:Math.round(n);}
+      if(vals.cogs<0||vals.cogs>=100){setStatus('Cost of sales is a percentage of sales, between 0 and 99.');break;}
+      saveDeliWeek(vals);save();render();const s=deliStatus();setStatus(s.profit>=0?`Logged. Making ${gbp(s.profit)} this week.`:`Logged. Losing ${gbp(-s.profit)} this week: pick the next lever.`);break;}
+    case 'deliTargets':{const c=Number((byId('deli-t-cogs')||{}).value),l=Number((byId('deli-t-labour')||{}).value);if(!(c>0&&c<100&&l>0&&l<100)){setStatus('Targets are percentages between 1 and 99.');break;}
+      S.deli.targets={cogs:c,labour:l};save();render();setStatus('Targets saved.');break;}
+    case 'leverStart':{const l=DELI_LEVERS.find(x=>x.id===d.id);if(!l)break;startLever(l.id);save();render();setStatus('On your list. Give it an owner and a date.');break;}
+    case 'monthOpen':S.monthView=d.key;S.view='month';save();render();toTop();break;
+    case 'monthClose':{const key=S.monthView||prevMonthKey();const focus=picked('mc-focus')[0];if(!focus){setStatus('Pick next month\u2019s focus.');break;}
+      closeMonth(key,focus,picked('mc-rules')[0]==='Change one now');save();render();toTop();setStatus(`Month closed. +${MONTH_PTS} points.`);break;}
+    case 'remindersIcs':{const ids=REMINDERS.filter(r=>picked('rem').includes(r.name)).map(r=>r.id);if(!ids.length){setStatus('Pick at least one reminder.');break;}
+      const blob=new Blob([icsFor(ids)],{type:'text/calendar'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='founders-ledger-reminders.ics';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);
+      setStatus('Calendar file made. Open it and add the events to your calendar.');break;}
+    case 'awayEnd':{const a=awayNow();if(a){a.to=dayStart(Date.now());save();render();setStatus('Welcome back.');}break;}
+    case 'awayCancel':{S.away=(S.away||[]).filter(x=>x.id!==d.id);save();render();break;}
+    case 'awayDates':{const f=byId('away-from'),to=byId('away-to');const a=f&&f.value?new Date(f.value+'T12:00').getTime():0,b=to&&to.value?new Date(to.value+'T12:00').getTime():0;
+      if(!a||!b||b<a){setStatus('Pick a first and last day, the last on or after the first.');break;}
+      const from=dayStart(a),last=dayStart(b);S.away=(S.away||[]).filter(x=>!(x.from<=last&&x.to>=from)).concat({id:'a'+uid(),from,to:last,pulls:[]});save();render();setStatus('Away logged.');break;}
     case 'habitLog':{S.habitLog=(S.habitLog||[]).concat({id:d.id,ts:Date.now()}).slice(-2000);const h=habits().find(x=>x.id===d.id);save();render();
       if(h){const n=habitCount(h.id);setStatus(n===h.target?`${h.name}: week done. +${HABIT_PTS} points.`:`${h.name} logged.`);}break;}
     case 'habitUndo':{const k=dayKey(Date.now());const log=(S.habitLog||[]).slice();for(let i=log.length-1;i>=0;i--){if(log[i].id===d.id&&dayKey(log[i].ts)===k){log.splice(i,1);break;}}S.habitLog=log;save();render();break;}
@@ -1740,6 +2463,12 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  LINE_SIGNS, LINE_TRIGGERS, DEFAULT_SHIFTS, LINE_PTS, lineCheck, lineShift, lineResult, lineOpen, linePatterns, lineLines, shiftsFirst,
+  WTS_STAGES, WTS_SEED, WTS_OBJECTIVE, WTS_PRINCIPLES, WTS_PTS, wtsAdd, wtsAdvance, wtsStartWriting, wtsMovedThisWeek, wtsStreak, wtsSummary, wtsObjectiveText, nowItems,
+  JOURNAL_KINDS, THEMES, themesOf, journalAdd, journalPatterns, decideIdea, dailyReminder, reminderDue,
+  BOOKEND_PTS, bookendDays, PULSE, PULSE_PTS, pulseChange, pulseLine, PULL_WHAT, DEFAULT_PEOPLE, logPull, handoverMap, handoverDone,
+  MONTH_PTS, monthStats, monthDue, prevMonthKey, closeMonth, DELI_FIELDS, DELI_LEVERS, DELI_PTS, deliCalc, deliStatus, saveDeliWeek, startLever, REMINDERS, icsFor,
+  AWAY_PLANS, WEEK_TYPES, awayOn, awayDaysThisWeek, pullsThisWeek, planAway, workedReviews,
   RINGS, FULL_DAY_PTS, REST_MAX, dayRings, dayStreak, weeklyRings, honours, habitBest,
   DEFAULT_HABITS, HABIT_IDEAS, HABIT_PTS, habitCount, habitStreak, habitMet, sessionBrief, agendaText, SESSION_PTS,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
@@ -1747,6 +2476,8 @@ return {
   DEFAULT_RULES, RULE_IDEAS, talkLoud, receipts, SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
+    // The first open of the day lands on Today, where the daily reminder waits.
+    if (reminderDue()) S.view = 'today';
     ROOT.innerHTML = MARKUP;
     attach();
     render();

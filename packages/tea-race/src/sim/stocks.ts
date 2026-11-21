@@ -47,7 +47,7 @@ export const COMPANIES: Record<StockId, Company> = {
   atlantic: {
     id: 'atlantic',
     name: 'Atlantic & Western',
-    blurb: 'The short, busy runs — home waters, the Americas, the Cape.',
+    blurb: 'The short, busy runs: home waters, the Americas, the Cape.',
     regions: ['britain', 'europe', 'north_america', 'caribbean', 'africa'],
     base: 90,
   },

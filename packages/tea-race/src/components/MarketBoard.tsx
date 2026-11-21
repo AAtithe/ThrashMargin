@@ -42,14 +42,14 @@ export default function MarketBoard({
       }
     >
       <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-        No commissions in free play — buy where a good is grown and sell where it is wanted. Every
+        No commissions in free play: buy where a good is grown and sell where it is wanted. Every
         purchase lifts that port's price and every landing depresses it, so a run that everyone else
         is making stops being worth making.
       </p>
 
       {carrying && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-          <Label>Her hold — best buyers</Label>
+          <Label>Her hold: best buyers</Label>
           {bestBuyers(state, carrying).map(b => (
             <button key={b.port} type="button" style={row} onClick={() => onPortClick(b.port)}>
               <span style={{ color: UI.text, minWidth: '8rem' }}>{portName(b.port)}</span>

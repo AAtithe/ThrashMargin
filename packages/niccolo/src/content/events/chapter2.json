@@ -104,7 +104,7 @@
     "body": "A broker who has clearly done this before offers a first parcel at a price that assumes the house doesn't yet know the going local rate.",
     "choices": [
       {
-        "text": "Buy on his word — time matters more than the margin",
+        "text": "Buy on his word: time matters more than the margin",
         "effects": {
           "cash": 8
         }
@@ -125,7 +125,7 @@
       "flag": "reached_trebizond"
     },
     "title": "An audience is granted",
-    "body": "Emperor David's court extends the courtesy of a hearing to the new Florentine bank at his gate — as much curiosity as courtesy, in a court that sees fewer western ledgers every year the Ottoman ring around it tightens.",
+    "body": "Emperor David's court extends the courtesy of a hearing to the new Florentine bank at his gate (as much curiosity as courtesy) in a court that sees fewer western ledgers every year the Ottoman ring around it tightens.",
     "choices": [
       {
         "text": "Attend in the house's plainest good clothes",
@@ -165,7 +165,7 @@
       "flag": "reached_trebizond"
     },
     "title": "The customs officer's ledger",
-    "body": "A minor official at the harbour customs house, paid too little and resentful of it, lets it be known he keeps a private tally of what the Ottoman side across the border is really moving in alum — knowledge worth more in Genoa or Florence than it is to him.",
+    "body": "A minor official at the harbour customs house, paid too little and resentful of it, lets it be known he keeps a private tally of what the Ottoman side across the border is really moving in alum: knowledge worth more in Genoa or Florence than it is to him.",
     "choices": [
       {
         "text": "Pay for a look at it",
@@ -174,14 +174,14 @@
           "secret": {
             "id": "secret_trebizond_alum",
             "name": "The Ottoman alum accounts",
-            "description": "A customs officer's private tally of alum moving through Ottoman-held ground east of Trebizond — the same trade Tolfa threatens to undercut, seen from the other side of the ledger.",
+            "description": "A customs officer's private tally of alum moving through Ottoman-held ground east of Trebizond: the same trade Tolfa threatens to undercut, seen from the other side of the ledger.",
             "value": 60,
             "expiresInWeeks": 16
           }
         }
       },
       {
-        "text": "Decline — it isn't worth the risk of being seen buying it",
+        "text": "Decline: it isn't worth the risk of being seen buying it",
         "effects": {
           "conscience": 1
         }
@@ -240,7 +240,7 @@
       "flag": "court_audience"
     },
     "title": "Pagano's charm offensive",
-    "body": "Doria arrives in Trebizond a fortnight behind and makes up the ground at court in an afternoon — better Greek than any Charetty officer speaks, and a manner that makes every merchant he meets feel like his oldest friend.",
+    "body": "Doria arrives in Trebizond a fortnight behind and makes up the ground at court in an afternoon: better Greek than any Charetty officer speaks, and a manner that makes every merchant he meets feel like his oldest friend.",
     "choices": [
       {
         "text": "Match him, contact for contact",
@@ -306,7 +306,7 @@
         }
       },
       {
-        "text": "Let it lie — some doors are better left shut",
+        "text": "Let it lie: some doors are better left shut",
         "effects": {
           "conscience": 1
         }
@@ -320,7 +320,7 @@
       "flag": "court_audience"
     },
     "title": "Word of the Sultan's muster",
-    "body": "News reaches the court, and through it the agency, of a muster gathering at the Sultan's order along the Anatolian coast road — the kind of muster that has, this past decade, tended to end with a city changing hands.",
+    "body": "News reaches the court, and through it the agency, of a muster gathering at the Sultan's order along the Anatolian coast road: the kind of muster that has, this past decade, tended to end with a city changing hands.",
     "choices": [
       {
         "text": "Note it and carry on trading",
@@ -362,7 +362,7 @@
       "flag": "ottoman_muster_known"
     },
     "title": "What the house stands to lose",
-    "body": "The agency's position is plain enough once said aloud: people first, then capital, then whatever cargo can still be moved — in that order, and there may not be time to save all three.",
+    "body": "The agency's position is plain enough once said aloud: people first, then capital, then whatever cargo can still be moved, in that order, and there may not be time to save all three.",
     "choices": [
       {
         "text": "Set the priorities and start moving on them",
@@ -379,7 +379,7 @@
       "flag": "doria_sabotage_occurred"
     },
     "title": "Spoiled goods",
-    "body": "Part of a hold turns up ruined, or missing, or both, in circumstances a Trebizond harbour master shrugs off as simply what happens to cargo in a crowded port — circumstances that happen, this once, to favour a rival's ship rather more than luck alone would explain.",
+    "body": "Part of a hold turns up ruined, or missing, or both, in circumstances a Trebizond harbour master shrugs off as simply what happens to cargo in a crowded port: circumstances that happen, this once, to favour a rival's ship rather more than luck alone would explain.",
     "choices": [
       {
         "text": "Say nothing and absorb the loss",
@@ -458,7 +458,7 @@
       "flag": "trebizond_extraction_success"
     },
     "title": "What survived",
-    "body": "The agency is closed, the ledger struck through and totalled. Whatever the ledger doesn't show — a city's court, a market, a season's worth of contacts built and now scattered — is a cost the house pays without ever entering it as a line.",
+    "body": "The agency is closed, the ledger struck through and totalled. Whatever the ledger doesn't show (a city's court, a market, a season's worth of contacts built and now scattered) is a cost the house pays without ever entering it as a line.",
     "choices": [
       {
         "text": "Reckon the gain against the cost, and move on",
@@ -495,7 +495,7 @@
       ]
     },
     "title": "The Spring of the Ram, concluded",
-    "body": "Trebizond's spring closes the way the court at Constantinople's did before it, on a schedule the house never controlled and could only race. Pagano Doria's venture outlasts the city it was built on, one way or another — a name the house will hear again. What the agency actually shows for the season is whatever is still standing when the books are struck.",
+    "body": "Trebizond's spring closes the way the court at Constantinople's did before it, on a schedule the house never controlled and could only race. Pagano Doria's venture outlasts the city it was built on, one way or another: a name the house will hear again. What the agency actually shows for the season is whatever is still standing when the books are struck.",
     "choices": [
       {
         "text": "Close the Trebizond agency's books for good",
@@ -553,7 +553,7 @@
           "evidence": {
             "id": "par_charetty_indenture",
             "name": "The Charetty indenture",
-            "description": "Among the demoiselle's own papers, the apprenticeship indenture that brought Claes into the house at ten years old — and, on the reverse, a note of who actually paid the fee. It is not the name Bruges has always assumed, and it is not his mother's.",
+            "description": "Among the demoiselle's own papers, the apprenticeship indenture that brought Claes into the house at ten years old, and, on the reverse, a note of who actually paid the fee. It is not the name Bruges has always assumed, and it is not his mother's.",
             "track": "parentage",
             "kind": "document"
           }
@@ -570,7 +570,7 @@
           "evidence": {
             "id": "par_charetty_indenture",
             "name": "The Charetty indenture",
-            "description": "Among the demoiselle's own papers, the apprenticeship indenture that brought Claes into the house at ten years old — and, on the reverse, a note of who actually paid the fee. It is not the name Bruges has always assumed, and it is not his mother's.",
+            "description": "Among the demoiselle's own papers, the apprenticeship indenture that brought Claes into the house at ten years old, and, on the reverse, a note of who actually paid the fee. It is not the name Bruges has always assumed, and it is not his mother's.",
             "track": "parentage",
             "kind": "document"
           }

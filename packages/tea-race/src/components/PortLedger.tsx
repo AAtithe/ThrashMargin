@@ -137,10 +137,10 @@ export default function PortLedger({ contracts, reference, onPortClick, targetPo
                               wanted
                                 ? `A commission wants ${good?.name} ${mode === 'sells' ? 'loaded' : 'landed'} here`
                                 : mode === 'sells'
-                                  ? `${good?.name} — ${port.name} asks ${money(
+                                  ? `${good?.name}: ${port.name} asks ${money(
                                       priceAt(port.id, id),
                                     )} a lot, reckoned at ${money(good?.basePrice ?? 0)}`
-                                  : `${good?.name} — reckoned at ${money(good?.basePrice ?? 0)} a lot`
+                                  : `${good?.name}: reckoned at ${money(good?.basePrice ?? 0)} a lot`
                             }
                             style={{
                               ...goodChip,

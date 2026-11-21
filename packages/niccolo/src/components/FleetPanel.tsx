@@ -94,14 +94,14 @@ export default function FleetPanel({
                 <span style={{ fontFamily: FONT.display, fontSize: '0.9rem', color: UI.text }}>{v.name}</span>
                 <span style={{ ...bodySmall, fontSize: '0.78rem' }}>
                   {to
-                    ? `en route to ${to.name} — ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
+                    ? `en route to ${to.name}, ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
                     : `docked at ${at?.name ?? v.location}`}
                   {v.capacity > 0 && ` · hold ${held}/${v.capacity}`}
                 </span>
               </button>
               {crew.map(c => (
                 <p key={c.id} style={{ ...bodySmall, fontSize: '0.72rem', margin: '0.15rem 0 0.4rem 0.9rem' }}>
-                  {c.name} — aboard
+                  {c.name}, aboard
                 </p>
               ))}
               {!v.destination && v.plannedRoute && v.plannedRoute.length > 0 && (() => {
@@ -123,7 +123,7 @@ export default function FleetPanel({
                 return (
                   <div style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem' }}>
                     <p style={{ ...bodySmall, fontSize: '0.72rem', margin: '0 0 0.3rem' }}>
-                      Continuing on to {nextCity?.name ?? nextRoute.id} next week — {v.plannedRoute.length} leg
+                      Continuing on to {nextCity?.name ?? nextRoute.id} next week, {v.plannedRoute.length} leg
                       {v.plannedRoute.length === 1 ? '' : 's'} remaining.
                     </p>
                     {canInsureNextLeg && (
@@ -154,19 +154,20 @@ export default function FleetPanel({
         })}
         {notAboardRoster.map(c => (
           <p key={c.id} style={{ ...bodySmall, fontSize: '0.78rem', color: UI.text, margin: '0.3rem 0' }}>
-            {c.name} <span style={{ color: UI.textSoft }}>— {assignmentSummary(c, state.vessels)}</span>
+            {c.name}<span style={{ color: UI.textSoft }}>: {assignmentSummary(c, state.vessels)}</span>
           </p>
         ))}
       </div>
 
       {state.lastVoyageEvent && (
         <p className={revealReport(0).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(0).style }}>
-          Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} — lost{' '}
+          Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} and{' '}
+          lost{' '}
           {state.lastVoyageEvent.quantityLost} {state.lastVoyageEvent.goodId}.{' '}
           {state.lastVoyageEvent.insured ? (
             <span style={{ color: UI.good }}>Insurance paid {state.lastVoyageEvent.payout}f.</span>
           ) : (
-            <span style={{ color: UI.bad }}>Uninsured — a total loss.</span>
+            <span style={{ color: UI.bad }}>Uninsured: a total loss.</span>
           )}
         </p>
       )}
@@ -175,7 +176,8 @@ export default function FleetPanel({
         <p className={revealReport(1).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(1).style }}>
           Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
           {state.lastSabotageEvent.vesselName}'s cargo at{' '}
-          {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} — lost{' '}
+          {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} and{' '}
+          lost{' '}
           {state.lastSabotageEvent.quantityLost} {state.lastSabotageEvent.goodId}.
         </p>
       )}
@@ -183,14 +185,14 @@ export default function FleetPanel({
       {state.lastExpeditionEvent && (
         <p className={revealReport(2).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(2).style }}>
           Week {state.lastExpeditionEvent.week}: {state.lastExpeditionEvent.vesselName}'s crew turn{' '}
-          {state.lastExpeditionEvent.healthStatus} — {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
+          {state.lastExpeditionEvent.healthStatus}: {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
         </p>
       )}
 
       {state.expedition && (
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0 }}>
           {expeditionVessel?.name ?? 'The vessel'} is {state.expedition.weeksUpriver} week
-          {state.expedition.weeksUpriver === 1 ? '' : 's'} into the Gambia's interior — crew health:{' '}
+          {state.expedition.weeksUpriver === 1 ? '' : 's'} into the Gambia's interior. Crew health:{' '}
           {state.expedition.healthStatus}.
         </p>
       )}

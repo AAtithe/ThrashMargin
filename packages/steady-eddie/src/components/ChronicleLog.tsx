@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { LiveRegion } from '../lib/Kit';
 import { FONT, UI } from '../theme';
 import { Empty, Label, Panel } from './ui';
 import type { Haulier, LogEntry, LogKind } from '../sim/types';
@@ -54,6 +55,33 @@ export default function ChronicleLog({
       </div>
     </Panel>
   );
+}
+
+/**
+ * Reads new log entries to a screen reader, politely, as they land. Lives outside the panels
+ * (which are aria-hidden while put away) so the game is heard with the log closed. What was
+ * already in the log when the screen opened is not read out.
+ */
+export function LogAnnouncer({ log }: { log: LogEntry[] }) {
+  const seen = useRef<number | null>(null);
+  const [message, setMessage] = useState('');
+  const [nonce, setNonce] = useState(0);
+  const lastSeq = log.length ? log[log.length - 1].seq : 0;
+  useEffect(() => {
+    if (seen.current === null) {
+      seen.current = lastSeq;
+      return;
+    }
+    const since = seen.current;
+    seen.current = lastSeq;
+    const fresh = log.filter(e => e.seq > since);
+    if (fresh.length === 0) return;
+    // A whole rival turn can land at once; the last few are what matter.
+    setMessage(fresh.slice(-5).map(e => e.text).join(' '));
+    setNonce(n => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSeq]);
+  return <LiveRegion message={message} nonce={nonce} />;
 }
 
 const scrollerStyle: React.CSSProperties = {

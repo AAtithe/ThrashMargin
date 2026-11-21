@@ -61,6 +61,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const saves = row
           ? [{ id: row.id, name: "The Founder's Ledger", turn: Number(row.turn) || 0, status: row.status, savedAt: Math.round(parseFloat(row.saved_at)) }]
           : [];
+        // ?open=1: the ledger itself in the same reply, so opening it is one round trip, not two.
+        if (row && queryParam(req, 'open') === '1') {
+          const { rows } = await db.query('SELECT state, version FROM games WHERE id = $1 AND owner_id = $2 AND game = $3', [row.id, user.userId, GAME_KIND]);
+          if (rows[0]) return res.json({ saves, state: rows[0].state, version: rows[0].version });
+        }
         return res.json({ saves });
       } catch (err) {
         console.error('list founders-ledger error', err);

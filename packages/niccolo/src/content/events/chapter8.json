@@ -326,7 +326,7 @@
         }
       },
       {
-        "text": "Everything — the company, the papers, and him finished in Flanders",
+        "text": "Everything: the company, the papers, and him finished in Flanders",
         "effects": {
           "cash": 200,
           "conscience": -6,
@@ -406,7 +406,7 @@
         }
       },
       {
-        "text": "Break it up — settle the officers, close the agencies, keep the name",
+        "text": "Break it up: settle the officers, close the agencies, keep the name",
         "effects": {
           "flags": [
             "final_shape_chosen",
@@ -610,7 +610,7 @@
       "flag": "chapter8_open"
     },
     "title": "Master Julius, and the last bill of exchange",
-    "body": "He has drawn every instrument the house has ever signed, has been reckless exactly twice in twenty-three years, and asks — with the air of a man who has rehearsed it — to be allowed to draw the last one himself, whatever it turns out to be. It is not a request about money. Master Gregorio, who understands him better than either of them admits, says nothing and slides the paper across.",
+    "body": "He has drawn every instrument the house has ever signed, has been reckless exactly twice in twenty-three years, and asks, with the air of a man who has rehearsed it, to be allowed to draw the last one himself, whatever it turns out to be. It is not a request about money. Master Gregorio, who understands him better than either of them admits, says nothing and slides the paper across.",
     "choices": [
       {
         "text": "Let him draw it",

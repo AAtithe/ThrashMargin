@@ -84,7 +84,7 @@ export default function RivalFleets({
         })}
       </div>
       <p style={{ ...meta, margin: 0, color: UI.textFaint }}>
-        Coloured squares are loaded slots — hover a fleet to see how full she is (capacity depends on her
+        Coloured squares are loaded slots. Hover a fleet to see how full she is (capacity depends on her
         class). Only the first two vehicles home are paid, so a rival already loaded and closer than you
         has the race.
       </p>

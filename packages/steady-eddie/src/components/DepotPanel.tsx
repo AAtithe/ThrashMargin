@@ -109,6 +109,9 @@ export default function DepotPanel({
     const options = reachableOnRoad(vehicle);
     return (
       <Panel title="Orders" aside={<Label>{vehicle.name}</Label>}>
+        {!enabled && state.phase === 'roll' && (
+          <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.warn }}>Roll for the day before you give orders.</p>
+        )}
         <p style={{ ...bodySmall, margin: 0 }}>
           {vehicle.name} is on the road, {pointsToDestination(vehicle)} drive points off{' '}
           {dest ? depotName(dest) : 'her destination'}.
@@ -126,7 +129,7 @@ export default function DepotPanel({
                     disabled={!enabled}
                     title={
                       putAbout
-                        ? 'Turn back — she loses whatever ground she has made on this leg'
+                        ? 'Turn back. She loses whatever ground she has made on this leg'
                         : 'Hold at the next depot instead of driving past it'
                     }
                     onClick={() =>
@@ -150,13 +153,16 @@ export default function DepotPanel({
 
   return (
     <Panel title="Orders" aside={<Label>{`${vehicle.name} · ${depot?.name ?? ''}`}</Label>}>
+      {!enabled && state.phase === 'roll' && (
+        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.warn }}>Roll for the day before you give orders.</p>
+      )}
       {/* --- Land a cargo ------------------------------------------------------------- */}
       {landable.length > 0 && (
         <div style={block}>
           <Label>Land her cargo</Label>
           {struck && (
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.bad }}>
-              {depot?.name} is struck — no landing here until it lifts. The reducer already refuses
+              {depot?.name} is struck: no landing here until it lifts. The reducer already refuses
               this silently; these buttons are disabled so the refusal is visible instead.
             </p>
           )}
@@ -170,12 +176,12 @@ export default function DepotPanel({
                 disabled={!enabled || struck}
                 title={
                   struck
-                    ? `${depot?.name} is struck — landing is refused here until the strike lifts`
+                    ? `${depot?.name} is struck. Landing is refused here until the strike lifts`
                     : `Every matching slot lands at once and is paid per unit`
                 }
                 onClick={() => dispatch({ type: 'DELIVER', vehicleId: vehicle.id, contractId: c.id })}
               >
-                Land {units} × {goodName(c.good)} — {rank === 1 ? 'first home' : 'second home'},{' '}
+                Land {units} × {goodName(c.good)}: {rank === 1 ? 'first home' : 'second home'},{' '}
                 {money(payoutFor(c) * units)}
               </Button>
             );
@@ -187,10 +193,10 @@ export default function DepotPanel({
       {vehicle.hold.length < slotsOf(vehicle?.vehicleClass) && depot && (
         <div style={block}>
           <Label>
-            Load a cargo — {slotsOf(vehicle?.vehicleClass) - vehicle.hold.length} of {slotsOf(vehicle?.vehicleClass)} slots free
+            Load a cargo · {slotsOf(vehicle?.vehicleClass) - vehicle.hold.length} of {slotsOf(vehicle?.vehicleClass)} slots free
           </Label>
           {struck ? (
-            <Empty>{depot.name} is struck — no lading here until it lifts.</Empty>
+            <Empty>{depot.name} is struck: no lading here until it lifts.</Empty>
           ) : depot.supplies.length === 0 ? (
             <Empty>{depot.name} has nothing to sell. She must go elsewhere for a cargo.</Empty>
           ) : (
@@ -210,9 +216,10 @@ export default function DepotPanel({
                     key={id}
                     id={`load-cargo-${id}`}
                     disabled={!enabled || !afford || embargoed}
+                    disabledReason={enabled ? (embargoed ? 'Under embargo' : !afford ? `Needs ${money(price)}` : '') : ''}
                     title={
                       embargoed
-                        ? `${good.name} is under embargo — nowhere will load it until it lifts`
+                        ? `${good.name} is under embargo. Nowhere will load it until it lifts`
                         : afford
                           ? `Reckoned at ${money(good.basePrice)} a lot; ${depot.name} asks ${money(price)}`
                           : `${good.name} costs ${money(price)} here`
@@ -260,21 +267,21 @@ export default function DepotPanel({
                       disabled={!enabled}
                       title={`${depot.name} will take them at ${money(
                         depotSalePrice(depot.id, good),
-                      )} a lot — ${money(paid - takings)} down on the ${money(paid)} she paid. ${
+                      )} a lot, ${money(paid - takings)} down on the ${money(paid)} she paid. ${
                         DEPOT_BY_ID[depot.id]?.demands.includes(good) ||
                         DEPOT_BY_ID[depot.id]?.supplies.includes(good)
                           ? 'This depot deals in it, so the price is fair.'
-                          : 'This depot has no real buyer for it — somewhere that deals in it would pay far more.'
+                          : 'This depot has no real buyer for it. Somewhere that deals in it would pay far more.'
                       }`}
                       onClick={() => dispatch({ type: 'SELL_CARGO', vehicleId: vehicle.id, good })}
                     >
-                      Sell {lots.length} × {goodName(good)} — {money(takings)}
+                      Sell {lots.length} × {goodName(good)}, {money(takings)}
                     </Button>
                   )}
                   <Button
                     tone="danger"
                     disabled={!enabled}
-                    title="Dumping recovers nothing at all — the whole purchase price is forfeit"
+                    title="Dumping recovers nothing at all: the whole purchase price is forfeit"
                     onClick={() => dispatch({ type: 'DUMP', vehicleId: vehicle.id, good })}
                   >
                     Dump {lots.length} × {goodName(good)}
@@ -286,7 +293,7 @@ export default function DepotPanel({
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
             {sellable
               ? 'A depot that deals in the good pays best; anywhere else takes it off your hands for little. Over the side gets you nothing at all.'
-              : 'Over the side. You get nothing back — only do it to free a slot for better work.'}
+              : 'Over the side. You get nothing back, so only do it to free a slot for better work.'}
           </p>
         </div>
       )}
@@ -303,7 +310,7 @@ export default function DepotPanel({
         ) : course ? (
           <>
             <p style={{ ...bodySmall, margin: 0 }}>
-              <strong style={{ color: UI.text }}>{depotName(targetDepot)}</strong> — {course.distance}{' '}
+              <strong style={{ color: UI.text }}>{depotName(targetDepot)}</strong>: {course.distance}{' '}
               drive points
               {course.path.length > 1 && (
                 <>
@@ -316,7 +323,7 @@ export default function DepotPanel({
             <p style={{ ...dataText, fontSize: '0.72rem', margin: 0, color: UI.textFaint }}>
               {points >= course.distance
                 ? `She has ${points} points and parks up this turn.`
-                : `She has ${points} points — about ${Math.max(1, Math.ceil((course.distance - points) / 7)) + 1} turns.`}
+                : `She has ${points} points, about ${Math.max(1, Math.ceil((course.distance - points) / 7)) + 1} turns.`}
             </p>
 
             {season && course.path.length > 0 && (() => {
@@ -347,8 +354,8 @@ export default function DepotPanel({
                         style={{ accentColor: UI.brass }}
                       />
                       <span>
-                        <strong style={{ color: UI.text }}>{fast ? 'Fastest this season' : 'Shortest'}</strong>{' '}
-                        — {c.distance} points
+                        <strong style={{ color: UI.text }}>{fast ? 'Fastest this season' : 'Shortest'}</strong>:{' '}
+                        {c.distance} points
                         {turns !== null ? `, about ${turns.toFixed(1)} turns` : ''}
                       </span>
                     </label>

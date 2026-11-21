@@ -133,7 +133,7 @@ export default function HousesPanel({ houses, houseRelations, agents, cash, flag
           </optgroup>
         </select>
         <button style={{ ...SMALL_BUTTON, marginTop: '0.35rem', width: '100%' }} disabled={!canAfford} onClick={submit}>
-          Place agent — {cost}f{!canAfford && ' (not enough cash)'}
+          Place agent, {cost}f{!canAfford && ' (not enough cash)'}
         </button>
       </div>
     </div>

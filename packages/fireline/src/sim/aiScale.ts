@@ -89,3 +89,11 @@ export function stageDistance(s: GameState): number {
   const k = mapScale(s);
   return k === 1 ? 10 : Math.round(10 + AI_SCALE.stage * (k - 1));
 }
+
+/**
+ * Production lines (one per producer): the computer fills a line beyond the first only with this many
+ * credits in hand, so the saving it does by taking back units not yet started still has some to take.
+ * Never in a campaign mission: the missions were balanced on one line, so their commanders keep it.
+ */
+export const EXTRA_LINE_RESERVE = 1000;
+export const extraLine = (s: GameState, credits: number): boolean => !s.mission && credits >= EXTRA_LINE_RESERVE;

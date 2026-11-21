@@ -267,6 +267,22 @@ async function suite(mode: 'fresh' | 'legacy') {
   const stale = jwt.sign({ userId: tom.body.userId, username: 'Tom', iat: Math.floor(Date.now() / 1000) - 13 * 3600 }, 'api-test-secret', { expiresIn: '7d' });
   ok((await call(handlers.profile, 'GET', {}, undefined, stale)).status === 401, 'session: 13-hour-old token refused');
   ok((await play('GET', 'tea-race', stale)).status === 401, 'session: 13-hour-old token refused for saves');
+  // "Keep me signed in on this device": 30 days, no longer, and only when the server signed it so.
+  const remLogin = await auth('login', { username: 'Tom', password: 'secret11', remember: true });
+  const R = remLogin.body.token as string;
+  const rc = jwt.decode(R) as { iat: number; exp: number; rem?: number };
+  ok(rc.rem === 1 && rc.exp - rc.iat === 30 * 86400, 'remember: token lasts 30 days');
+  ok((await call(handlers.profile, 'GET', {}, undefined, R)).status === 200, 'remember: a remembered session works');
+  const now = Math.floor(Date.now() / 1000);
+  const remOld = jwt.sign({ userId: tom.body.userId, username: 'Tom', rem: 1, iat: now - 20 * 86400 }, 'api-test-secret', { expiresIn: '60d' });
+  ok((await play('GET', 'tea-race', remOld)).status === 200, 'remember: a 20-day-old remembered session still works');
+  const remStale = jwt.sign({ userId: tom.body.userId, username: 'Tom', rem: 1, iat: now - 31 * 86400 }, 'api-test-secret', { expiresIn: '60d' });
+  ok((await play('GET', 'tea-race', remStale)).status === 401, 'remember: a 31-day-old remembered session is refused');
+  const remTrue = jwt.sign({ userId: tom.body.userId, username: 'Tom', rem: true, iat: now - 13 * 3600 }, 'api-test-secret', { expiresIn: '60d' });
+  ok((await play('GET', 'tea-race', remTrue)).status === 401, 'remember: only the exact claim counts');
+  const remForged = jwt.sign({ userId: tom.body.userId, username: 'Tom', rem: 1, iat: now - 13 * 3600 }, 'not-the-secret', { expiresIn: '60d' });
+  ok((await play('GET', 'tea-race', remForged)).status === 401, 'remember: a claim added without the secret is refused');
+  ok(!(jwt.decode(T) as { rem?: number }).rem, 'remember: off unless asked for');
   const cols = await admin.query(
     `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'role'`,
   );
@@ -515,6 +531,10 @@ async function suite(mode: 'fresh' | 'legacy') {
   const withReview = await play('PUT', 'founders-ledger', A2, ledgerList.body.saves[0].id, { state: { v: 2, reviews: [{ ts: 1 }, { ts: 2 }] } });
   ok(withReview.status === 200, 'ledger: a ledger saved');
   ok((await play('GET', 'founders-ledger', A2)).body.saves[0].turn === 2, 'ledger: the list counts its Friday reviews');
+  {
+    const opened = await call(handlers.play, 'GET', { kind: 'founders-ledger', open: '1' }, undefined, A2);
+    ok(opened.status === 200 && opened.body.saves.length === 1 && opened.body.state?.reviews?.length === 2 && typeof opened.body.version === 'number', 'ledger: ?open=1 returns the ledger in one reply');
+  }
 
   // --- The ledger's coach (Claude) -------------------------------------------------------------------
   const coach = (method: string, task: string, token: string | undefined, body?: unknown) =>

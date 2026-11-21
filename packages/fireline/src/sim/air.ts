@@ -7,6 +7,8 @@ import {
   FLIGHT_TICKS,
   FUEL_RESERVE,
   FUEL_TICKS,
+  HELIPAD_MEND_HP,
+  HELIPAD_MEND_TICKS,
   HELIPAD_SLOTS,
   ORBIT_COS,
   ORBIT_SIN,
@@ -26,7 +28,7 @@ import {
 } from './rules';
 import { migrateLoadouts } from './loadout';
 import { airDamageMulOf, airSpeedOf, damageMulOf, migrateResearch, rearmMulOf, researchTicksOf, splashMulOf } from './research';
-import { researchModeOf } from './state';
+import { maxHpOf, researchModeOf } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { unitSpecOf } from './specs';
@@ -167,6 +169,18 @@ export function parkAircraft(s: GameState, u: Unit): void {
   goRearm(s, u);
   u.path = [];
   u.pathGoal = -1;
+}
+
+/**
+ * Whether the player's Return to base order means anything to this unit: an aircraft not on a bomb
+ * run (which always finishes, then heads home anyway) that is not already on its way home or parked.
+ */
+export const canSendHome = (u: Unit): boolean => isAir(u) && !u.bombRun && u.order.type !== 'rearm';
+
+/** Return to base for an aircraft: home to its Helipad (or another with room), land, rearm, repair, stay. */
+export function sendHome(s: GameState, u: Unit): void {
+  parkAircraft(s, u);
+  u.queue = [];
 }
 
 /** True when this weapon can fire at this target, by whether it is in the air. */
@@ -428,6 +442,12 @@ function rearm(s: GameState, u: Unit, h: AirHooks, max: number): void {
   if (!fly(s, u, spot.x, spot.y)) {
     u.engage = 0;
     return;
+  }
+  // Landed: the pad's crew patch it up while it sits there, alongside the rearming.
+  const hpMax = maxHpOf(u);
+  if (u.hp < hpMax && (s.tick + u.id) % HELIPAD_MEND_TICKS === 0) {
+    u.hp = Math.min(hpMax, u.hp + HELIPAD_MEND_HP);
+    if (Math.floor(s.tick / HELIPAD_MEND_TICKS) % 2 === 0) s.effects.push({ id: s.nextId++, kind: 'repair', x: u.x, y: u.y, at: s.tick, size: 0 });
   }
   if ((u.ammo ?? 0) < max) {
     u.engage = 0;

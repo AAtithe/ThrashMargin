@@ -102,6 +102,14 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
     Boolean(bidTarget) &&
     canHostileBid(captain.shares, captain.cash, bidTarget!.shares, bidsMade);
 
+  /**
+   * Why a button is shut, shown under it (the kit Button's disabledReason). Only while the panel is
+   * live: before the roll every button here is shut for the same reason, which the turn bar gives.
+   * An empty string keeps the button's wrapper in place, so the row does not jump.
+   */
+  const why = (reason: string | false | null | undefined) => (enabled && reason ? reason : '');
+  const needs = (price: number) => captain.cash < price && `Needs ${money(price)}`;
+
   return (
     <Panel
       title="Counting house"
@@ -122,7 +130,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       <p style={{ ...bodySmall, margin: 0 }}>
         {freePlay ? (
           <>
-            No company to carry in free play — be worth the most when the season closes. Cash, cargo,
+            No company to carry in free play: be worth the most when the season closes. Cash, cargo,
             hulls and holdings all count; debts come off.
           </>
         ) : (
@@ -165,10 +173,11 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
                   {trend === 'high' ? ' ▲' : trend === 'low' ? ' ▼' : ''}
                 </span>
                 <span style={{ color: UI.textFaint, minWidth: '3.5rem' }}>
-                  {held > 0 ? `${held} held` : '—'}
+                  {held > 0 ? `${held} held` : 'none'}
                 </span>
                 <Button
                   disabled={!enabled || captain.cash < price}
+                  disabledReason={why(needs(price))}
                   title={`Buy one at ${money(price)}. It is worth having when the price is under ${money(
                     co.base,
                   )} and the cards are about to send everyone that way.`}
@@ -205,7 +214,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           )}
           {arrears > 0 && (
             <span style={{ color: UI.bad }}>
-              <strong>{money(arrears)} in arrears</strong> — it comes off the top next round
+              <strong>{money(arrears)} in arrears</strong>, and it comes off the top next round
             </span>
           )}
           {loansOn && debt > 0 && (
@@ -220,6 +229,9 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           <Button
             disabled={!enabled || debt + LOAN_STEP > ceiling}
+            disabledReason={why(
+              debt + LOAN_STEP > ceiling && (ceiling === 0 ? 'Nothing to borrow against' : `At your ${money(ceiling)} ceiling`),
+            )}
             title={
               ceiling === 0
                 ? 'The bank lends against ships and shares, and you have nothing to pledge.'
@@ -235,6 +247,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           <Button
             tone="quiet"
             disabled={!enabled || debt <= 0 || captain.cash <= 0}
+            disabledReason={why(debt <= 0 ? 'Nothing owed' : captain.cash <= 0 && 'No cash to repay with')}
             onClick={() => dispatch({ type: 'REPAY_LOAN' })}
           >
             Repay {money(Math.min(debt, LOAN_STEP, captain.cash))}
@@ -244,11 +257,17 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
         {!freePlay && (
-        <Button id="buy-share-button" disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
+        <Button
+          id="buy-share-button"
+          disabled={!enabled || !canBuyShare}
+          // "No share to be had" already says it on the button's face.
+          disabledReason={why((bankHasShares || buyoutTarget) && needs(sharePrice))}
+          onClick={() => dispatch({ type: 'BUY_SHARE' })}
+        >
           {bankHasShares
-            ? `Take up a share — ${money(sharePrice)}`
+            ? `Take up a share (${money(sharePrice)})`
             : buyoutTarget
-              ? `Buy out ${buyoutTarget.name} — ${money(sharePrice)}`
+              ? `Buy out ${buyoutTarget.name} (${money(sharePrice)})`
               : 'No share to be had'}
         </Button>
         )}
@@ -256,20 +275,28 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         {!freePlay && bidsEnabled && bidTarget && (
           <Button
             disabled={!enabled || !canBid}
+            disabledReason={why(
+              !canBid &&
+                (captain.shares >= SHARE_MAJORITY
+                  ? 'You hold a majority: declare instead'
+                  : captain.cash < bidPrice
+                    ? `Needs ${money(bidPrice)}`
+                    : 'Not open to you now'),
+            )}
             title={
               captain.shares >= SHARE_MAJORITY
-                ? 'You already hold a majority — declare instead.'
+                ? 'You already hold a majority: declare instead.'
                 : captain.cash < bidPrice
                   ? `A bid costs ${money(bidPrice)} and you hold ${money(captain.cash)}.`
                   : `Takes one share off ${bidTarget.name} whatever your own holding. Dearer the ` +
                     `more you already hold, and every bid anyone makes doubles the price for ` +
-                    `everyone after — both compound, so your next would cost ${money(
+                    `everyone after. Both compound, so your next would cost ${money(
                       hostileBidPrice(bidsMade + 1, captain.shares + 1),
                     )}.`
             }
             onClick={() => dispatch({ type: 'HOSTILE_BID', targetId: bidTarget.id })}
           >
-            Bid for {bidTarget.name}'s share — {money(bidPrice)}
+            Bid for {bidTarget.name}'s share ({money(bidPrice)})
           </Button>
         )}
 
@@ -277,10 +304,11 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         <Button
           tone="quiet"
           disabled={!enabled || captain.shares === 0}
+          disabledReason={why(captain.shares === 0 && 'You hold no shares')}
           title={`The bank pays half. Use it when you cannot afford a cargo.`}
           onClick={() => dispatch({ type: 'SELL_SHARE' })}
         >
-          Surrender a share — {money(buyback)}
+          Surrender a share ({money(buyback)})
         </Button>
         )}
 
@@ -291,6 +319,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
               <Button
                 key={id}
                 disabled={!enabled || fleetSize >= MAX_SHIPS || captain.cash < hull.price}
+                disabledReason={why(fleetSize >= MAX_SHIPS ? `Fleet full at ${MAX_SHIPS} ships` : needs(hull.price))}
                 title={
                   fleetSize >= MAX_SHIPS
                     ? `No captain may run more than ${MAX_SHIPS} ships`
@@ -304,7 +333,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
                 }
                 onClick={() => dispatch({ type: 'BUY_SHIP', shipClass: id })}
               >
-                {classesOn ? hull.name : 'Buy a clipper'} — {money(hull.price)}
+                {classesOn ? hull.name : 'Buy a clipper'} ({money(hull.price)})
                 {classesOn && (
                   <span style={{ color: UI.textFaint }}>
                     {' '}
@@ -321,7 +350,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
           The bank's ten are all out. A share now costs {SHARE_RAID_MULTIPLIER}×{' '}
           {sabotage
-            ? '— and while the countdown runs you may buy one off anyone, including the leader.'
+            ? 'and, while the countdown runs, you may buy one off anyone, including the leader.'
             : 'and can only be bought off a captain holding no more than you do.'}
           {bidsEnabled && !sabotage && (
             <>
@@ -374,26 +403,28 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
                 <div key={ship.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <span style={{ ...dataText, fontSize: '0.7rem', color: UI.textSoft }}>
                     {ship.name}
-                    {!docked && ' — at sea'}
+                    {!docked && ', at sea'}
                   </span>
                   <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     {state.hazards?.weather && (
                       <Button
                         disabled={!enabled || !docked || Boolean(ship.fittings?.copper) || captain.cash < FITTING_PRICES.copper}
+                        disabledReason={why(docked && !ship.fittings?.copper && needs(FITTING_PRICES.copper))}
                         title="Coppered hulls foul less: a point of speed always, and less ground lost to heavy weather."
                         onClick={() => dispatch({ type: 'BUY_FITTING', shipId: ship.id, fitting: 'copper' })}
                       >
-                        {ship.fittings?.copper ? '✓ Coppered' : `Copper — ${money(FITTING_PRICES.copper)}`}
+                        {ship.fittings?.copper ? '✓ Coppered' : `Copper (${money(FITTING_PRICES.copper)})`}
                       </Button>
                     )}
                     {state.hazards?.piracy && (
                       <>
                         <Button
                           disabled={!enabled || !docked || Boolean(ship.fittings?.guns) || captain.cash < FITTING_PRICES.guns}
+                          disabledReason={why(docked && !ship.fittings?.guns && needs(FITTING_PRICES.guns))}
                           title="Guns halve the chance of being troubled, and talk most boarders down to a ransom."
                           onClick={() => dispatch({ type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' })}
                         >
-                          {ship.fittings?.guns ? '✓ Armed' : `Guns — ${money(FITTING_PRICES.guns)}`}
+                          {ship.fittings?.guns ? '✓ Armed' : `Guns (${money(FITTING_PRICES.guns)})`}
                         </Button>
                         <Button
                           tone={ship.insured ? 'default' : 'quiet'}
@@ -417,8 +448,8 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
                           {holdValue > 0 && (
                             <span style={{ color: UI.textFaint }}>
                               {' '}
-                              — {money(insurancePremium(holdValue, 0))}–
-                              {money(insurancePremium(holdValue, 1))} a passage
+                              ({money(insurancePremium(holdValue, 0))}–
+                              {money(insurancePremium(holdValue, 1))} a passage)
                             </span>
                           )}
                         </Button>

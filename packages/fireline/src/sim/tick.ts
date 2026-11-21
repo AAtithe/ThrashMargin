@@ -103,12 +103,13 @@ import {
   maxHpOf,
   powerOf,
   producerFor,
+  productionLines,
   sabotaged,
   syncSkirmishPowers,
   updateExplored,
 } from './state';
 import { computerSides, enemiesOf, isAlly, isEnemy, sidesOf, teamOf } from './sides';
-import type { Building, GameState, Projectile, Unit } from './types';
+import type { Building, GameState, Projectile, QueueItem, Unit } from './types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { seenBy, sitesStep } from './sites';
 // Round 6 groundwork: per-side specs and perks (fireline-round6-design.md).
@@ -343,24 +344,40 @@ function production(s: GameState, ctx: Ctx): void {
     const rate = (ctx.power[owner] ? 0.5 : 1) * perk;
     if (p.research) researchStep(s, owner, ctx.power[owner]);
     for (const cat of CATEGORIES) {
+      // Units: one line per producer, each working its own item (productionLines, state.ts).
+      if (cat !== 'building') {
+        const q = p.queues[cat];
+        if (!q?.length) continue;
+        const lines = productionLines(s, owner, cat);
+        if (!lines.length) continue;
+        const assembly = buildRateOf(s, owner, cat);
+        // The items on the lines this tick, taken before any comes out (the next starts next tick).
+        const active = q.slice(0, lines.length);
+        active.forEach((item, i) => {
+          const producer = lines[i];
+          const total = buildTicksFor(s, owner, item.kind);
+          if (item.progress >= total) {
+            spawnFromQueue(s, ctx, owner, cat, item, producer);
+            return;
+          }
+          if (sabotaged(s, producer)) return;
+          item.progress = Math.min(total, item.progress + (assembly !== 1 ? rate * assembly : rate));
+          if (item.progress >= total) spawnFromQueue(s, ctx, owner, cat, item, producer);
+        });
+        continue;
+      }
       // A mission's players have no air queue.
       const head = p.queues[cat]?.[0];
       if (!head) continue;
       const total = buildTicksFor(s, owner, head.kind);
-      if (head.progress >= total) {
-        if (cat !== 'building') spawnFromQueue(s, ctx, owner, cat);
-        continue;
-      }
+      // Structures: one at a time, finished and waiting to be placed.
+      if (head.progress >= total) continue;
       const producer = producerFor(s, owner, cat);
       if (!producer || sabotaged(s, producer)) continue;
       // Assembly lines (development lines): every queue but the building one.
       const assembly = buildRateOf(s, owner, cat);
       head.progress = Math.min(total, head.progress + (assembly !== 1 ? rate * assembly : rate));
-      if (head.progress >= total) {
-        if (cat === 'building') {
-          if (owner === 0) log(s, `${nameOf(s, owner, head.kind)} ready. Choose where to place it.`, 'good');
-        } else spawnFromQueue(s, ctx, owner, cat);
-      }
+      if (head.progress >= total && owner === 0) log(s, `${nameOf(s, owner, head.kind)} ready. Choose where to place it.`, 'good');
     }
   }
 }
@@ -368,12 +385,18 @@ function production(s: GameState, ctx: Ctx): void {
 const nameOf = (s: GameState, owner: Owner, kind: BuildingKind | UnitKind): string =>
   kind in UNITS ? unitSpec(s, owner, kind as UnitKind).name : buildingSpec(s, owner, kind as BuildingKind).name;
 
-function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): void {
-  const producer = producerFor(s, owner, cat);
-  if (!producer) return;
+/** Takes a finished item off its queue (wherever it stands in it now). */
+function takeItem(s: GameState, owner: Owner, cat: Category, item: QueueItem): QueueItem {
+  const q = s.players[owner].queues[cat];
+  q.splice(q.indexOf(item), 1);
+  return item;
+}
+
+/** A finished item comes out of the structure whose line built it. */
+function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category, item: QueueItem, producer: Building): void {
   if (cat === 'air') {
     // Aircraft lift off the Helipad itself: no door, no ground to clear.
-    const head = s.players[owner].queues.air.shift()!;
+    const head = takeItem(s, owner, cat, item);
     const a = addUnit(s, owner, head.kind as UnitKind, producer.x + 1, producer.y + 1);
     launchAircraft(s, a, producer);
     upgradeNewUnit(s, a);
@@ -388,8 +411,8 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
   const ex = door.x + 0.5;
   const ey = door.y + 0.5;
   const k = cat === 'naval' ? launchTile(s, ctx.occ, producer) : nearestPassable(s, ctx.occ, ex, ey, 5);
-  if (k < 0) return; // Exit blocked: stays finished at the head of the queue and tries next tick.
-  const head = s.players[owner].queues[cat].shift()!;
+  if (k < 0) return; // Exit blocked: stays finished on its line and tries next tick.
+  const head = takeItem(s, owner, cat, item);
   const kind = head.kind as UnitKind;
   const MAP_W = s.mapW;
   const u = addUnit(s, owner, kind, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);

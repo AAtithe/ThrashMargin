@@ -34,7 +34,7 @@ export default function CampaignProgress({ chapterNumber, title }: CampaignProgr
   return (
     <div style={WRAP}>
       <span>
-        Chapter {chapterNumber} — {title}
+        Chapter {chapterNumber}: {title}
       </span>
       <span style={{ display: 'flex', gap: '0.15rem' }}>
         {Array.from({ length: chapterNumber + 1 }, (_, i) => (

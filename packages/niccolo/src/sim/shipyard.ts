@@ -132,7 +132,7 @@ export function buyVessel(state: GameState, typeId: string, name?: string): Game
   // Bought where the house is standing. Any docked vessel counts as the house being present, which
   // is the same test `MarketPanel` and the warehouse use — a yard needs somebody there to sign.
   const at = state.vessels.find(v => !v.destination && isShipyard(v.location));
-  if (!at) throw new Error('The house has nobody at a shipyard — Bruges, Venice or Genoa');
+  if (!at) throw new Error('The house has nobody at a shipyard (Bruges, Venice or Genoa)');
   if (cityBarred(state.flags, at.location)) {
     throw new Error(`${findCity(at.location)?.name ?? at.location} is closed to the house while the ban stands`);
   }
@@ -193,7 +193,7 @@ export function sellVessel(state: GameState, vesselId: string): GameState {
     throw new Error(`${vessel.name} is carrying the expedition`);
   }
   if (vessel.capacity > 0 && state.vessels.filter(v => v.capacity > 0).length <= 1) {
-    throw new Error('The house cannot sell its only hull — there would be no way left to trade');
+    throw new Error('The house cannot sell its only hull. There would be no way left to trade');
   }
 
   return {

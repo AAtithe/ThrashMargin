@@ -7,7 +7,7 @@
     "durationWeeks": [5, 9],
     "goodIds": ["spices", "silk", "glass", "sugar"],
     "cityIds": ["venice", "florence", "genoa", "milan"],
-    "headline": "A wedding in {city} that the whole city is expected to notice — {good} is dear while it lasts, and nobody is haggling."
+    "headline": "A wedding in {city} that the whole city is expected to notice: {good} is dear while it lasts, and nobody is haggling."
   },
   {
     "id": "me_court_mourning",
@@ -53,7 +53,7 @@
     "blocksTrade": true,
     "durationWeeks": [4, 8],
     "goodIds": ["cloth", "glass", "silk", "wool"],
-    "headline": "The guild at {city} has closed {good} to foreign houses — not taxed, not restricted, closed. Nothing moves in or out of that trade here until they say otherwise."
+    "headline": "The guild at {city} has closed {good} to foreign houses, not taxed, not restricted, closed. Nothing moves in or out of that trade here until they say otherwise."
   },
   {
     "id": "me_customs_dispute",

@@ -11,6 +11,7 @@ import '@fontsource/old-standard-tt/latin-400.css';
 import '@fontsource/old-standard-tt/latin-400-italic.css';
 import '@fontsource/old-standard-tt/latin-700.css';
 import './portal.css';
+import './lib/kit.css';
 import './styles.css';
 
 // Light or dark is the player's choice, shared across the portal (lib/colorScheme.ts). index.html

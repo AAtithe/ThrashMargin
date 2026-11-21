@@ -58,7 +58,7 @@ function story(e: LogEntry, nameOf: (id: string | null) => string): Omit<Story, 
         ? { weight: 25, art: 'contract', headline: `${who}'s owners are pleased`, text: e.text, colour: UI.brass }
         : null;
     case 'era':
-      return { weight: 110, art: 'event', headline: e.text.split('.')[0].replace('A new era: ', 'A new era — '), text: e.text, colour: UI.brass };
+      return { weight: 110, art: 'event', headline: e.text.split('.')[0], text: e.text, colour: UI.brass };
     case 'career':
       return d.level !== undefined
         ? { weight: 28, art: 'declare', headline: `${who} rises to level ${d.level}`, text: e.text, colour: UI.verdigris }

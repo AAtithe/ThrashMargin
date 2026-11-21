@@ -195,5 +195,14 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   Chromium with the API intercepted (the Founder's Ledger, which has no lobby, through its own
   routine), about 180 checks in a few minutes; starts and stops its
   own dev servers. Needs Playwright, so it is not part of `npm run check`.
+- **Controls come from the shared UI kit**, `lib/Kit.tsx` and `lib/kit.css` (originals in
+  `shared/portal/client/`, adoption guide in `KIT.md` beside them): `Button` (with `disabledReason`, which shows
+  why a button is disabled as visible text, since phones never show a tooltip), `Field`, `SelectField`, `Toggle`
+  and `LiveRegion`. Each game maps the kit's `--kit-*` variables to its own palette in its `styles.css`. Hover,
+  focus, disabled and 40px phone targets live in the kit once; do not re-add them per game.
+- **`npm run check:ui` after any visual change.** Drives every game and the landing page at 375 and 1440 in
+  light and dark, and fails on sideways scroll, text under WCAG AA contrast, phone tap targets under 40px, and
+  page errors (`scripts/ui-check.cjs`; each exclusion is documented in `scripts/ui-check/audit.cjs`). Name games
+  to run only those. Needs Playwright, so like `check:loading` it is not in `npm run check`; CI runs it.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

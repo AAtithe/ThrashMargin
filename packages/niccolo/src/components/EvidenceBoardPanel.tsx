@@ -86,11 +86,11 @@ export default function EvidenceBoardPanel({ evidence, houses, flags }: Evidence
         const unmasked = !!flags[hidden.revealedByFlag];
         return (
           <div key={house.id}>
-            <p style={LABEL}>{house.name} — who stands behind it</p>
+            <p style={LABEL}>{house.name}: who stands behind it</p>
             <p style={{ fontSize: '0.75rem', color: unmasked ? UI.good : UI.warn, margin: '0 0 0.4rem' }}>
               {unmasked
                 ? 'Named.'
-                : `${held.length} of ${UNMASK_EVIDENCE_THRESHOLD} pieces in hand — not yet enough to name anybody.`}
+                : `${held.length} of ${UNMASK_EVIDENCE_THRESHOLD} pieces in hand, not yet enough to name anybody.`}
             </p>
             {unmasked && (
               <p style={{ fontSize: '0.78rem', color: UI.brass, margin: '0 0 0.5rem' }}>{hidden.text}</p>

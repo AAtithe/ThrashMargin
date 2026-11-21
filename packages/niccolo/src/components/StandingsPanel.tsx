@@ -68,12 +68,12 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
       {state.freeplayWonWeek !== undefined && (
         <p style={{ fontSize: '0.8rem', color: win.playerWon ? UI.good : UI.warn, margin: '0 0 0.6rem' }}>
           {win.playerWon
-            ? `Won in week ${state.freeplayWonWeek} — ${freeplayGoalLabel(state)}. Nothing stops you carrying on.`
-            : `${win.winners[0]?.name ?? 'A rival'} won in week ${state.freeplayWonWeek} — ${freeplayGoalLabel(state)}. The board is still open if you want it back.`}
+            ? `Won in week ${state.freeplayWonWeek}: ${freeplayGoalLabel(state)}. Nothing stops you carrying on.`
+            : `${win.winners[0]?.name ?? 'A rival'} won in week ${state.freeplayWonWeek}: ${freeplayGoalLabel(state)}. The board is still open if you want it back.`}
         </p>
       )}
 
-      <p style={{ ...LABEL, marginTop: 0 }}>Standing — {freeplayGoalLabel(state)}</p>
+      <p style={{ ...LABEL, marginTop: 0 }}>Standing: {freeplayGoalLabel(state)}</p>
       {goal === 'by_year' && state.freeplayWonWeek === undefined && (
         <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
           {Math.max(0, FREEPLAY_DEADLINE_WEEKS - state.week)} weeks left. Nobody has won anything yet.
@@ -90,7 +90,7 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
             <span style={{ flex: 1 }}>
               <span style={{ color: UI.textFaint, fontSize: '0.72rem' }}>{i + 1}. </span>
               <span style={{ color: row.isPlayer ? UI.brass : UI.text }}>{row.name}</span>
-              {seat && <span style={{ color: UI.textSoft, fontSize: '0.7rem' }}> — out of {seat}</span>}
+              {seat && <span style={{ color: UI.textSoft, fontSize: '0.7rem' }}>, out of {seat}</span>}
               {goal === 'target' && row.netWorth >= FREEPLAY_TARGET_NET_WORTH && (
                 <span style={{ color: UI.good, fontSize: '0.7rem' }}> · past the post</span>
               )}
@@ -129,7 +129,7 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
           <div key={t.id} style={{ ...ROW, borderBottom: 'none', padding: '0.25rem 0' }}>
             <span style={{ flex: 1 }}>
               {t.name}
-              {inside && <span style={{ color: UI.verdigris, fontSize: '0.72rem' }}> — we have a man inside</span>}
+              {inside && <span style={{ color: UI.verdigris, fontSize: '0.72rem' }}>: we have a man inside</span>}
             </span>
             {!inside && (
               <button
@@ -141,7 +141,7 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
                 disabled={cost > state.cash}
                 onClick={() => onPlaceAgent(t.id)}
               >
-                Place an agent — {cost}f{cost > state.cash && ' (short)'}
+                Place an agent, {cost}f{cost > state.cash && ' (short)'}
               </button>
             )}
           </div>
@@ -149,14 +149,14 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
       })}
       <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.3rem 0 0', fontStyle: 'italic' }}>
         A man inside feeds their counting house a false price now and then. It holds only until their
-        own next report from that city arrives — so the better-informed the rival, the shorter the lie
+        own next report from that city arrives, so the better-informed the rival, the shorter the lie
         lasts.
       </p>
 
       <p style={LABEL}>What the rivals did this week</p>
       {notes.length === 0 ? (
         <p style={{ fontSize: '0.75rem', color: UI.textFaint, margin: 0, fontStyle: 'italic' }}>
-          Nothing reported — their hulls are at sea.
+          Nothing reported: their hulls are at sea.
         </p>
       ) : (
         notes.slice(0, 8).map((n, i) => (
@@ -179,7 +179,7 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
       <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.8rem 0 0', fontStyle: 'italic' }}>
         A rival never sees a price it has not reached, never ignores travel time, and never trades at
         a price you could not also get. What separates them is capital and how fresh their reports
-        are — which is what your own couriers are for.
+        are, which is what your own couriers are for.
       </p>
     </div>
   );

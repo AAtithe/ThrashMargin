@@ -27,6 +27,7 @@ import {
   SETUP_CREDITS_MIN,
   SIDE_NAMES,
   ORDER_QUEUE_MAX,
+  MAX_QUEUE,
   POWERS,
   SKIRMISH_POWERS,
   STANDARD_TECH,
@@ -561,6 +562,36 @@ export function producerFor(s: GameState, owner: Owner, category: Category): Bui
   }
   return working ?? found;
 }
+
+/**
+ * Production lines: every unit queue runs one line per structure that works it (a second Barracks
+ * is a second infantry line, with its own MAX_QUEUE places), and each line's item comes out of its
+ * own structure. Structures stay one at a time. The lines in order: working producers by id, then
+ * any a Spy has stopped (their line holds; an item already finished there still comes out, as with
+ * a single producer). With one producer this is exactly the single queue it always was.
+ */
+export function productionLines(s: GameState, owner: Owner, category: Category): Building[] {
+  if (category === 'building') {
+    const b = producerFor(s, owner, category);
+    return b ? [b] : [];
+  }
+  const kind = PRODUCER[category];
+  const all = s.buildings.filter(b => b.owner === owner && (b.kind === kind || ALSO_PRODUCES[b.kind] === category)).sort((a, b) => a.id - b.id);
+  return [...all.filter(b => !sabotaged(s, b)), ...all.filter(b => sabotaged(s, b))];
+}
+
+/** How many lines this queue runs: one per producer standing (at least one), and one for structures. */
+export function lineCount(s: GameState, owner: Owner, category: Category): number {
+  if (category === 'building') return 1;
+  const kind = PRODUCER[category];
+  let n = 0;
+  for (const b of s.buildings) if (b.owner === owner && (b.kind === kind || ALSO_PRODUCES[b.kind] === category)) n++;
+  return Math.max(1, n);
+}
+
+/** Places in this queue: MAX_QUEUE a line (one for structures). */
+export const queueCap = (s: GameState, owner: Owner, category: Category): number =>
+  category === 'building' ? 1 : MAX_QUEUE * lineCount(s, owner, category);
 
 /**
  * True when this side has something standing that works this queue: its PRODUCER, or a structure

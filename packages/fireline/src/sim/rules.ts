@@ -1633,6 +1633,9 @@ export const HERO_XP_ABILITY = HERO_XP_STRUCTURE;
 
 /** How many aircraft one Helipad serves: it builds for them and rearms them. */
 export const HELIPAD_SLOTS = 2;
+/** A Helipad mends the aircraft landed on it, this much every this many ticks, free (as a Naval Yard its ships). */
+export const HELIPAD_MEND_HP = 8;
+export const HELIPAD_MEND_TICKS = 10;
 
 /** True for an aircraft: any unit whose category is 'air'. */
 export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === 'air';

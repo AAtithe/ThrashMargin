@@ -15,6 +15,7 @@ import { MISSIONS } from '../campaign/missions';
 import { ACT_TWO } from '../campaign/act2';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 import NoGameAccess from '../lib/NoGameAccess';
+import { Field } from '../lib/Kit';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
 import { onSchemeChange } from '../lib/colorScheme';
 import { currentPace } from '../lib/motion';
@@ -273,21 +274,25 @@ export default function Lobby() {
               <div className="fl-campaign-new">
                 <span className="fl-campaign-latest-kicker">{latest ? 'Or begin another' : 'Begin a campaign'}</span>
                 <div className="fl-campaign-form">
-                  <div style={field}>
-                    <Label>Commander's name</Label>
-                    <input
-                      style={input}
-                      value={commander}
-                      placeholder="Commander"
-                      maxLength={32}
-                      data-testid="commander-name"
-                      onChange={e => setCommander(e.target.value)}
-                    />
-                  </div>
-                  <div style={field}>
-                    <Label>Name this campaign</Label>
-                    <input style={input} value={campName} placeholder="The Fireline campaign" maxLength={60} onChange={e => setCampName(e.target.value)} />
-                  </div>
+                  <Field
+                    label={<Label>Commander's name</Label>}
+                    wrapStyle={field}
+                    className="fl-lobby-input"
+                    value={commander}
+                    placeholder="Commander"
+                    maxLength={32}
+                    data-testid="commander-name"
+                    onChange={e => setCommander(e.target.value)}
+                  />
+                  <Field
+                    label={<Label>Name this campaign</Label>}
+                    wrapStyle={field}
+                    className="fl-lobby-input"
+                    value={campName}
+                    placeholder="The Fireline campaign"
+                    maxLength={60}
+                    onChange={e => setCampName(e.target.value)}
+                  />
                 </div>
                 {campError && (
                   <div style={errorBanner} role="alert">
@@ -427,7 +432,8 @@ export default function Lobby() {
                     <Label>Map seed</Label>
                     <div className="fl-seed">
                       <input
-                        style={{ ...input, width: 200, fontFamily: FONT.mono }}
+                        className="kit-input fl-lobby-input"
+                        style={{ width: 200, fontFamily: FONT.mono }}
                         value={seed}
                         placeholder={autoSeed}
                         aria-label="Map seed"
@@ -476,10 +482,15 @@ export default function Lobby() {
                 <Order k="Seed">{seedText}</Order>
               </ul>
               <div className="fl-deploy">
-                <div style={{ ...field, flex: '1 1 220px', marginBottom: 0 }}>
-                  <Label>Name this battle</Label>
-                  <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
-                </div>
+                <Field
+                  label={<Label>Name this battle</Label>}
+                  wrapStyle={{ ...field, flex: '1 1 220px', marginBottom: 0 }}
+                  className="fl-lobby-input"
+                  value={name}
+                  placeholder="Operation Fireline"
+                  maxLength={60}
+                  onChange={e => setName(e.target.value)}
+                />
                 <div className="fl-begin-row">
                   <Button tone="primary" disabled={busy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
                     {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
@@ -783,17 +794,6 @@ const eyebrow: CSSProperties = { margin: 0, fontSize: '0.7rem', letterSpacing: '
 const eyebrowOnArt: CSSProperties = { ...eyebrow, color: 'var(--ui-on-art-soft)' };
 const title: CSSProperties = { margin: 0, fontFamily: FONT.display, fontSize: 'clamp(2.6rem, 9vw, 4.6rem)', letterSpacing: '0.12em', lineHeight: 0.95 };
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.4rem' };
-const input: CSSProperties = {
-  fontFamily: 'inherit',
-  fontSize: '0.9rem',
-  padding: '0.45rem 0.6rem',
-  border: `1px solid ${UI.rule}`,
-  background: UI.ground,
-  color: UI.text,
-  borderRadius: 3,
-  maxWidth: '100%',
-  boxSizing: 'border-box',
-};
 const errorBanner: CSSProperties = {
   padding: '0.6rem 0.8rem',
   marginBottom: '1rem',

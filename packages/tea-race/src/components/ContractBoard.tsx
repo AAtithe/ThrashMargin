@@ -34,7 +34,7 @@ export default function ContractBoard({
   const nameOf = (id: string) => captains.find(c => c.id === id)?.name ?? 'someone';
 
   return (
-    <Panel title="The exchange" aside={<Label>five commissions</Label>}>
+    <Panel title="Commissions" aside={<Label>{contracts.length} on the board</Label>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {contracts.map(contract => {
           const good = GOOD_BY_ID[contract.good];
@@ -139,7 +139,7 @@ export default function ContractBoard({
                         }}
                       >
                         {rank === 1 ? '1st' : '2nd'} ×{multiplier} {money(contract.price * multiplier)}
-                        {fill ? ` — ${nameOf(fill.captainId)}` : ''}
+                        {fill ? `, ${nameOf(fill.captainId)}` : ''}
                       </span>
                     );
                   })}

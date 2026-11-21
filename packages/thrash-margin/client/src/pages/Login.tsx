@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getToken, setToken, setStoredUser } from '../lib/token';
+import { getToken, setToken, setStoredUser, rememberPreference, setRememberPreference } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -20,6 +20,7 @@ const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
   { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
   { prefix: '/tea-race/', title: 'The Tea Race', subtitle: 'Clippers · Cargo · First home' },
   { prefix: '/steady-eddie/', title: 'Steady Eddie', subtitle: 'Haulage · Loads · First to the depot' },
+  { prefix: '/founders-ledger/', title: "The Founder's Ledger", subtitle: 'CEO coaching · Profit · Space' },
   { prefix: '/fireline/', title: 'Fireline', subtitle: 'Real-time strategy · Build · Harvest · Conquer' },
 ];
 
@@ -32,6 +33,13 @@ export default function Login() {
   // Registered while the portal requires approval: no session yet, so say so rather than sign in.
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // "Keep me signed in on this device": 30 days, no idle limit, enforced by the server. Ticked by
+  // default when opened as an app from the home screen, and the choice is remembered per device.
+  const [remember, setRemember] = useState(() => {
+    const saved = localStorage.getItem('tm_remember');
+    if (saved !== null) return rememberPreference();
+    return window.matchMedia?.('(display-mode: standalone)').matches === true || (navigator as { standalone?: boolean }).standalone === true;
+  });
   const game = GAME_TITLES.find(g => destination().startsWith(g.prefix));
 
   useEffect(() => {
@@ -45,8 +53,9 @@ export default function Login() {
     setLoading(true);
     try {
       const body = mode === 'register'
-        ? { username, email, password }
-        : { username, password };
+        ? { username, email, password, remember }
+        : { username, password, remember };
+      setRememberPreference(remember);
       const res = await fetch(`${API}/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,23 +79,23 @@ export default function Login() {
       // A full page load, not a router push: the destination is usually another app on the portal.
       window.location.assign(destination());
     } catch {
-      setError('Network error — try again');
+      setError('Network error. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={s.outer}>
+    <div className="tm-portal" style={s.outer}>
       <PortalNav variant="header" />
       <div style={s.page}>
         <div style={s.card}>
         <h1 style={s.title}>{game?.title ?? 'Thrash Margin'}</h1>
         <p style={s.subtitle}>{game?.subtitle ?? 'Territory · Economy · Conquest'}</p>
 
-        <div style={s.tabs}>
+        <div style={s.tabs} role="group" aria-label="Sign in or register">
           {(['login', 'register'] as const).map(m => (
-            <button key={m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); setNotice(null); }}>
+            <button key={m} type="button" aria-pressed={mode === m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); setNotice(null); }}>
               {m === 'login' ? 'Sign in' : 'Register'}
             </button>
           ))}
@@ -107,8 +116,13 @@ export default function Login() {
             style={s.input} type="password" placeholder="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password} onChange={e => setPassword(e.target.value)} required
           />
+          <label style={s.remember}>
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={s.check} />
+            <span>Keep me signed in on this device for 30 days</span>
+          </label>
+          {remember && <p style={s.hint}>Only on your own phone or computer. Signing out, or changing your password, ends it.</p>}
           {new URLSearchParams(window.location.search).get('deleted') === '1' && !error && (
-            <p style={{ color: '#3fb950', fontSize: 13, margin: 0 }}>Your account and saved games have been deleted.</p>
+            <p style={{ color: 'var(--portal-good)', fontSize: 13, margin: 0 }} role="status">Your account and saved games have been deleted.</p>
           )}
           {error && <p style={s.error}>{error}</p>}
           {notice && !error && <p style={s.notice} role="status">{notice}</p>}
@@ -116,8 +130,8 @@ export default function Login() {
             {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
-        <p style={{ fontSize: 12, color: '#7d8590', textAlign: 'center', margin: '14px 0 0' }}>
-          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: '#58a6ff' }}>privacy notice</a>
+        <p style={{ fontSize: 12, color: 'var(--portal-soft)', textAlign: 'center', margin: '14px 0 0', lineHeight: 1.5 }}>
+          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: 'var(--tm-portal-link-text)' }}>privacy notice</a>
         </p>
         </div>
       </div>
@@ -128,8 +142,8 @@ export default function Login() {
 
 const s: Record<string, React.CSSProperties> = {
   outer:   { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:    { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif' },
-  card:    { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '40px 48px', width: 340 },
+  page:    { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
+  card:    { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 'clamp(28px, 8vw, 40px) clamp(20px, 8vw, 48px)', width: 436, maxWidth: '100%', boxSizing: 'border-box' },
   title:   { color: 'var(--portal-text)', fontSize: 28, fontWeight: 700, margin: '0 0 4px', letterSpacing: -0.5 },
   subtitle:{ color: 'var(--portal-soft)', margin: '0 0 28px', fontSize: 13 },
   tabs:    { display: 'flex', gap: 2, marginBottom: 20, background: 'var(--portal-ground)', borderRadius: 6, padding: 3 },
@@ -137,6 +151,9 @@ const s: Record<string, React.CSSProperties> = {
   tabOff:  { flex: 1, padding: '7px 0', border: 'none', background: 'transparent', color: 'var(--portal-soft)', cursor: 'pointer', borderRadius: 4, fontSize: 13 },
   form:    { display: 'flex', flexDirection: 'column', gap: 10 },
   input:   { padding: '9px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
+  remember:{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 13, color: 'var(--portal-text)', cursor: 'pointer' },
+  check:   { width: 20, height: 20, margin: 0, accentColor: 'var(--portal-text)' },
+  hint:    { color: 'var(--portal-soft)', fontSize: 12, margin: '-4px 0 0', lineHeight: 1.45 },
   error:   { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
   notice:  { color: 'var(--portal-good)', fontSize: 13, margin: 0, lineHeight: 1.45 },
   btn:     { marginTop: 6, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },

@@ -339,7 +339,7 @@ function fogOpacity(age: number | null): number {
 function cityTooltip(c: City, age: number | null, reachable: boolean, hasSelection: boolean): string {
   const report =
     age === null ? 'no report yet' : age <= 2 ? 'prices are fresh' : `report is ${age} week${age === 1 ? '' : 's'} stale`;
-  const reach = hasSelection ? (reachable ? ' — reachable in one hop' : ' — not directly reachable') : '';
+  const reach = hasSelection ? (reachable ? ', reachable in one hop' : ', not directly reachable') : '';
   return `${c.name} (${report})${reach}`;
 }
 
@@ -811,7 +811,11 @@ export default function MapView({
                 textAnchor={LABEL_ANCHOR[side]}
                 fontSize={CITY_FONT * inv}
                 fill={isHovered ? CHART.routeLive : CHART.label}
-                fillOpacity={opacity}
+                /* The fog fades the whole label, halo included, and never below 0.7. Fading the
+                   fill alone left an opaque pale halo carrying faint ink, which read as pale blue
+                   lettering and could not be read over the land; the mark beside it still carries
+                   the full fade. */
+                opacity={0.7 + 0.3 * opacity}
                 fontFamily={FONT.body}
                 stroke={CHART.labelHalo}
                 strokeWidth={3 * inv}
@@ -842,7 +846,7 @@ export default function MapView({
             onPointerLeave={() => setHoveredVesselId(id => (id === v.id ? null : id))}
             style={{ cursor: 'pointer' }}
           >
-            <title>{`${v.name} — ${to ? `en route to ${to.name}` : `docked at ${at?.name ?? v.location}`}`}</title>
+            <title>{`${v.name}, ${to ? `en route to ${to.name}` : `docked at ${at?.name ?? v.location}`}`}</title>
             {/* Same fixed-minimum invisible hit target as a city mark — a selected ship's own
                 triangle is only ~12px and a docked courier's dot smaller still. */}
             <circle cx={x} cy={y} r={11 * inv} fill="transparent" pointerEvents="all" />
@@ -957,7 +961,7 @@ export default function MapView({
           −
         </button>
         <button
-          style={{ ...ZOOM_BUTTON, fontSize: '0.6rem' }}
+          style={{ ...ZOOM_BUTTON, fontSize: '0.75rem' }}
           onClick={fit}
           aria-label="Fit every city in view (0)"
           title="Fit every city in view (0)"
@@ -985,7 +989,8 @@ const ZOOM_BUTTON: React.CSSProperties = {
   height: 44,
   background: CHART.sea,
   border: `1px solid ${CHART.coast}`,
-  color: CHART.coast,
+  // The label ink, not the coast: the coast's brown on the sea read at about 3:1, under AA.
+  color: CHART.label,
   fontFamily: FONT.data,
   fontSize: '1.1rem',
   lineHeight: 1,

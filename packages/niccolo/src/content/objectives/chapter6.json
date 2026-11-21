@@ -4,7 +4,7 @@
     "kind": { "type": "flag", "flag": "godscalc_mourned" } },
 
   { "id": "obj_c6_iceland", "chapterNumber": 6, "label": "Bring the northern venture home",
-    "description": "Form the three hulls into one convoy, carry salt north to the Iceland stations, and land at least 40 barrels of stockfish at Bruges between them — the combined hold is the point, no single ship can do it. An escort is expensive and halves what the crossing costs in losses. The season shuts in 40 weeks.",
+    "description": "Form the three hulls into one convoy, carry salt north to the Iceland stations, and land at least 40 barrels of stockfish at Bruges between them: the combined hold is the point; no single ship can do it. An escort is expensive and halves what the crossing costs in losses. The season shuts in 40 weeks.",
     "revealFlag": "iceland_proposed",
     "kind": { "type": "flag", "flag": "iceland_epilogue" },
     "outcomeFlags": { "positive": "iceland_venture_success", "costly": "iceland_venture_failed" } },
@@ -25,6 +25,6 @@
     "outcomeFlags": { "positive": "volterra_survived", "costly": "volterra_ruin" } },
 
   { "id": "obj_c6_refugees", "chapterNumber": 6, "label": "The families under the ash", "optional": true,
-    "description": "A week's delay and a hold given over to people instead of fish. Doesn't gate the chapter — just marks the choice.",
+    "description": "A week's delay and a hold given over to people instead of fish. Doesn't gate the chapter, just marks the choice.",
     "kind": { "type": "flag", "flag": "iceland_refugees_taken" } }
 ]

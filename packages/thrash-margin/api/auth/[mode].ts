@@ -115,7 +115,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
       console.error('last_login_at update failed', err),
     );
 
-    const token = signToken({ userId: user.id, username: user.username });
+    const token = signToken({ userId: user.id, username: user.username, remember: req.body?.remember === true });
     // For the nav's Admin link only. Presentational: every admin endpoint re-checks the role.
     const admin = await isAdmin(db, user.id);
     // The games this account may play, so the portal can show which are open to it. Presentational
@@ -179,7 +179,7 @@ async function register(req: VercelRequest, res: VercelResponse) {
         message: 'Account created. An admin needs to approve it before you can sign in.',
       });
     }
-    const token = signToken({ userId: id, username });
+    const token = signToken({ userId: id, username, remember: req.body?.remember === true });
     const games = access ?? (await gamesFor(db, id));
     return res.status(201).json({ token, userId: id, username, isAdmin: false, games });
   } catch (err: any) {

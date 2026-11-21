@@ -1,13 +1,7 @@
 import type { ObjectiveProgress } from '../sim/objectives';
 import { UI } from '../theme';
 
-const LABEL: React.CSSProperties = {
-  fontSize: '0.75rem',
-  letterSpacing: '0.15em',
-  textTransform: 'uppercase',
-  color: UI.textSoft,
-  margin: '0 0 0.4rem',
-};
+// No heading of its own: GameScreen frames this in a Panel already titled "Chapter N objectives".
 
 const ROW: React.CSSProperties = {
   padding: '0.35rem 0',
@@ -26,7 +20,7 @@ export function statusSuffix(p: ObjectiveProgress): string {
     return p.status === 'pending' ? 'will occur' : 'occurred';
   }
   if (p.status === 'missed') return 'deadline passed';
-  if (p.status === 'complete') return p.outcome === 'costly' ? 'resolved — cost more than it returned' : 'resolved';
+  if (p.status === 'complete') return p.outcome === 'costly' ? 'resolved, at more cost than it returned' : 'resolved';
   return 'open';
 }
 
@@ -41,7 +35,7 @@ export function ObjectiveRow({ p }: { p: ObjectiveProgress }) {
           <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>{p.objective.description}</div>
         )
       ) : (
-        <div style={{ fontSize: '0.7rem', color: UI.textFaint, fontStyle: 'italic' }}>No lead yet — keep the story moving.</div>
+        <div style={{ fontSize: '0.7rem', color: UI.textFaint, fontStyle: 'italic' }}>No lead yet: keep the story moving.</div>
       )}
       <div style={{ fontSize: '0.7rem', color: statusColor(p) }}>
         {statusSuffix(p)}
@@ -69,7 +63,6 @@ export default function ObjectivesPanel({ chapterNumber, progress }: ObjectivesP
 
   return (
     <div>
-      <p style={LABEL}>Chapter {chapterNumber} objectives</p>
       {progress.map(p => (
         <ObjectiveRow key={p.objective.id} p={p} />
       ))}

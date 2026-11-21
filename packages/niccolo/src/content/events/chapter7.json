@@ -89,7 +89,7 @@
       "flag": "moriz_joined"
     },
     "title": "What the winter was actually for",
-    "body": "By the thaw the house has done something it has never had the leisure to do: read four years of its own correspondence in one sitting. What comes out of it is not a trade but a shape — the Black Sea trade is closing, the Persian one has never been open, and both facts are worth more to a man who knows them a season early than any cargo.",
+    "body": "By the thaw the house has done something it has never had the leisure to do: read four years of its own correspondence in one sitting. What comes out of it is not a trade but a shape: the Black Sea trade is closing, the Persian one has never been open, and both facts are worth more to a man who knows them a season early than any cargo.",
     "choices": [
       {
         "text": "Act on it while the ice is still going out",
@@ -165,7 +165,7 @@
           "secret": {
             "id": "secret_caffa_fleet",
             "name": "When the fleet sails for Caffa",
-            "description": "The Genoese consul's own count of the Ottoman squadron wintering at the Bosphorus, its victualling, and the week it can be expected in the Crimea — worth a fortune to anyone with goods still in the city and nothing at all once it arrives.",
+            "description": "The Genoese consul's own count of the Ottoman squadron wintering at the Bosphorus, its victualling, and the week it can be expected in the Crimea: worth a fortune to anyone with goods still in the city and nothing at all once it arrives.",
             "value": 90,
             "expiresInWeeks": 14
           }
@@ -198,7 +198,7 @@
           "evidence": {
             "id": "par_ochoa_manifest",
             "name": "Ochoa's undescribed manifest",
-            "description": "A Basque shipmaster's own cargo book, bought with his bad Portuguese bill — and, four pages in, a passenger's name written in a Bruges notary's hand that has no business being on a Guinea voyage at all.",
+            "description": "A Basque shipmaster's own cargo book, bought with his bad Portuguese bill, and, four pages in, a passenger's name written in a Bruges notary's hand that has no business being on a Guinea voyage at all.",
             "track": "parentage",
             "kind": "document"
           }
@@ -287,7 +287,7 @@
           "secret": {
             "id": "secret_venetian_promises",
             "name": "What Venice has actually promised Persia",
-            "description": "The terms of the alliance Venice has been dangling in front Uzun Hasan for four years — the galleys, the timing, and the internal correspondence showing none of it was ever going to sail.",
+            "description": "The terms of the alliance Venice has been dangling in front Uzun Hasan for four years: the galleys, the timing, and the internal correspondence showing none of it was ever going to sail.",
             "value": 100,
             "expiresInWeeks": 16
           }
@@ -332,7 +332,7 @@
       "flagAbsent": "caffa_resolved"
     },
     "title": "Out of the Crimea before the fleet",
-    "body": "The hull comes back west through the Baltic with furs, salt and whatever else Caffa's frightened were selling, and — if the factor was told to take them — with families aboard who had no other way out. Six weeks later the Ottoman squadron stands into the roads, the walls hold for exactly as long as the consul said they would, and two hundred years of Genoese Crimea end in a fortnight.",
+    "body": "The hull comes back west through the Baltic with furs, salt and whatever else Caffa's frightened were selling, and, if the factor was told to take them, with families aboard who had no other way out. Six weeks later the Ottoman squadron stands into the roads, the walls hold for exactly as long as the consul said they would, and two hundred years of Genoese Crimea end in a fortnight.",
     "choices": [
       {
         "text": "Land the cargo and count what came out",
@@ -357,7 +357,7 @@
       "flagAbsent": "caffa_resolved"
     },
     "title": "The fleet arrives first",
-    "body": "There is no ambiguity about the date afterwards, only about what was still in the city on it. The squadron came in June, the walls held the fortnight the consul had promised and not the season Genoa had assumed, and everything the house had not moved by then belonged to somebody else by the end of the month — including, it turns out, the factor.",
+    "body": "There is no ambiguity about the date afterwards, only about what was still in the city on it. The squadron came in June, the walls held the fortnight the consul had promised and not the season Genoa had assumed, and everything the house had not moved by then belonged to somebody else by the end of the month, including, it turns out, the factor.",
     "choices": [
       {
         "text": "Write off the Crimea and whoever was in it",
@@ -423,7 +423,7 @@
           "evidence": {
             "id": "par_ochoa_testimony",
             "name": "What Ochoa said, while drunk",
-            "description": "A Basque shipmaster's account of who paid for a passage out of Bruges and why, taken down in Danzig at two in the morning and signed by nobody — worth exactly as much as the three papers it happens to agree with.",
+            "description": "A Basque shipmaster's account of who paid for a passage out of Bruges and why, taken down in Danzig at two in the morning and signed by nobody: worth exactly as much as the three papers it happens to agree with.",
             "track": "parentage",
             "kind": "testimony"
           }
@@ -438,7 +438,7 @@
           "evidence": {
             "id": "par_ochoa_testimony",
             "name": "Ochoa's deposition",
-            "description": "The same account the shipmaster gave drunk, repeated sober before a Danzig notary and sealed — which makes it evidence rather than gossip, and cost rather more than the gossip did.",
+            "description": "The same account the shipmaster gave drunk, repeated sober before a Danzig notary and sealed, which makes it evidence rather than gossip, and cost rather more than the gossip did.",
             "track": "parentage",
             "kind": "testimony"
           }
@@ -474,7 +474,7 @@
       ]
     },
     "title": "Jordan de Ribérac, in writing",
-    "body": "Father Moriz, who has been quietly assembling what the house already had, sets it out in one sitting: the christening, the indenture and its reverse, Godscalc's letter, the Sinai deposit, and now a shipmaster's manifest — five papers from five countries, none of which proves anything on its own, all of which name or imply the same man. He does not say the name. He puts the papers in date order and lets the house say it.",
+    "body": "Father Moriz, who has been quietly assembling what the house already had, sets it out in one sitting: the christening, the indenture and its reverse, Godscalc's letter, the Sinai deposit, and now a shipmaster's manifest. Five papers from five countries, none of which proves anything on its own, all of which name or imply the same man. He does not say the name. He puts the papers in date order and lets the house say it.",
     "choices": [
       {
         "text": "Say it aloud, once, and then say nothing to anybody",
@@ -566,7 +566,7 @@
       }
     },
     "title": "Nancy, the fifth of January",
-    "body": "The duke is killed in the snow outside Nancy with most of his army, and the Burgundian state — which was a person rather than an institution, as everyone now discovers at once — stops existing in any form its creditors can sue. In Bruges, Ghent and Antwerp every price comes off its moorings in the same week: what a thing is worth is suddenly a question about who will be governing in the spring, and nobody knows.",
+    "body": "The duke is killed in the snow outside Nancy with most of his army, and the Burgundian state, which was a person rather than an institution, as everyone now discovers at once, stops existing in any form its creditors can sue. In Bruges, Ghent and Antwerp every price comes off its moorings in the same week: what a thing is worth is suddenly a question about who will be governing in the spring, and nobody knows.",
     "choices": [
       {
         "text": "Read the news, and let Flanders reprice itself without the house in it",
@@ -581,7 +581,7 @@
             ],
             "multiplier": 1.55,
             "weeks": 14,
-            "headline": "Every price here has come off its moorings since Nancy — nobody knows who will be governing Flanders in the spring, and everything is being bid accordingly."
+            "headline": "Every price here has come off its moorings since Nancy: nobody knows who will be governing Flanders in the spring, and everything is being bid accordingly."
           }
         }
       }

@@ -191,7 +191,7 @@ export function drawEncounter(seed: number, ship: Ship): { seed: number; encount
           headline: `${ship.name} speaks a country ship`,
           detail:
             `A country trader bound the other way has a lot of ${good.name} she would rather not ` +
-            `carry home, and offers it across at ${money(price)} — well under the reckoning of ` +
+            `carry home, and offers it across at ${money(price)}, well under the reckoning of ` +
             `${money(good.basePrice)}. No card may want it yet.`,
         },
       };

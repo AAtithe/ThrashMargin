@@ -114,6 +114,8 @@ function Loadout({ kind, s, act }: PlanetProps & { kind: UnitKind }) {
   const slots = MODULE_SLOTS[kind] ?? 0;
   const fitted: ModuleId[] = r.loadouts[kind] ?? [];
   const mods = MODULE_ORDER.filter(m => MODULES[m].fits.includes(kind));
+  const locked = mods.filter(m => !r.done.includes(MODULES[m].unlock));
+  const anyFull = mods.some(m => r.done.includes(MODULES[m].unlock) && !fitted.includes(m) && fitted.length >= slots);
   return (
     <div className="fl-loadout-row">
       <span className="fl-loadout-kind">
@@ -140,6 +142,12 @@ function Loadout({ kind, s, act }: PlanetProps & { kind: UnitKind }) {
           );
         })}
       </div>
+      {anyFull && <span className="fl-pl-why">Every slot is full: take a module off first.</span>}
+      {locked.length > 0 && (
+        <span className="fl-pl-why">
+          {locked.map(m => `${MODULES[m].name} needs ${UPGRADES[MODULES[m].unlock].name}`).join('; ')}.
+        </span>
+      )}
     </div>
   );
 }

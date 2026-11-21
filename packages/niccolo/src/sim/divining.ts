@@ -76,7 +76,7 @@ export function diviningAvailability(state: GameState, purpose: DiviningPurpose)
   else if (state.flags[DIVINING_FLAGS[purpose]]) blockedReason = 'Already answered.';
   else if (d.usesRemaining <= 0) blockedReason = 'Nothing left to draw on.';
   else if (restWeeksLeft > 0) {
-    blockedReason = `Still recovering — ${restWeeksLeft} week${restWeeksLeft === 1 ? '' : 's'}.`;
+    blockedReason = `Still recovering: ${restWeeksLeft} week${restWeeksLeft === 1 ? '' : 's'}.`;
   } else if (!state.vessels.some(v => !v.destination && v.location === cityId)) {
     blockedReason = `Requires being at ${cityName}.`;
   }

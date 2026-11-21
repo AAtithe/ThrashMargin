@@ -20,7 +20,7 @@ import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/save
  * message before anyone read it. The header's own "Sign out" is the explicit next step.
  */
 export const SESSION_EXPIRED =
-  'Your sign-in has expired — use "Sign out" above, then sign in again to reach your cloud games.';
+  'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your cloud games.';
 
 /**
  * Cloud persistence for signed-in players, backed by the same Supabase/Postgres `games` table the
@@ -110,7 +110,7 @@ export function useGameCloud() {
         await fetchSaves();
         return data.gameId as string;
       } catch {
-        setError('Network error — failed to start the run');
+        setError('Network error: failed to start the run');
         return null;
       }
     },
@@ -134,7 +134,7 @@ export function useGameCloud() {
       saver.current?.reset(gameId, data.version);
       setState(migrateState(data.state));
     } catch {
-      setError('Network error — failed to load the run');
+      setError('Network error: failed to load the run');
     }
   }, []);
 

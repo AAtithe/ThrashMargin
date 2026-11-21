@@ -94,6 +94,10 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
     Boolean(bidTarget) &&
     canHostileBid(haulier.shares, haulier.cash, bidTarget!.shares, bidsMade);
 
+  /** Why a button is disabled, shown under it. Empty while it is not your turn to act: the panel
+   *  says that once, at its head, rather than under every button. */
+  const why = (reason: string | false | null | undefined): string => (enabled && reason ? reason : '');
+
   return (
     <Panel
       title="Counting house"
@@ -103,6 +107,9 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
         </Label>
       }
     >
+      {!enabled && state.phase === 'roll' && (
+        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.warn }}>Roll for the day before you trade.</p>
+      )}
       <p style={{ ...bodySmall, margin: 0 }}>
         To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
         {money(VICTORY_CASH)} and a vehicle still on the road {DECLARATION_TURNS} turns later.
@@ -138,10 +145,11 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
                   {trend === 'high' ? ' ▲' : trend === 'low' ? ' ▼' : ''}
                 </span>
                 <span style={{ color: UI.textFaint, minWidth: '3.5rem' }}>
-                  {held > 0 ? `${held} held` : '—'}
+                  {held > 0 ? `${held} held` : 'none held'}
                 </span>
                 <Button
                   disabled={!enabled || haulier.cash < price}
+                  disabledReason={why(haulier.cash < price && `Needs ${money(price)}`)}
                   title={`Buy one at ${money(price)}. It is worth having when the price is under ${money(
                     co.base,
                   )} and the cards are about to send everyone that way.`}
@@ -178,7 +186,7 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
           )}
           {arrears > 0 && (
             <span style={{ color: UI.bad }}>
-              <strong>{money(arrears)} in arrears</strong> — it comes off the top next round
+              <strong>{money(arrears)} in arrears</strong>: it comes off the top next round
             </span>
           )}
           {loansOn && debt > 0 && (
@@ -193,6 +201,10 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           <Button
             disabled={!enabled || debt + LOAN_STEP > ceiling}
+            disabledReason={why(
+              debt + LOAN_STEP > ceiling &&
+                (ceiling === 0 ? 'Nothing to borrow against' : `Your ceiling is ${money(ceiling)}`),
+            )}
             title={
               ceiling === 0
                 ? 'The bank lends against vehicles and shares, and you have nothing to pledge.'
@@ -208,6 +220,7 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
           <Button
             tone="quiet"
             disabled={!enabled || debt <= 0 || haulier.cash <= 0}
+            disabledReason={why(debt <= 0 ? 'Nothing owed' : haulier.cash <= 0 && 'No cash to repay with')}
             onClick={() => dispatch({ type: 'REPAY_LOAN' })}
           >
             Repay {money(Math.min(debt, LOAN_STEP, haulier.cash))}
@@ -216,41 +229,54 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
       )}
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-        <Button id="buy-share-button" disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
+        <Button
+          id="buy-share-button"
+          disabled={!enabled || !canBuyShare}
+          disabledReason={why((bankHasShares || buyoutTarget) && haulier.cash < sharePrice && `Needs ${money(sharePrice)}`)}
+          onClick={() => dispatch({ type: 'BUY_SHARE' })}>
           {bankHasShares
-            ? `Take up a share — ${money(sharePrice)}`
+            ? `Take up a share, ${money(sharePrice)}`
             : buyoutTarget
-              ? `Buy out ${buyoutTarget.name} — ${money(sharePrice)}`
+              ? `Buy out ${buyoutTarget.name}, ${money(sharePrice)}`
               : 'No share to be had'}
         </Button>
 
         {bidsEnabled && bidTarget && (
           <Button
             disabled={!enabled || !canBid}
+            disabledReason={why(
+              !canBid &&
+                (haulier.shares >= SHARE_MAJORITY
+                  ? 'You hold a majority: declare instead'
+                  : haulier.cash < bidPrice
+                    ? `Needs ${money(bidPrice)}`
+                    : 'No bid can be made now'),
+            )}
             title={
               haulier.shares >= SHARE_MAJORITY
-                ? 'You already hold a majority — declare instead.'
+                ? 'You already hold a majority. Declare instead.'
                 : haulier.cash < bidPrice
                   ? `A bid costs ${money(bidPrice)} and you hold ${money(haulier.cash)}.`
                   : `Takes one share off ${bidTarget.name} whatever your own holding. Dearer the ` +
                     `more you already hold, and every bid anyone makes doubles the price for ` +
-                    `everyone after — both compound, so your next would cost ${money(
+                    `everyone after. Both compound, so your next would cost ${money(
                       hostileBidPrice(bidsMade + 1, haulier.shares + 1),
                     )}.`
             }
             onClick={() => dispatch({ type: 'HOSTILE_BID', targetId: bidTarget.id })}
           >
-            Bid for {bidTarget.name}'s share — {money(bidPrice)}
+            Bid for {bidTarget.name}'s share, {money(bidPrice)}
           </Button>
         )}
 
         <Button
           tone="quiet"
           disabled={!enabled || haulier.shares === 0}
+          disabledReason={why(haulier.shares === 0 && 'You hold no shares')}
           title={`The bank pays half. Use it when you cannot afford a cargo.`}
           onClick={() => dispatch({ type: 'SELL_SHARE' })}
         >
-          Surrender a share — {money(buyback)}
+          Surrender a share, {money(buyback)}
         </Button>
 
         {(classesOn ? (Object.keys(VEHICLE_CLASSES) as VehicleClassId[]) : [DEFAULT_VEHICLE_CLASS]).map(
@@ -260,6 +286,11 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
               <Button
                 key={id}
                 disabled={!enabled || fleetSize >= MAX_VEHICLES || haulier.cash < option.price}
+                disabledReason={why(
+                  fleetSize >= MAX_VEHICLES
+                    ? `Fleet full at ${MAX_VEHICLES}`
+                    : haulier.cash < option.price && `Needs ${money(option.price)}`,
+                )}
                 title={
                   fleetSize >= MAX_VEHICLES
                     ? `No haulier may run more than ${MAX_VEHICLES} vehicles`
@@ -290,7 +321,7 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
           The bank's ten are all out. A share now costs {SHARE_RAID_MULTIPLIER}×{' '}
           {sabotage
-            ? '— and while the countdown runs you may buy one off anyone, including the leader.'
+            ? 'and, while the countdown runs, you may buy one off anyone, including the leader.'
             : 'and can only be bought off a haulier holding no more than you do.'}
           {bidsEnabled && !sabotage && (
             <>
@@ -343,26 +374,38 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
                 <div key={vehicle.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <span style={{ ...dataText, fontSize: '0.7rem', color: UI.textSoft }}>
                     {vehicle.name}
-                    {!parked && ' — on the road'}
+                    {!parked && ' (on the road)'}
                   </span>
                   <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     {state.hazards?.weather && (
                       <Button
                         disabled={!enabled || !parked || Boolean(vehicle.fittings?.aeroKit) || haulier.cash < FITTING_PRICES.aeroKit}
+                        disabledReason={why(
+                          !vehicle.fittings?.aeroKit &&
+                            (!parked
+                              ? 'Only when parked up'
+                              : haulier.cash < FITTING_PRICES.aeroKit && `Needs ${money(FITTING_PRICES.aeroKit)}`),
+                        )}
                         title="A well-kept rig loses less: a point of speed always, and less ground lost to heavy weather."
                         onClick={() => dispatch({ type: 'BUY_FITTING', vehicleId: vehicle.id, fitting: 'aeroKit' })}
                       >
-                        {vehicle.fittings?.aeroKit ? '✓ Serviced' : `AeroKit — ${money(FITTING_PRICES.aeroKit)}`}
+                        {vehicle.fittings?.aeroKit ? '✓ Serviced' : `AeroKit, ${money(FITTING_PRICES.aeroKit)}`}
                       </Button>
                     )}
                     {state.hazards?.theft && (
                       <>
                         <Button
                           disabled={!enabled || !parked || Boolean(vehicle.fittings?.tracker) || haulier.cash < FITTING_PRICES.tracker}
+                          disabledReason={why(
+                            !vehicle.fittings?.tracker &&
+                              (!parked
+                                ? 'Only when parked up'
+                                : haulier.cash < FITTING_PRICES.tracker && `Needs ${money(FITTING_PRICES.tracker)}`),
+                          )}
                           title="Tracker halve the chance of being troubled, and talk most boarders down to a ransom."
                           onClick={() => dispatch({ type: 'BUY_FITTING', vehicleId: vehicle.id, fitting: 'tracker' })}
                         >
-                          {vehicle.fittings?.tracker ? '✓ Armed' : `Tracker — ${money(FITTING_PRICES.tracker)}`}
+                          {vehicle.fittings?.tracker ? '✓ Armed' : `Tracker, ${money(FITTING_PRICES.tracker)}`}
                         </Button>
                         <Button
                           tone={vehicle.insured ? 'default' : 'quiet'}
@@ -386,8 +429,8 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
                           {holdValue > 0 && (
                             <span style={{ color: UI.textFaint }}>
                               {' '}
-                              — {money(insurancePremium(holdValue, 0))}–
-                              {money(insurancePremium(holdValue, 1))} a passage
+                              ({money(insurancePremium(holdValue, 0))}–
+                              {money(insurancePremium(holdValue, 1))} a passage)
                             </span>
                           )}
                         </Button>

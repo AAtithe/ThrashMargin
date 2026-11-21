@@ -95,12 +95,12 @@ export default function HouseholdPanel({
         Conscience: <span style={{ color: conscience <= 40 ? UI.bad : UI.brass }}>{Math.round(conscience)}</span>
         {' · '}
         {wagesSuspended ? (
-          <>Wages: not yet owed — no one draws a salary until you're formally made factor</>
+          <>Wages: not yet owed. No one draws a salary until you're formally made factor</>
         ) : (
           <>
             Wages due next week: {totalSalary}f{' '}
             <span style={{ color: canPayNext ? UI.good : UI.bad }}>
-              {canPayNext ? '(covered)' : '(cannot pay — loyalty will fall)'}
+              {canPayNext ? '(covered)' : '(cannot pay: loyalty will fall)'}
             </span>
           </>
         )}
@@ -122,7 +122,7 @@ export default function HouseholdPanel({
           <div key={c.id} style={ROW}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>
-                {c.name} <span style={{ color: UI.textSoft }}>— {c.role}</span>
+                {c.name}<span style={{ color: UI.textSoft }}>, {c.role}</span>
               </span>
               <span style={{ color: loyaltyColor(c.loyalty) }}>loyalty {Math.round(c.loyalty)}</span>
             </div>

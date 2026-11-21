@@ -121,7 +121,7 @@ export default function Profile() {
       setNewPassword('');
       load();
     } catch {
-      setFormError('Network error — try again');
+      setFormError('Network error. Try again.');
     } finally {
       setSaving(false);
     }
@@ -144,7 +144,7 @@ export default function Profile() {
     return (
       <Shell>
         <Centered>
-          <p style={{ color: 'var(--portal-bad)', fontSize: 14, fontWeight: 600 }}>Session expired — sign in again.</p>
+          <p style={{ color: 'var(--portal-bad)', fontSize: 14, fontWeight: 600 }}>Session expired. Sign in again.</p>
           <Link to="/login" style={s.link}>Sign in →</Link>
         </Centered>
       </Shell>
@@ -176,11 +176,11 @@ export default function Profile() {
                 <input style={s.input} type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
               </label>
               <label style={s.label}>
-                New password <span style={{ color: 'var(--portal-faint)', fontWeight: 400 }}>(leave blank to keep current)</span>
+                New password <span style={{ color: 'var(--portal-soft)', fontWeight: 400 }}>(leave blank to keep current)</span>
                 <input style={s.input} type="password" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
               </label>
               <label style={s.label}>
-                Current password <span style={{ color: 'var(--portal-faint)', fontWeight: 400 }}>(required to save any change)</span>
+                Current password <span style={{ color: 'var(--portal-soft)', fontWeight: 400 }}>(required to save any change)</span>
                 <input style={s.input} type="password" autoComplete="current-password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
               </label>
               {formError && <p style={s.error}>{formError}</p>}
@@ -189,11 +189,11 @@ export default function Profile() {
             </form>
           </section>
 
-          <section style={{ ...s.card, borderColor: '#5a1e1e' }}>
+          <section style={{ ...s.card, borderColor: 'color-mix(in srgb, var(--portal-bad) 45%, var(--portal-rule))' }}>
             <h2 style={s.h2}>Delete account</h2>
-            <p style={{ color: '#9198a1', fontSize: 13, lineHeight: 1.5, margin: '0 0 14px' }}>
+            <p style={{ color: 'var(--portal-softer)', fontSize: 13, lineHeight: 1.5, margin: '0 0 14px' }}>
               Permanently deletes your account and every saved game in every game. Feedback you sent is kept
-              without your name. See the <a href="/privacy.html" style={{ color: '#58a6ff' }}>privacy notice</a>.
+              without your name. See the <a href="/privacy.html" style={{ color: 'var(--tm-portal-link-text)' }}>privacy notice</a>.
             </p>
             <form onSubmit={deleteAccount} style={s.form}>
               <label style={s.label}>
@@ -201,7 +201,7 @@ export default function Profile() {
                 <input style={s.input} type="password" autoComplete="current-password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
               </label>
               {deleteError && <p style={s.error}>{deleteError}</p>}
-              <button style={{ ...s.btn, background: '#b62324' }} type="submit" disabled={deleting}>
+              <button style={{ ...s.btn, background: 'color-mix(in srgb, var(--portal-bad) 82%, black)' }} type="submit" disabled={deleting}>
                 {deleting ? 'Deleting…' : 'Delete my account'}
               </button>
             </form>
@@ -215,15 +215,15 @@ export default function Profile() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ color: 'var(--portal-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
-      <div style={{ color: 'var(--portal-text)', fontSize: 16, fontWeight: 700 }}>{value}</div>
+      <div style={{ color: 'var(--portal-soft)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{label}</div>
+      <div style={{ color: 'var(--portal-text)', fontSize: value.length > 6 ? 14 : 16, fontWeight: 700, lineHeight: 1.3 }}>{value}</div>
     </div>
   );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={s.outer}>
+    <div className="tm-portal" style={s.outer}>
       <PortalNav variant="header" />
       {children}
       <PortalNav variant="footer" />
@@ -243,7 +243,7 @@ const s: Record<string, React.CSSProperties> = {
   outer:    { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
   page:     { flex: 1, background: 'var(--portal-ground)', display: 'flex', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
   col:      { display: 'flex', flexDirection: 'column', gap: 20, width: 420, maxWidth: '100%' },
-  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '28px 32px' },
+  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 'clamp(20px, 6vw, 28px) clamp(18px, 7vw, 32px)' },
   title:    { color: 'var(--portal-text)', fontSize: 22, fontWeight: 700, margin: '0 0 2px', letterSpacing: -0.5 },
   subtitle: { color: 'var(--portal-soft)', margin: '0 0 20px', fontSize: 13 },
   h2:       { fontSize: 13, fontWeight: 700, color: 'var(--portal-softer)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 18px' },
@@ -254,5 +254,5 @@ const s: Record<string, React.CSSProperties> = {
   error:    { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
   success:  { color: 'var(--portal-good)', fontSize: 12, margin: 0, fontWeight: 600 },
   btn:      { marginTop: 4, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
-  link:     { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  link:     { color: 'var(--tm-portal-link-text)', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 40 },
 };

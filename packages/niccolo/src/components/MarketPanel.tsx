@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FloatText, paced, replayClass, usePace } from '../lib/motion';
 import { florinFloat, Florins, useWeekStagger } from './motionKit';
 import { UI } from '../theme';
+import { Button } from './ui';
 import { findCity, findGood, marketGoodsAt } from '../sim/content';
 import { gradeBreakdown, gradeBuyMultiplier, gradeSellMultiplier, isPilotGood } from '../sim/grades';
 import { cargoTotal, priceAt } from '../sim/market';
@@ -163,14 +164,17 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, flash, o
       <button id={`market-buy-${goodId}`} style={SMALL_BUTTON} disabled={!canBuy} onClick={() => onBuy(qty, grade)}>
         Buy
       </button>
-      <button
+      <Button
         id={`market-sell-${goodId}`}
         style={SMALL_BUTTON}
         disabled={!canSell || gradeHeld < qty}
+        // Only once something is held: with nothing aboard there is plainly nothing to sell, and a
+        // reason under every row of the market would bury the prices.
+        disabledReason={held > 0 ? (tag === 'closed' ? 'Trade closed' : `Only ${gradeHeld} held`) : undefined}
         onClick={() => onSell(qty, grade)}
       >
         Sell
-      </button>
+      </Button>
     </div>
   );
 }
@@ -255,11 +259,12 @@ export default function MarketPanel({
 
   return (
     <div>
-      <p style={LABEL}>Market — {cityName}</p>
+      <p style={LABEL}>Market: {cityName}</p>
       <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem' }}>
         Cash: <strong style={{ color: UI.brass }}><Florins value={cash} /></strong>
         {' · '}
         Hold: {used}/{capacity}
+        {used >= capacity && <span style={{ color: UI.textSoft }}> (full: sell or store before buying more)</span>}
       </p>
       {localEvents.length > 0 && (
         <div style={{ margin: '0 0 0.6rem' }}>

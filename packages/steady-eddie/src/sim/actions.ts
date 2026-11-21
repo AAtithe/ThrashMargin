@@ -210,16 +210,16 @@ function resolveDeclaration(state: GameState): GameState {
   s = log(
     s,
     'lapse',
-    `${haulier.name}'s claim collapses — ${missing.join(', ')}. The company is broken up.`,
+    `${haulier.name}'s claim collapses: ${missing.join(', ')}. The company is broken up.`,
     haulier.id,
   );
   if (heir) {
     s = log(
       s,
       'victory',
-      `${heir.c.name} is left holding the most by value — ${money(
+      `${heir.c.name} is left holding the most by value (${money(
         heir.worth,
-      )} in cash, vehicles and shares — and takes the company.`,
+      )} in cash, vehicles and shares) and takes the company.`,
       heir.c.id,
     );
   }
@@ -289,7 +289,7 @@ function turnTheWorld(state: GameState): GameState {
   if (done.length > 0) {
     s = { ...s, events: running };
     for (const e of done) {
-      s = log(s, 'event', `${e.headline} — the news is stale; trade returns to normal.`, null, {
+      s = log(s, 'event', `${e.headline}. The news is stale; trade returns to normal.`, null, {
         event: e.kind,
         ended: 1,
       });
@@ -359,7 +359,7 @@ function doBuyStock(state: GameState, stock: StockId, lots = 1): GameState {
   return log(
     s,
     'stock',
-    `${haulier.name} buys ${lots} of ${COMPANIES[stock].name} at ${money(price)} — ${money(cost)}.`,
+    `${haulier.name} buys ${lots} of ${COMPANIES[stock].name} at ${money(price)}, ${money(cost)} in all.`,
     haulier.id,
     { stock, lots, price },
   );
@@ -383,9 +383,9 @@ function doSellStock(state: GameState, stock: StockId, lots = 1): GameState {
   return log(
     s,
     'stock',
-    `${haulier.name} sells ${selling} of ${COMPANIES[stock].name} at ${money(price)} — ${money(
+    `${haulier.name} sells ${selling} of ${COMPANIES[stock].name} at ${money(price)}, ${money(
       price * selling,
-    )}.`,
+    )} in all.`,
     haulier.id,
     { stock, lots: selling, price, sold: 1 },
   );
@@ -428,7 +428,7 @@ function chargeStandingCosts(state: GameState): GameState {
       s,
       'wages',
       short > 0
-        ? `${haulier.name} cannot meet the ${money(owed)} due — ${money(paid)} paid, ${money(
+        ? `${haulier.name} cannot meet the ${money(owed)} due: ${money(paid)} paid, ${money(
             short,
           )} left owing.`
         : `${haulier.name} pays ${money(owed)} in wages${interest > 0 ? ' and interest' : ''}.`,
@@ -454,7 +454,7 @@ function doTakeLoan(state: GameState): GameState {
   return log(
     s,
     'wages',
-    `${haulier.name} draws ${money(LOAN_STEP)} against the fleet — ${money(
+    `${haulier.name} draws ${money(LOAN_STEP)} against the fleet, leaving ${money(
       debt + LOAN_STEP,
     )} outstanding at ${loanRateLabel()} a round.`,
     haulier.id,
@@ -478,7 +478,7 @@ function doRepayLoan(state: GameState): GameState {
   return log(
     s,
     'wages',
-    `${haulier.name} pays ${money(paying)} off the debt — ${money(debt - paying)} outstanding.`,
+    `${haulier.name} pays ${money(paying)} off the debt, leaving ${money(debt - paying)} outstanding.`,
     haulier.id,
     { repaid: paying, debt: debt - paying },
   );
@@ -590,7 +590,7 @@ function doRoll(state: GameState): GameState {
       return `${vehicle?.name}: ${d[0]}+${d[1]}${total !== raw ? ` = ${total}` : ''}`;
     })
     .join(', ');
-  s = log(s, 'roll', `${haulier.name} rolls for the day's miles — ${rolls}.`, haulier.id);
+  s = log(s, 'roll', `${haulier.name} rolls for the day's miles: ${rolls}.`, haulier.id);
 
   // Vehicles already on the road have no decision to make; advance them now.
   for (const vehicle of vehiclesOf(s, haulier.id)) {
@@ -676,7 +676,7 @@ function applyTheft(state: GameState, vehicle: Vehicle, haulierId: string): Game
     s = log(
       s,
       'theft',
-      `${vehicle.name} is taken and stripped — ${
+      `${vehicle.name} is taken and stripped: ${
         lost.length ? lost.map(l => goodName(l.good)).join(', ') : 'her cargo'
       } gone.`,
       haulierId,
@@ -765,7 +765,7 @@ function doDriveTo(
       s = log(
         s,
         'insurance',
-        `${vehicle.name}'s policy lapses — the ${money(premium)} premium could not be met. She drives uncovered.`,
+        `${vehicle.name}'s policy lapses. The ${money(premium)} premium could not be met. She drives uncovered.`,
         haulier.id,
         { vehicleId: vehicle.id, premium, lapsed: 1 },
       );
@@ -774,7 +774,7 @@ function doDriveTo(
       s = log(
         s,
         'insurance',
-        `${vehicle.name}'s policy is endorsed for the passage — premium ${money(premium)}.`,
+        `${vehicle.name}'s policy is endorsed for the passage, at a premium of ${money(premium)}.`,
         haulier.id,
         { vehicleId: vehicle.id, premium, risk: Math.round(risk * 100) },
       );
@@ -832,8 +832,8 @@ function doBuyCargo(state: GameState, vehicleId: string, good: string): GameStat
     s,
     'buy',
     `${vehicle.name} loads ${goodName(good)} at ${depotName(vehicle.location)} for ${money(price)}${
-      standing === 'level' ? '' : standing === 'cheap' ? ' — under the reckoning' : ' — over the reckoning'
-    } — ${vehicle.hold.length + 1} of ${slotsOf(vehicle.vehicleClass)} slots full.`,
+      standing === 'level' ? '' : standing === 'cheap' ? ' (under the reckoning)' : ' (over the reckoning)'
+    }, ${vehicle.hold.length + 1} of ${slotsOf(vehicle.vehicleClass)} slots full.`,
     haulier.id,
   );
 }
@@ -895,7 +895,7 @@ function doDeliver(state: GameState, vehicleId: string, contractId: string): Gam
     'deliver',
     `${vehicle.name} lands ${landed.length} of ${goodName(contract.good)} at ${depotName(
       contract.destination,
-    )} — ${rank === 1 ? 'first home' : 'second home'}, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
+    )}: ${rank === 1 ? 'first home' : 'second home'}, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
     haulier.id,
     {
       contractId: contract.id,
@@ -955,7 +955,7 @@ function doSellCargo(state: GameState, vehicleId: string, good: string): GameSta
     'missed',
     `${vehicle.name} sells ${sold.length} ${goodName(good)} on the depot at ${depotName(
       vehicle.location,
-    )} for ${money(takings)} — ${money(paid - takings)} down on what she paid.`,
+    )} for ${money(takings)}, ${money(paid - takings)} down on what she paid.`,
     haulier.id,
     { vehicleId: vehicle.id, units: sold.length, takings, recovered: takings, forfeited: paid - takings },
   );
@@ -977,7 +977,7 @@ function doDump(state: GameState, vehicleId: string, good?: string): GameState {
     'missed',
     `${vehicle.name} puts ${dumped.length} ${
       good ? goodName(good) : 'lot' + (dumped.length === 1 ? '' : 's')
-    } over the side — ${money(lost)} lost outright, ${slotsOf(vehicle.vehicleClass) - kept.length} slot${
+    } over the side: ${money(lost)} lost outright, ${slotsOf(vehicle.vehicleClass) - kept.length} slot${
       slotsOf(vehicle.vehicleClass) - kept.length === 1 ? '' : 's'
     } clear.`,
     haulier.id,
@@ -1022,7 +1022,7 @@ function doBuyVehicle(state: GameState, requested?: VehicleClassId): GameState {
     'vehicle',
     `${haulier.name} buys ${vehicle.name}, ${classes ? `a ${vehicleClass.name.toLowerCase()}, ` : ''}for ${money(
       vehicleClass.price,
-    )} — ${vehicleClass.slots} slots${vehicleClass.fittings?.tracker ? ', tracker aboard' : ''}. She fits out at ${depotName(
+    )} (${vehicleClass.slots} slots${vehicleClass.fittings?.tracker ? ', tracker aboard' : ''}). She fits out at ${depotName(
       HOME_DEPOT,
     )}.`,
     haulier.id,
@@ -1041,7 +1041,7 @@ function doBuyShare(state: GameState): GameState {
     return log(
       s,
       'share',
-      `${haulier.name} takes up a share for ${money(price)} — ${haulier.shares + 1} held, ${
+      `${haulier.name} takes up a share for ${money(price)}: ${haulier.shares + 1} held, ${
         s.sharesRemaining
       } left with the bank at ${money(sharePriceFor(s.sharesRemaining))}.`,
       haulier.id,
@@ -1074,10 +1074,10 @@ function doBuyShare(state: GameState): GameState {
     s,
     'share',
     sabotage
-      ? `${haulier.name} buys a share out from under ${seller.name} for ${money(price)} — ${
+      ? `${haulier.name} buys a share out from under ${seller.name} for ${money(price)}: ${
           haulier.shares + 1
         } against ${seller.shares - 1}.`
-      : `${haulier.name} buys a share off ${seller.name} on the exchange for ${money(price)} — ${
+      : `${haulier.name} buys a share off ${seller.name} on the exchange for ${money(price)}: ${
           haulier.shares + 1
         } against ${seller.shares - 1}.`,
     haulier.id,
@@ -1115,7 +1115,7 @@ function doHostileBid(state: GameState, targetId: string): GameState {
   return log(
     s,
     'share',
-    `${buyer.name} bids ${money(price)} at the exchange and takes a share off ${seller.name} — ` +
+    `${buyer.name} bids ${money(price)} at the exchange and takes a share off ${seller.name}: ` +
       `${buyer.shares + 1} against ${seller.shares - 1}. ${money(price - proceeds)} goes in ` +
       `brokerage, and her next such bid will cost ${money(hostileBidPrice(made + 1, buyer.shares + 1))}.`,
     buyer.id,
@@ -1137,7 +1137,7 @@ function doSellShare(state: GameState): GameState {
   return log(
     s,
     'share',
-    `${haulier.name} surrenders a share to the bank for ${money(proceeds)} — ${
+    `${haulier.name} surrenders a share to the bank for ${money(proceeds)}, leaving ${
       haulier.shares - 1
     } held. A poor price, but it buys a cargo.`,
     haulier.id,
@@ -1161,7 +1161,7 @@ function doBuyFitting(state: GameState, vehicleId: string, fitting: 'tracker' | 
     'fitting',
     fitting === 'tracker'
       ? `${vehicle.name} is armed at ${depotName(vehicle.location)} for ${money(price)}.`
-      : `${vehicle.name} is serviced at ${depotName(vehicle.location)} for ${money(price)} — a point faster, and easier on heavy weather.`,
+      : `${vehicle.name} is serviced at ${depotName(vehicle.location)} for ${money(price)}: a point faster, and easier on heavy weather.`,
     haulier.id,
     { vehicleId: vehicle.id, fitting, price },
   );
@@ -1178,7 +1178,7 @@ function doSetInsurance(state: GameState, vehicleId: string, insured: boolean): 
     s,
     'insurance',
     insured
-      ? `${vehicle.name} is entered on an open policy — every run covered, premium taken at dispatch.`
+      ? `${vehicle.name} is entered on an open policy: every run covered, premium taken at dispatch.`
       : `${vehicle.name}'s policy is closed. She drives at her owner's risk.`,
     haulier.id,
     { vehicleId: vehicle.id },
@@ -1201,7 +1201,7 @@ function doDeclare(state: GameState): GameState {
   return log(
     s,
     'declare',
-    `${haulier.name} declares a majority — ${haulier.shares} of the ten. The company is wound up in ${DECLARATION_TURNS} turns; ${money(
+    `${haulier.name} declares a majority with ${haulier.shares} of the ten. The company is wound up in ${DECLARATION_TURNS} turns; ${money(
       VICTORY_CASH,
     )} and a vehicle must still be in hand.`,
     haulier.id,

@@ -12,7 +12,7 @@ import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/save
  * every endpoint here 401s once that happens, and without this distinct message the player just
  * sees campaigns silently fail to list/start with no clue why, since the JWT stays sitting in
  * localStorage looking "signed in" (PortalNav only checks for its presence, not validity). */
-export const SESSION_EXPIRED = 'Your sign-in has expired — use "Sign out" above, then sign in again to reach your cloud campaigns.';
+export const SESSION_EXPIRED = 'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your cloud campaigns.';
 
 /**
  * Cloud persistence for signed-in players, backed by the same Supabase/Postgres `games` table
@@ -86,7 +86,7 @@ export function useGameCloud() {
       await fetchSaves();
       return data.gameId as string;
     } catch {
-      setError('Network error — failed to start campaign');
+      setError('Network error: failed to start campaign');
       return null;
     }
   }, [fetchSaves]);
@@ -102,7 +102,7 @@ export function useGameCloud() {
       saver.current?.reset(gameId, data.version);
       setState({ ...data.state, exchangeRates: withAllCurrencies(data.state.exchangeRates) });
     } catch {
-      setError('Network error — failed to load campaign');
+      setError('Network error: failed to load campaign');
     }
   }, []);
 

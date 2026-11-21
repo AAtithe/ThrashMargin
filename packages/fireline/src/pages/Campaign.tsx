@@ -268,7 +268,7 @@ function CampaignMap({
   return (
     <div className="fl-camp" data-testid="campaign-map">
       <header className="fl-camp-top">
-        <button style={chromeBtn} onClick={() => navigate('/')}>
+        <button type="button" className="fl-chrome-btn" style={chromeBtn} onClick={() => navigate('/')}>
           ← Lobby
         </button>
         <strong style={{ fontFamily: FONT.display, fontSize: '1rem', letterSpacing: '0.04em' }}>FIRELINE</strong>

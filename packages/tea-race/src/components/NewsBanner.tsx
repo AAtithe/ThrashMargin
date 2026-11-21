@@ -23,7 +23,7 @@ const LOOK: Record<WorldEvent['kind'], { glyph: string; colour: string }> = {
 function effect(e: WorldEvent): string {
   switch (e.kind) {
     case 'strike':
-      return `${portName(e.port!)} shut — no lading, no landing`;
+      return `${portName(e.port!)} shut: no lading, no landing`;
     case 'embargo':
       return `${goodName(e.good!)} cannot be loaded`;
     case 'glut':

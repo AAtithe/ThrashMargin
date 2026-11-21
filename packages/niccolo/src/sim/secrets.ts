@@ -23,7 +23,7 @@ export function useSecret(state: GameState, secretId: string): GameState {
   const secret = state.secrets.find(s => s.id === secretId);
   if (!secret) throw new Error('No such secret');
   if (secret.used) throw new Error(`${secret.name} has already been used`);
-  if (secret.expired) throw new Error(`${secret.name} is no longer worth anything — the moment passed`);
+  if (secret.expired) throw new Error(`${secret.name} is no longer worth anything. The moment passed`);
 
   return {
     ...state,

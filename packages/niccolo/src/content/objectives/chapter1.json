@@ -1,11 +1,11 @@
 [
   { "id": "obj_c1_marian", "chapterNumber": 1, "label": "Marry Marian",
-    "description": "Both paths through this lead to the same place — a widow and an apprentice, made one household.",
+    "description": "Both paths through this lead to the same place: a widow and an apprentice, made one household.",
     "kind": { "type": "flag", "flag": "married_marian" },
     "inevitable": true },
 
   { "id": "obj_c1_condotta", "chapterNumber": 1, "label": "See Astorre's Naples condotta through",
-    "description": "Astorre's company serves a paid campaign at Naples — once the terms are struck, it runs its own course and comes home in time.",
+    "description": "Astorre's company serves a paid campaign at Naples: once the terms are struck, it runs its own course and comes home in time.",
     "kind": { "type": "flag", "flag": "condotta_naples_resolved" },
     "revealFlag": "condotta_naples_active" },
 
@@ -21,7 +21,7 @@
     "inevitable": true },
 
   { "id": "obj_c1_felix", "chapterNumber": 1, "label": "Felix's fate",
-    "description": "A scripted loss, not a choice — position for it, don't expect to prevent it.",
+    "description": "A scripted loss, not a choice: position for it, don't expect to prevent it.",
     "kind": { "type": "flag", "flag": "felix_lost" },
     "inevitable": true }
 ]

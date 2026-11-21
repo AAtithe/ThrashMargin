@@ -9,7 +9,9 @@
  * A session is refused when any of these hold:
  *   - no `Authorization: Bearer` token, or it does not verify against JWT_SECRET;
  *   - it was issued more than 12 hours ago (maxAge, measured from its iat, so a token issued under
- *     an older, longer setting is refused too);
+ *     an older, longer setting is refused too), or more than 30 days ago for a session where the
+ *     player ticked "Keep me signed in on this device" (the `rem` claim, which only signToken sets,
+ *     inside the signature, so it cannot be added to a token afterwards);
  *   - its account no longer exists;
  *   - its account's password was changed or reset after it was issued, which is what signs every
  *     other device out when a password changes;
@@ -23,23 +25,35 @@ import { ensureSchema } from './schema';
 
 const SECRET = process.env.JWT_SECRET!;
 const SESSION_MAX_AGE = '12h';
+const SESSION_MAX_AGE_S = 12 * 3600;
+/** "Keep me signed in on this device": a month, then sign in again. Still ended at once by a
+ *  suspension or a password change, like every other session. */
+const REMEMBERED_MAX_AGE = '30d';
 
 export interface TokenPayload {
   userId: string;
   username: string;
+  /** Signed in with "Keep me signed in on this device". */
+  remember?: boolean;
 }
 
 /** A request that is not signed in. Anything else thrown by getUser is a server fault. */
 export class AuthError extends Error {}
 
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign({ userId: payload.userId, username: payload.username }, SECRET, {
-    expiresIn: SESSION_MAX_AGE,
+  const claims: Record<string, unknown> = { userId: payload.userId, username: payload.username };
+  if (payload.remember) claims.rem = 1;
+  return jwt.sign(claims, SECRET, {
+    expiresIn: payload.remember ? REMEMBERED_MAX_AGE : SESSION_MAX_AGE,
   } as jwt.SignOptions);
 }
 
 export function verifyToken(token: string): TokenPayload & { iat: number } {
-  return jwt.verify(token, SECRET, { maxAge: SESSION_MAX_AGE }) as TokenPayload & { iat: number };
+  // The longer limit first, then the shorter one for any token without the remember claim.
+  const p = jwt.verify(token, SECRET, { maxAge: REMEMBERED_MAX_AGE }) as TokenPayload & { iat: number; rem?: number };
+  const remember = p.rem === 1;
+  if (!remember && Math.floor(Date.now() / 1000) - p.iat > SESSION_MAX_AGE_S) throw new AuthError('Session expired');
+  return { userId: p.userId, username: p.username, iat: p.iat, ...(remember ? { remember: true } : {}) };
 }
 
 export async function getUser(req: VercelRequest): Promise<TokenPayload> {
@@ -63,7 +77,7 @@ export async function getUser(req: VercelRequest): Promise<TokenPayload> {
   if (changed && payload.iat < Math.floor(changed.getTime() / 1000)) {
     throw new AuthError('Signed out after a password change');
   }
-  return { userId: payload.userId, username: payload.username };
+  return { userId: payload.userId, username: payload.username, ...(payload.remember ? { remember: true } : {}) };
 }
 
 /**

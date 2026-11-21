@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { FloatText, useCountUp, type FloatItem } from '../lib/motion';
 import { FONT, UI, signed } from '../theme';
 import Icon, { type IconName } from './Icon';
+import { Button as KitButton } from '../lib/Kit';
 
 export const RESOURCE_META: Record<'gold' | 'food' | 'mat' | 'influence' | 'pop' | 'troops' | 'ap', { label: string; icon: IconName; color: string }> = {
   gold: { label: 'Gold', icon: 'gold', color: UI.gold },
@@ -19,41 +20,48 @@ export const RESOURCE_META: Record<'gold' | 'food' | 'mat' | 'influence' | 'pop'
 
 type Tone = 'primary' | 'default' | 'danger' | 'quiet' | 'move' | 'attack';
 
-const TONES: Record<Tone, CSSProperties> = {
-  primary: { background: UI.accent, color: UI.accentInk, border: `1px solid ${UI.accent}`, fontWeight: 700 },
-  default: { background: UI.panelRaised, color: UI.text, border: `1px solid ${UI.ruleStrong}` },
-  danger: { background: UI.dangerBg, color: UI.dangerText, border: `1px solid ${UI.bad}` },
-  quiet: { background: 'transparent', color: UI.textSoft, border: `1px solid ${UI.rule}` },
-  move: { background: UI.moveBg, color: UI.moveText, border: `1px solid ${UI.move}` },
-  attack: { background: UI.attackBg, color: UI.attackText, border: `1px solid ${UI.attack}` },
-};
-
-export function Button({ children, onClick, disabled, tone = 'default', title, icon, small, full, style, id }: {
+/**
+ * The game's button, drawn by the portal's UI kit (lib/Kit.tsx), which supplies hover, press,
+ * focus, disabled and the 40px phone target. `move` and `attack` are the game's own tones: kit
+ * defaults with their colours set in styles.css (`.tm-kbtn--move`, `.tm-kbtn--attack`).
+ * `disabledReason` shows, while the button is disabled, as a visible line under it.
+ */
+export function Button({ children, onClick, disabled, disabledReason, tone = 'default', title, icon, small, full, style, wrapStyle, reasonEnd, id, ariaLabel }: {
   children?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  /** Why it is disabled: a short sentence shown under it while it is. */
+  disabledReason?: string | null;
   tone?: Tone;
   title?: string;
   icon?: IconName;
   small?: boolean;
   full?: boolean;
   style?: CSSProperties;
+  wrapStyle?: CSSProperties;
+  /** Right-align the reason line under the button (for a button at the end of a row). */
+  reasonEnd?: boolean;
   /** A stable hook for the guided turn to spotlight this control. See `GuidedTour.tsx`. */
   id?: string;
+  ariaLabel?: string;
 }) {
+  const kitTone = tone === 'move' || tone === 'attack' ? 'default' : tone;
   return (
-    <button
-      type="button" id={id} className="tm-btn" onClick={onClick} disabled={disabled} title={title}
-      style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        padding: small ? '4px 9px' : '7px 12px', borderRadius: 6, fontSize: small ? 12 : 13,
-        cursor: disabled ? 'not-allowed' : 'pointer', width: full ? '100%' : undefined, lineHeight: 1.2,
-        ...TONES[tone], ...style,
+    <KitButton
+      id={id} tone={kitTone} size={small ? 'small' : 'normal'} className={`tm-kbtn tm-kbtn--${tone}`}
+      onClick={onClick} disabled={disabled} title={title} aria-label={ariaLabel}
+      // A null reason (enabled now) still gets the wrapper, so the row does not jump when one appears.
+      disabledReason={disabledReason === undefined ? undefined : disabledReason ?? ''}
+      wrapStyle={{
+        ...(full ? { width: '100%', alignItems: 'stretch' } : {}),
+        ...(reasonEnd ? { alignItems: 'flex-end', textAlign: 'right' } : {}),
+        ...wrapStyle,
       }}
+      style={{ width: full ? '100%' : undefined, ...style }}
     >
       {icon && <Icon name={icon} size={small ? 12 : 14} />}
       {children}
-    </button>
+    </KitButton>
   );
 }
 
@@ -188,11 +196,11 @@ export function Stepper({ value, min, max, onChange, label }: { value: number; m
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       {label && <div style={{ fontSize: 12, color: UI.textSoft, minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>}
-      <button type="button" aria-label="Fewer" style={btn} onClick={() => onChange(clamp(value - 1))} disabled={value <= min}><Icon name="minus" size={12} /></button>
+      <button type="button" className="tm-btn tm-step-btn" aria-label="Fewer" style={btn} onClick={() => onChange(clamp(value - 1))} disabled={value <= min}><Icon name="minus" size={12} /></button>
       <input className="tm-range" type="range" min={min} max={Math.max(min, max)} value={value} onChange={e => onChange(clamp(Number(e.target.value)))} style={{ flex: 1, minWidth: 60 }} aria-label="Amount" />
-      <button type="button" aria-label="More" style={btn} onClick={() => onChange(clamp(value + 1))} disabled={value >= max}><Icon name="plus" size={12} /></button>
+      <button type="button" className="tm-btn tm-step-btn" aria-label="More" style={btn} onClick={() => onChange(clamp(value + 1))} disabled={value >= max}><Icon name="plus" size={12} /></button>
       <span className="tm-num" style={{ fontFamily: FONT.data, fontSize: 13, fontWeight: 700, minWidth: 24, textAlign: 'right' }}>{value}</span>
-      <button type="button" onClick={() => onChange(max)} style={{ ...btn, width: 'auto', padding: '0 7px', fontSize: 11, color: UI.textSoft }} disabled={value >= max}>max</button>
+      <button type="button" className="tm-btn" onClick={() => onChange(max)} style={{ ...btn, width: 'auto', padding: '0 7px', fontSize: 11, color: UI.textSoft }} disabled={value >= max}>max</button>
     </div>
   );
 }
@@ -223,12 +231,12 @@ export function Modal({ children, onClose, width = 460, label }: { children: Rea
 export function ModalHeader({ title, kicker, onClose, color }: { title: ReactNode; kicker?: ReactNode; onClose?: () => void; color?: string }) {
   return (
     <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${UI.rule}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         {kicker && <Label style={{ color: color ?? UI.textFaint, marginBottom: 4 }}>{kicker}</Label>}
         <h2 style={{ margin: 0, fontFamily: FONT.display, fontSize: 21, fontWeight: 600, color: UI.text }}>{title}</h2>
       </div>
       {onClose && (
-        <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 4 }}>
+        <button type="button" className="tm-icon-quiet" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 6, margin: '-4px -6px 0 0', display: 'inline-flex' }}>
           <Icon name="close" size={16} />
         </button>
       )}

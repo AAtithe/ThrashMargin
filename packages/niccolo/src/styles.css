@@ -1,9 +1,11 @@
 /* Niccolò has no other global styles: inline styles carry everything else. */
 
 /*
- * The palette, one set per mode. theme.ts hands out var(--…) references to these. The dark set is
- * the original chart-room chrome; the light set is the same room by daylight, matched to the
- * printed chart it frames. `data-theme` on <html> is set before first paint by index.html (see
+ * The palette, one set per mode. Every text token (text, soft, faint, brass, verdigris, good, warn,
+ * bad) clears WCAG AA (4.5:1) on ground, panel and panel-raised in both modes; rule-strong is the
+ * border that has to be seen (fields, buttons), rule the one that only divides. theme.ts hands out
+ * var(--…) references to these. The dark set is the original chart-room chrome; the light set is
+ * the same room by daylight, matched to the printed chart it frames. `data-theme` on <html> is set before first paint by index.html (see
  * lib/colorScheme.ts).
  */
 :root {
@@ -11,50 +13,68 @@
   --ui-panel: #f8f4eb;
   --ui-panel-raised: #e6ddcb;
   --ui-rule: #d4c9b3;
-  --ui-rule-strong: #b0a38a;
+  --ui-rule-strong: #998c72;
   --ui-text: #2a251e;
   --ui-text-soft: #5a5345;
-  --ui-text-faint: #847b68;
-  --ui-brass: #8b5e17;
-  --ui-verdigris: #2c6f66;
+  --ui-text-faint: #675f4e;
+  --ui-brass: #7d5413;
+  --ui-verdigris: #28655d;
   --ui-ensign: #a8342f;
-  --ui-good: #3d7434;
-  --ui-warn: #8f6210;
+  --ui-good: #35682d;
+  --ui-warn: #7f5609;
   --ui-bad: #a8342f;
   --ui-scrim: rgba(42, 37, 30, 0.45);
   --ui-scrim-light: rgba(42, 37, 30, 0.18);
   --ui-cover: rgba(226, 218, 202, 0.97);
   --ui-shadow: rgba(60, 45, 20, 0.22);
-  --ui-tint-verdigris: rgba(44, 111, 102, 0.08);
-  --ui-tint-warn: rgba(143, 98, 16, 0.09);
+  --ui-tint-verdigris: rgba(40, 101, 93, 0.08);
+  --ui-tint-warn: rgba(127, 86, 9, 0.09);
   --ui-tint-bad: rgba(168, 52, 47, 0.08);
-  --ui-tint-brass: rgba(139, 94, 23, 0.1);
+  --ui-tint-brass: rgba(125, 84, 19, 0.1);
   --ui-bad-rule: rgba(168, 52, 47, 0.35);
+
+  /* UI kit (lib/kit.css), mapped onto this palette; every line follows dark mode through --ui-*. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 2px;
+  --kit-font-size: 0.82rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.65rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-panel);
+  --kit-rule: var(--ui-rule);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
   --ui-panel: #141e25;
   --ui-panel-raised: #1b272f;
   --ui-rule: #26343d;
-  --ui-rule-strong: #3a4b56;
+  --ui-rule-strong: #4f626e;
   --ui-text: #e6ddc9;
   --ui-text-soft: #93a3ad;
-  --ui-text-faint: #63737d;
+  --ui-text-faint: #7f8f99;
   --ui-brass: #d09a4e;
   --ui-verdigris: #6fb0a4;
   --ui-ensign: #c2606a;
   --ui-good: #7fb069;
   --ui-warn: #d9a441;
-  --ui-bad: #c2606a;
+  --ui-bad: #d27a83;
   --ui-scrim: rgba(13, 20, 25, 0.78);
   --ui-scrim-light: rgba(13, 20, 25, 0.35);
   --ui-cover: rgba(6, 11, 14, 0.92);
   --ui-shadow: rgba(0, 0, 0, 0.55);
   --ui-tint-verdigris: rgba(111, 176, 164, 0.07);
   --ui-tint-warn: rgba(217, 164, 65, 0.09);
-  --ui-tint-bad: rgba(194, 96, 106, 0.1);
+  --ui-tint-bad: rgba(210, 122, 131, 0.1);
   --ui-tint-brass: rgba(208, 154, 78, 0.09);
-  --ui-bad-rule: rgba(194, 96, 106, 0.4);
+  --ui-bad-rule: rgba(210, 122, 131, 0.4);
 }
 
 body {
@@ -125,13 +145,84 @@ body {
     border-width: 1px 0 0;
     transform: translateY(calc(100% + 1.2rem));
   }
-  .niccolo-launcher { font-size: 0.75rem !important; padding: 0.35rem 0.55rem !important; }
-  .niccolo-game-header { padding: 0.4rem 0.6rem !important; gap: 0.3rem !important; }
-  .niccolo-game-header h1 { font-size: 1rem !important; }
-  .niccolo-game-header button { padding: 0.25rem 0.5rem !important; }
-  .niccolo-clock { font-size: 0.78rem !important; }
+  .niccolo-launcher { font-size: 0.75rem !important; padding: 0 0.6rem !important; }
+  /*
+   * The header packs into as few lines as fit, every line of it being a line of chart lost: the
+   * action row dissolves (display: contents) so the title and the chapter share a line, the clock
+   * takes the next, and the buttons the last, each a 40px target.
+   */
+  .niccolo-game-header { padding: 0.4rem 0.6rem !important; gap: 0.3rem 0.4rem !important; align-items: center !important; justify-content: flex-start !important; }
+  .niccolo-header-bar { display: contents !important; }
+  .niccolo-game-header h1 { font-size: 1rem !important; order: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .niccolo-header-progress { order: 1; font-size: 0.72rem !important; }
+  .niccolo-header-progress > * { font-size: inherit !important; }
+  .niccolo-clock { order: 2; flex: 1 0 100%; font-size: 0.74rem !important; letter-spacing: 0.04em !important; }
+  .niccolo-game-header button { order: 3; min-height: 40px; padding: 0 0.55rem !important; }
+  /* The section tabs are glyphs alone here (labels hidden), each a 40px square. */
+  #section-rail > div > button { min-width: 40px; min-height: 40px; justify-content: center; padding: 0 0.45rem !important; }
   .niccolo-rail-label { display: none !important; }
   .niccolo-hide-phone { display: none !important; }
+  .niccolo-phone-only { display: inline !important; }
+}
+.niccolo-phone-only { display: none; }
+
+/*
+ * Interaction states for the buttons and fields that style themselves inline (most of the game's
+ * panels). The components style themselves inline, so these work only through properties the
+ * inline styles leave alone (outline, filter, transform) or with !important on border-color, which
+ * every bordered control here sets inline. A control with no border (border: none) is untouched by
+ * the border rule, so ghost buttons stay borderless. Kit buttons (.kit-btn, components/ui.tsx's
+ * Button) are left out: lib/kit.css gives them their hover, press and disabled states.
+ */
+#root button:not(.kit-btn),
+#root select,
+#root input {
+  transition: border-color calc(140ms * var(--tm-motion, 1)) ease, background-color calc(140ms * var(--tm-motion, 1)) ease,
+    color calc(140ms * var(--tm-motion, 1)) ease, filter calc(140ms * var(--tm-motion, 1)) ease;
+}
+#root button:not(.kit-btn):not(:disabled):hover,
+#root select:not(:disabled):hover,
+#root input:not(:disabled):hover {
+  border-color: var(--ui-brass) !important;
+}
+/* A danger control keeps its own colour on hover rather than turning brass. */
+#root button:not(.kit-btn)[style*="--ui-bad"]:not(:disabled):hover {
+  border-color: var(--ui-bad) !important;
+}
+#root button:not(.kit-btn):not(:disabled):active {
+  filter: brightness(0.94);
+}
+:root[data-theme="dark"] #root button:not(.kit-btn):not(:disabled):active {
+  filter: brightness(1.15);
+}
+#root button:not(.kit-btn):disabled,
+#root select:disabled,
+#root input:disabled {
+  cursor: not-allowed;
+}
+/* The kit's quiet tone keeps the game's lighter edge (components/ui.tsx's old quiet button). */
+.kit-btn--quiet {
+  --kit-btn-edge: var(--ui-rule);
+}
+#root input[type="checkbox"],
+#root input[type="radio"] {
+  accent-color: var(--ui-brass);
+  width: 1rem;
+  height: 1rem;
+  margin: 0.1rem 0 0;
+  flex-shrink: 0;
+}
+#root ::placeholder {
+  color: var(--ui-text-faint);
+  opacity: 1;
+}
+
+/* The section drawer's slide (SectionPopup.tsx) follows the portal pace, and stops with motion off. */
+[data-niccolo-drawer] {
+  animation-duration: calc(160ms * var(--tm-motion, 1)) !important;
+}
+:root[data-motion="off"] [data-niccolo-drawer] {
+  animation: none !important;
 }
 
 /* Motion: off stands the panels still, as OS reduced motion does below: they appear and go at once. */

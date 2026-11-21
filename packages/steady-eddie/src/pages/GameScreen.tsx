@@ -17,9 +17,9 @@ import EventCards from '../components/EventCards';
 import NewsBanner from '../components/NewsBanner';
 import { vehiclesAwaitingOrders } from '../sim/attention';
 import HauliersTable from '../components/HauliersTable';
-import ChronicleLog from '../components/ChronicleLog';
+import ChronicleLog, { LogAnnouncer } from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
-import { Button, bodySmall, dataText } from '../components/ui';
+import { Button, bodySmall, buttonClass, dataText } from '../components/ui';
 import type { Contract, DepotId, GameState, Vehicle } from '../sim/types';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import { paced, signed, usePace, useSkipOnInput, useSteps, useTween } from '../lib/motion';
@@ -297,6 +297,22 @@ export default function GameScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tourTarget, tourMoment]);
 
+  /**
+   * The turn bar's height, so that on a phone the open bottom sheet can end its scrolling body
+   * above it. There the bar docks across the foot of the sheet instead of floating over the chart
+   * above it, which used to hide the strip of chart the sheet had left showing.
+   */
+  const [turnBarEl, setTurnBarEl] = useState<HTMLDivElement | null>(null);
+  const [turnBarH, setTurnBarH] = useState(0);
+  useEffect(() => {
+    if (!turnBarEl || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setTurnBarH(Math.ceil(turnBarEl.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(turnBarEl);
+    return () => ro.disconnect();
+  }, [turnBarEl]);
+
   if (!state) {
     return (
       <LoadingScreen
@@ -372,6 +388,9 @@ export default function GameScreen() {
         right: ordersOpen ? layout.ordersWidth + 20 : 0,
         bottom: 0,
       };
+  /** On a phone with a sheet open, the turn bar sits at the sheet's foot, and the sheet's body ends above it. */
+  const barDocked = layout.sheet && (exchangeOpen || ordersOpen);
+  const sheetStyle: React.CSSProperties | undefined = barDocked ? { paddingBottom: turnBarH } : undefined;
   const focusDepot = targetDepot ?? selectedVehicle?.location ?? myVehicles.find(ve => ve.location)?.location ?? null;
 
   return (
@@ -404,8 +423,9 @@ export default function GameScreen() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* Sized like the game's own buttons beside them, so the header reads as one row. */}
+          <MotionToggle className={buttonClass('quiet')} style={headerToggle} />
+          <ThemeToggle className={buttonClass('quiet')} style={headerToggle} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on day one: a player who skipped it, or who came back to a half-played game, should
               still be able to ask for it. */}
@@ -426,7 +446,7 @@ export default function GameScreen() {
           <span style={{ color: UI.verdigris, fontFamily: FONT.display, fontSize: '0.9rem' }}>
             {SEASON_NAMES[season]}
           </span>
-          <span style={{ ...dataText, fontSize: '0.72rem', color: UI.textFaint }}>
+          <span style={{ ...dataText, fontSize: '0.72rem', color: UI.textSoft }}>
             year {gameYear(state.round)} · turns in {roundsLeftInSeason(state.round)} round
             {roundsLeftInSeason(state.round) === 1 ? '' : 's'}
           </span>
@@ -513,6 +533,7 @@ export default function GameScreen() {
         <aside
           ref={exchangeRef}
           className={`tr-panel tr-panel-left${exchangeOpen ? ' open' : ''}`}
+          style={sheetStyle}
           aria-hidden={!exchangeOpen}
           aria-label="The exchange"
         >
@@ -547,6 +568,7 @@ export default function GameScreen() {
           ref={ordersRef}
           id="game-sidebar"
           className={`tr-panel tr-panel-right${ordersOpen ? ' open' : ''}`}
+          style={sheetStyle}
           aria-hidden={!ordersOpen}
           aria-label="Your fleet and orders"
         >
@@ -603,12 +625,17 @@ export default function GameScreen() {
         </aside>
 
           <div
-            style={{
-              ...turnBar,
-              left: `calc(${insetPx.left}px + 12px)`,
-              right: `calc(${insetPx.right}px + 66px)`,
-              bottom: insetPx.bottom + 12,
-            }}
+            ref={setTurnBarEl}
+            style={
+              barDocked
+                ? { ...turnBar, ...turnBarDocked }
+                : {
+                    ...turnBar,
+                    left: `calc(${insetPx.left}px + 12px)`,
+                    right: `calc(${insetPx.right}px + 66px)`,
+                    bottom: insetPx.bottom + 12,
+                  }
+            }
             className="tr-turnbar"
           >
             {over ? (
@@ -618,7 +645,7 @@ export default function GameScreen() {
             ) : mustRoll ? (
               <>
                 <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
-                  Roll for the day — {myVehicles.length === 1 ? 'her' : 'the fleet'}
+                  {myVehicles.length === 1 ? 'Roll for the day' : 'Roll for the fleet'}
                 </Button>
                 <span className="tr-hide-phone" style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
                   2d6 per vehicle. Vehicles already on the road drive on the moment you roll.
@@ -652,7 +679,7 @@ export default function GameScreen() {
                 </Button>
                 {confirmingEnd && (
                   <Button tone="quiet" onClick={() => setConfirmingEnd(false)}>
-                    Wait — give her orders
+                    Wait, give her orders
                   </Button>
                 )}
                 <span
@@ -668,7 +695,7 @@ export default function GameScreen() {
                     ? awaiting
                         .map(
                           w =>
-                            `${w.vehicleName} lies at ${w.depotName} with ${w.pointsUnspent} pts unspent — ${w.hint}`,
+                            `${w.vehicleName} lies at ${w.depotName} with ${w.pointsUnspent} pts unspent: ${w.hint}`,
                         )
                         .join('. ') + '.'
                     : selectedVehicle?.location
@@ -686,6 +713,9 @@ export default function GameScreen() {
             )}
           </div>
       </main>
+
+      {/* New log entries, read to a screen reader as they land (the log panel may be put away). */}
+      <LogAnnouncer log={shown?.log ?? state.log} />
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
       <EventCards log={shown?.log ?? state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
@@ -825,11 +855,27 @@ const turnBar: React.CSSProperties = {
   alignItems: 'center',
   gap: '0.8rem',
   flexWrap: 'wrap',
-  border: `1px solid ${UI.ruleStrong}`,
+  // Longhands, not `border`: turnBarDocked overrides borderWidth, and React warns when a rerender
+  // mixes a shorthand with its own longhand.
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: UI.ruleStrong,
   background: UI.panel,
   padding: '0.55rem 0.75rem',
   boxShadow: `0 6px 20px ${UI.shadow}`,
   transition: 'left 0.25s ease, right 0.25s ease, bottom 0.25s ease',
+};
+
+/** The turn bar across the foot of a phone's open sheet: above the sheet (40), full width. */
+const turnBarDocked: React.CSSProperties = {
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 41,
+  maxWidth: 'none',
+  borderWidth: '1px 0 0',
+  boxShadow: 'none',
+  padding: '0.5rem 0.75rem',
 };
 
 const gazetteSlot: React.CSSProperties = {
@@ -859,6 +905,7 @@ const launcher: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'flex-start',
+  justifyContent: 'center',
   gap: 1,
   padding: '0.45rem 0.75rem',
   background: UI.panel,
@@ -869,6 +916,16 @@ const launcher: React.CSSProperties = {
   fontSize: '0.92rem',
   cursor: 'pointer',
   borderRadius: 2,
+};
+
+/** The shared toggles' own inline look, cleared so the kit's quiet button (and its states) shows. */
+const headerToggle: React.CSSProperties = {
+  background: undefined,
+  border: undefined,
+  color: undefined,
+  borderRadius: undefined,
+  padding: undefined,
+  fontSize: undefined,
 };
 
 const launcherNote: React.CSSProperties = {
@@ -884,15 +941,16 @@ function PanelHead({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.6rem 0.5rem 0.8rem', borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
       <span style={{ fontFamily: FONT.display, fontSize: '0.95rem', color: UI.text }}>{title}</span>
-      <button
-        type="button"
+      <Button
+        tone="quiet"
         onClick={onClose}
         aria-label={`Close ${title.toLowerCase()} (Esc)`}
         title="Close (Esc)"
-        style={{ background: 'none', border: `1px solid ${UI.rule}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.8rem', width: 30, height: 28 }}
+        className="se-square"
+        style={{ fontFamily: FONT.data, fontSize: '0.85rem' }}
       >
         ✕
-      </button>
+      </Button>
     </div>
   );
 }

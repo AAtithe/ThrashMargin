@@ -48,6 +48,7 @@ import { distanceBetween, goodName, portName, sourcesFor } from '../sim/content'
 import { destinationOf } from '../sim/movement';
 import { HOLD_SLOTS, PAYOUT_MULTIPLIERS, SHARE_MAJORITY, slotsOf } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
+import { Button } from './ui';
 import type { Captain, Contract, ContractId, GameState, GoodId, PortId, Ship, ShipId } from '../sim/types';
 
 const TOUR_SEEN_KEY = 'tea_race_tour_seen';
@@ -265,7 +266,7 @@ const needsSelecting = (v: TourView, plan: TourPlan): boolean =>
   !!v.ship && v.selectedShipId !== plan.shipId;
 
 const SELECT_HER = (v: TourView, what: string) =>
-  `The Orders panel is showing another ship. Select ${v.ship?.name ?? 'her'} in your fleet first — ${what} goes to whichever ship is selected.`;
+  `The Orders panel is showing another ship. Select ${v.ship?.name ?? 'her'} in your fleet first: ${what} goes to whichever ship is selected.`;
 
 /**
  * Wrap a step whose control lives in the Orders panel or the counting house.
@@ -291,7 +292,7 @@ function quayside(step: TourStep): TourStep {
     body: (v, plan) => {
       if (!isMyTurn(v)) return 'The other captains are taking their turns. I will wait.';
       if (v.state.phase === 'roll') {
-        return 'Take the wind first — nothing at the quay can be touched until the fleet has its points for the turn. Then we carry on where we left off.';
+        return 'Take the wind first. Nothing at the quay can be touched until the fleet has its points for the turn. Then we carry on where we left off.';
       }
       if (needsSelecting(v, plan)) return SELECT_HER(v, 'every order there');
       return step.body(v, plan);
@@ -338,7 +339,7 @@ function castOff(portOf: (plan: TourPlan) => PortId, step: TourStep): TourStep {
 const INTRO: TourStep = {
   title: 'One run, start to finish',
   body: (v, plan) =>
-    `I will point at one control at a time and wait while you use it. This is your real game — the cargo, the money and the commission are all yours to keep. ` +
+    `I will point at one control at a time and wait while you use it. This is your real game: the cargo, the money and the commission are all yours to keep. ` +
     `We are going after ${goodName(plan.good)} for ${portName(plan.destination)}` +
     (plan.needsSourcingLeg ? `, by way of ${portName(plan.loadPort)} where it can be had.` : `, loaded right here.`) +
     ` Skip at any time.`,
@@ -349,7 +350,7 @@ const INTRO: TourStep = {
 const ROLL: TourStep = {
   title: 'Take the wind',
   body: () =>
-    'Nothing moves until you roll. Every ship gets her own two dice and those are her sail points for the turn — roll for the fleet.',
+    'Nothing moves until you roll. Every ship gets her own two dice and those are her sail points for the turn. Roll for the fleet.',
   target: () => 'roll-button',
   isComplete: v => v.state.phase !== 'roll',
 };
@@ -358,7 +359,7 @@ const PICK_COMMISSION: TourStep = {
   title: 'Pick up the commission',
   body: (_v, plan) =>
     `On the commissions board, click ${goodName(plan.good)} wanted at ${portName(plan.destination)}. ` +
-    `Clicking one draws its course on the chart and shows where the cargo can be bought — the card names the buyer, never the seller, so sourcing is yours to decide.`,
+    `Clicking one draws its course on the chart and shows where the cargo can be bought. The card names the buyer, never the seller, so sourcing is yours to decide.`,
   target: (_v, plan) => `contract-card-${plan.contractId}`,
   isComplete: (v, plan, memory) =>
     memory.pickedCommission ||
@@ -373,7 +374,7 @@ const COURSE_TO_SELLER: TourStep = {
   title: 'Lay off a course for the cargo',
   body: (_v, plan) =>
     `Nobody at your home quay sells ${goodName(plan.good)}. ${portName(plan.loadPort)} does. ` +
-    `Click ${portName(plan.loadPort)} — in the port ledger under the chart, or on the chart itself — to lay off a course for her.`,
+    `Click ${portName(plan.loadPort)} (in the port ledger under the chart, or on the chart itself) to lay off a course for her.`,
   target: (_v, plan) => `ledger-port-${plan.loadPort}`,
   isComplete: (v, plan) =>
     (v.targetPort === plan.loadPort && !needsSelecting(v, plan)) || boundFor(v.ship, plan.loadPort),
@@ -382,7 +383,7 @@ const COURSE_TO_SELLER: TourStep = {
 const CAST_OFF_TO_SELLER: TourStep = castOff(plan => plan.loadPort, {
   title: 'Cast off',
   body: (_v, plan) =>
-    `Commit her to the crossing. She spends this turn's points towards ${portName(plan.loadPort)} and carries on next turn — a ship at sea sails the moment you roll, you do not steer her again.`,
+    `Commit her to the crossing. She spends this turn's points towards ${portName(plan.loadPort)} and carries on next turn. A ship at sea sails the moment you roll; you do not steer her again.`,
   target: () => 'cast-off-button',
   isComplete: (v, plan) => boundFor(v.ship, plan.loadPort),
 });
@@ -401,7 +402,7 @@ const SAIL_TO_SELLER: TourStep = {
 const LOAD: TourStep = {
   title: 'Load her hold',
   body: (v, plan) =>
-    `Buy a lot of ${goodName(plan.good)} off this quay — ${money(v.priceFor(plan.loadPort, plan.good))} a lot. ` +
+    `Buy a lot of ${goodName(plan.good)} off this quay, at ${money(v.priceFor(plan.loadPort, plan.good))} a lot. ` +
     `Her hold takes ${slotsOf(v.ship?.shipClass)} lots in all.`,
   target: (_v, plan) => `load-cargo-${plan.good}`,
   isComplete: (v, plan) => lotsOf(v.ship, plan.good) > 0,
@@ -411,7 +412,7 @@ const FILL: TourStep = {
   title: 'Fill the hull',
   body: (v, plan) =>
     `Three lots of the same good landed together are paid three times over, and the crossing costs the same whether she is full or not. ` +
-    `Buy another lot of ${goodName(plan.good)} if you can — ${money(v.priceFor(plan.loadPort, plan.good))} more. Filling the hull with one cargo is usually the strongest move in the game.`,
+    `Buy another lot of ${goodName(plan.good)} if you can, for ${money(v.priceFor(plan.loadPort, plan.good))} more. Filling the hull with one cargo is usually the strongest move in the game.`,
   target: (_v, plan) => `load-cargo-${plan.good}`,
   isComplete: (v, plan) => {
     const lots = lotsOf(v.ship, plan.good);
@@ -430,7 +431,7 @@ const FILL: TourStep = {
 const COURSE_TO_BUYER: TourStep = {
   title: 'Lay off a course for the buyer',
   body: (_v, plan) =>
-    `She is loaded. Click ${portName(plan.destination)} to lay off the course that pays — the chart will draw it.`,
+    `She is loaded. Click ${portName(plan.destination)} to lay off the course that pays. The chart will draw it.`,
   target: (_v, plan) => `ledger-port-${plan.destination}`,
   isComplete: (v, plan) =>
     (v.targetPort === plan.destination && !needsSelecting(v, plan)) || boundFor(v.ship, plan.destination),
@@ -448,7 +449,7 @@ const SAIL_TO_BUYER: TourStep = {
   title: 'Run her home',
   body: (v, plan) =>
     v.state.phase === 'roll'
-      ? `Roll, and keep rolling. ${portName(plan.destination)} is the target — I will wait.`
+      ? `Roll, and keep rolling. ${portName(plan.destination)} is the target. I will wait.`
       : `End the turn, and keep going until she ties up at ${portName(plan.destination)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.ship?.location === plan.destination,
@@ -461,7 +462,7 @@ const LAND: TourStep = {
     const contract = contractOf(v.state, plan.contractId);
     const instead = v.state.hazards?.quaysideSales
       ? 'Sell the cargo off the quay if you like, or keep it for the next card that wants it'
-      : 'Keep the cargo for the next card that wants it — there are no quayside sales in this ruleset';
+      : 'Keep the cargo for the next card that wants it: there are no quayside sales in this ruleset';
     if (commissionLost(v.state, v.captain, v.ship, plan.good, plan.contractId)) {
       // A card whose second berth is filled is replaced in the same action, so "gone from the
       // board" usually means rivals filled it, not that it lapsed; the log is the only record.
@@ -471,12 +472,12 @@ const LAND: TourStep = {
         ).length >= 2;
       return contract || filledByOthers
         ? `Both berths went to other captains while you were at sea. That is the game, and it is why speed is worth more than price here. ${instead}, and we will move on.`
-        : `The commission was withdrawn from the board while you sailed — it happens. ${instead}, and we will carry on.`;
+        : `The commission was withdrawn from the board while you sailed. It happens. ${instead}, and we will carry on.`;
     }
     // Gone with her cargo ashore: she took the last berth herself, and the card went with it.
-    if (!contract) return `Landed — and that filled the card's last berth, so it has left the board.`;
+    if (!contract) return `Landed, and that filled the card's last berth, so it has left the board.`;
     const rank = contract.fills.length + 1;
-    return `Land her. Every matching slot goes at once and is paid per lot — you are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
+    return `Land her. Every matching slot goes at once and is paid per lot. You are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
   },
   target: (v, plan) => (commissionLost(v.state, v.captain, v.ship, plan.good, plan.contractId) ? null : `land-contract-${plan.contractId}`),
   // Landed, or the cargo went some other way once she was alongside (sold, or over the side). The
@@ -496,7 +497,7 @@ const LAND: TourStep = {
 const BUY_SHARE: TourStep = {
   title: 'Turn the money into shares',
   body: () =>
-    `Cash does not win this. In the counting house, buy a share of your own company — carry ${SHARE_MAJORITY} of them, declare, and hold the line to the close, and the company is yours.`,
+    `Cash does not win this. In the counting house, buy a share of your own company. Carry ${SHARE_MAJORITY} of them, declare, and hold the line to the close, and the company is yours.`,
   target: () => 'buy-share-button',
   isComplete: (v, _plan, memory) => v.captain.shares > memory.shares,
 };
@@ -504,7 +505,7 @@ const BUY_SHARE: TourStep = {
 const OUTRO: TourStep = {
   title: 'That is the loop',
   body: () =>
-    `Source it, carry it, land it first, buy shares with what it made. Everything else in the game — loans, agents, copper on her bottom, guns against the pirates, a hostile bid for somebody else's shares — is a way of doing that loop faster than the captain next to you. The counting house is where most of it lives. Off you go.`,
+    `Source it, carry it, land it first, buy shares with what it made. Everything else in the game (loans, agents, copper on her bottom, guns against the pirates, a hostile bid for somebody else's shares) is a way of doing that loop faster than the captain next to you. The counting house is where most of it lives. Off you go.`,
   target: () => null,
   isComplete: () => false,
 };
@@ -872,28 +873,28 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
         data-tour-done={done ? '1' : undefined}
       >
         <p style={stepLabel}>
-          Guided run — {stepIndex + 1} of {steps.length}
+          Guided run: {stepIndex + 1} of {steps.length}
           {done ? ' · done' : ''}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
         <p style={cardBody}>{bodyText}</p>
         <div style={footer}>
-          <button type="button" style={ghostButton} onClick={finish}>
+          <Button tone="quiet" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
-          </button>
+          </Button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {!isFirst && (
-              <button type="button" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <Button style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              style={isManual || ackLabel ? primaryButton : plainButton}
+            <Button
+              tone={isManual || ackLabel ? 'primary' : 'default'}
+              style={isManual || ackLabel ? tourButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
               {isLast ? 'Finish' : isManual ? 'Start' : ackLabel ?? 'Skip this'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -952,32 +953,8 @@ const footer: React.CSSProperties = {
   gap: '0.5rem',
 };
 
-// The full `border` shorthand is set on every variant rather than overriding `borderColor` on a
-// base: mixing a shorthand and a longhand for the same property across renders of one element is a
-// real React warning, not a lint nag.
-const plainButton: React.CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
-  padding: '0.35rem 0.65rem',
-  fontFamily: 'inherit',
-  fontSize: '0.76rem',
-  cursor: 'pointer',
-};
-
-const primaryButton: React.CSSProperties = {
-  ...plainButton,
-  border: `1px solid ${UI.brass}`,
-  background: UI.brass,
-  color: UI.ground,
-  fontWeight: 600,
-};
-
-const ghostButton: React.CSSProperties = {
-  ...plainButton,
-  border: '1px solid transparent',
-  background: 'transparent',
-  color: UI.textFaint,
-  padding: '0.35rem 0.2rem',
-};
+// The card's buttons are kit Buttons (ui.tsx), a size smaller than the game's; the default ones sit
+// on the panel colour so they stand off the raised card.
+const tourButton: React.CSSProperties = { fontSize: '0.76rem' };
+const plainButton: React.CSSProperties = { ...tourButton, backgroundColor: UI.panel };
+const ghostButton: React.CSSProperties = { ...tourButton, borderColor: 'transparent', padding: '0.35rem 0.2rem' };
