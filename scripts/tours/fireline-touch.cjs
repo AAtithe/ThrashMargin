@@ -18,8 +18,15 @@
  * in a drawer; the check fails if the row is more than one line, if the battle feed meets the row,
  * the low-power banner, the header or the command bar, if the row meets the command bar or leaves
  * the map, or the page scrolls sideways; and it opens the drawer, fires an ability from it and closes
- * it. A three-panel row once wrapped over the feed and pushed it under the header. TOUR_SKIP_TOUR=1
- * runs that check alone.
+ * it. A three-panel row once wrapped over the feed and pushed it under the header. In the mission it
+ * also opens the objectives panel and fails if it meets the feed, the strip, a banner (a targeting
+ * hint included), the header or the command bar, if an objective row cannot be tapped, if it lies
+ * over the hero drawer, if the hidden pill meets any of them, or if a button in the panel or the
+ * pill is under 40px either way. It repeats all of that in a second mission with five objectives,
+ * four of which can be shown on the map, where tapping one must also move the view. In every case,
+ * running and paused, and once more in the mission with the save warning showing, it fails if a
+ * header control leaves the window, overlaps another, is under 40px or cuts off its label.
+ * TOUR_SKIP_TOUR=1 runs those checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -217,6 +224,28 @@ const buildMission = page =>
     return id;
   });
 
+/**
+ * The busiest objectives panel: "The Quiet Man", three objectives, two bonus and the mission clock,
+ * with the whole map explored so that four of the five rows can show their target on the map. The
+ * "fireline" mission above starts with none to show.
+ */
+const buildLocatedMission = page =>
+  page.evaluate(async () => {
+    const cs = await import('/src/campaign/save.ts');
+    const pr = await import('/src/campaign/progression.ts');
+    const ms = await import('/src/campaign/missions.ts');
+    const mi = await import('/src/sim/mission.ts');
+    const id = 'bar-row-located';
+    const sv = cs.newCampaignSave(id, 'Objectives campaign', 'Me', 0);
+    const spec = ms.MISSIONS.find(m => m.id === 'quiet-man');
+    const battle = mi.createMissionState(pr.campaignMission(sv.campaign, spec), pr.missionContext(sv.campaign, spec, id, 0));
+    battle.explored = '1'.repeat(battle.explored.length);
+    for (let i = 1; i <= 5; i++) battle.log.push({ tick: battle.tick, text: `Objectives check ${i}: a line of the battle feed.` });
+    localStorage.setItem('fireline_save_' + id, JSON.stringify({ ...sv, campaign: { ...sv.campaign, lastMission: spec.id }, battle }));
+    localStorage.setItem('fireline_saves', JSON.stringify([{ id, name: 'Objectives campaign', turn: 0, status: 'active', savedAt: Date.now(), kind: 'campaign' }]));
+    return id;
+  });
+
 /** A War for the Planet battle: a short war played to its first attack, with the heroes it allows. */
 const buildPlanet = page =>
   page.evaluate(async () => {
@@ -339,6 +368,233 @@ async function heroDrawer(page, kind, fail) {
   if (!(await button.evaluate(b => b === document.activeElement))) await fail(kind, 'focus did not return to the Heroes button');
 }
 
+/**
+ * The objectives panel's box, and the boxes it must keep clear of: the feed, the strip, every banner,
+ * the header, the command bar and the hero drawer, with the map it must stay inside.
+ */
+const objectiveBoxes = page =>
+  page.evaluate(() => {
+    const box = el => {
+      const b = el.getBoundingClientRect();
+      return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    };
+    const panel = document.querySelector('[data-testid="objectives"]') || document.querySelector('[data-testid="objectives-show"]');
+    const feed = document.querySelector('[data-testid="battle-feed"]');
+    const strip = document.querySelector('.fl-barstrip') || document.querySelector('.fl-cbar');
+    const drawer = document.querySelector('[data-testid="hero-drawer"]');
+    return {
+      open: !!document.querySelector('[data-testid="objectives"]'),
+      panel: panel ? box(panel) : null,
+      others: [
+        ['battle feed', feed],
+        ['bar strip', strip],
+        ['header', document.querySelector('header')],
+        ['command bar', document.querySelector('[data-testid="command-bar"]')],
+        ...[...document.querySelectorAll('.fl-banners > *')].map(b => [`banner "${b.textContent.trim().slice(0, 24)}"`, b]),
+      ]
+        .filter(([, el]) => el && el.getClientRects().length)
+        .map(([what, el]) => [what, box(el)]),
+      drawer: drawer ? box(drawer) : null,
+      field: box(document.getElementById('fl-battlefield')),
+    };
+  });
+
+/**
+ * The campaign's objectives panel on a phone: open, it must meet none of the feed, the strip, a
+ * banner, the header or the command bar, and stay on the map; every objective row must be the top
+ * thing where it is drawn (scrolled to inside the panel if need be), so a tap on it reaches it; the
+ * hero drawer, when open, lies over it rather than under it; and hidden, the pill keeps clear too.
+ * It used to sit top right at 46% of the map's width and run down over the feed and the strip.
+ */
+/**
+ * Every button in the objectives panel (Hide, and each objective's way to show it on the map) and
+ * the hidden pill must be a 40px tap target both ways. Hide was 57 by 17px, each Show 44 by 18px and
+ * the pill 26 or 28px tall. `locate` asks for at least one objective that can be shown, so the check
+ * cannot pass by finding none.
+ */
+async function objectiveTapTargets(page, kind, fail, when, locate = false) {
+  const bs = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="objectives"]');
+    const pill = document.querySelector('[data-testid="objectives-show"]');
+    return [...(panel ? panel.querySelectorAll('button') : []), ...(pill ? [pill] : [])]
+      .filter(b => b.getClientRects().length)
+      .map(b => {
+        const r = b.getBoundingClientRect();
+        return { name: b.getAttribute('data-testid') || b.getAttribute('aria-label') || b.textContent.trim().slice(0, 30), hide: b.getAttribute('data-testid') === 'objectives-hide', w: r.width, h: r.height };
+      });
+  });
+  if (!bs.length) await fail(kind, `the objectives offer no button ${when}`);
+  if (locate && bs.filter(b => !b.hide).length === 0) await fail(kind, `no objective offers a way to show it on the map ${when}`);
+  for (const b of bs)
+    if (b.w < 39.5 || b.h < 39.5) await fail(kind, `the objectives' "${b.name}" is a ${Math.round(b.w)}x${Math.round(b.h)} tap target, under 40px, ${when}`);
+}
+
+async function objectivesClear(page, kind, fail, locate = false) {
+  const check = async when => {
+    const m = await objectiveBoxes(page);
+    if (!m.panel) return await fail(kind, `no objectives panel or pill ${when}`);
+    const what = m.open ? 'objectives panel' : 'objectives pill';
+    for (const [name, b] of m.others)
+      if (meets(m.panel, b)) await fail(kind, `the ${what} (${fmt(m.panel)}) covers the ${name} (${fmt(b)}) ${when}`);
+    if (m.panel.top < m.field.top - 0.5 || m.panel.bottom > m.field.bottom + 0.5 || m.panel.left < m.field.left - 0.5 || m.panel.right > m.field.right + 0.5)
+      await fail(kind, `the ${what} (${fmt(m.panel)}) runs off the map (${fmt(m.field)}) ${when}`);
+    return m;
+  };
+  if (!(await page.getByTestId('objectives').count())) await page.getByTestId('objectives-show').tap();
+  await page.getByTestId('objectives').waitFor({ timeout: 3000 });
+  await sleep(200);
+  const m = await check('with the panel open');
+  await objectiveTapTargets(page, kind, fail, 'with the panel open', locate);
+  if (m && m.panel && m.panel.bottom - m.panel.top < 40) await fail(kind, `the objectives panel is only ${Math.round(m.panel.bottom - m.panel.top)}px tall`);
+  // Every row can be reached: scrolled into the panel's view, the row is what a tap at its centre hits.
+  const rows = await page.locator('[data-testid="objectives"] .fl-objective').count();
+  if (!rows) await fail(kind, 'the objectives panel lists no objectives');
+  for (let i = 0; i < rows; i++) {
+    const row = page.locator('[data-testid="objectives"] .fl-objective').nth(i);
+    await row.evaluate(r => r.scrollIntoView({ block: 'nearest' }));
+    const hit = await row.evaluate(r => {
+      const b = r.getBoundingClientRect();
+      return r.contains(document.elementFromPoint(b.left + Math.min(20, b.width / 2), b.top + Math.min(8, b.height / 2)));
+    });
+    if (!hit) await fail(kind, `objective row ${i + 1} cannot be tapped: something lies over it`);
+  }
+  // Tapping an objective that can be shown moves the view: a grid of the battlefield's pixels, before
+  // and after each tap, must change for at least one of them (one target may already be in view).
+  if (locate) {
+    const sample = () =>
+      page.evaluate(() => {
+        const c = document.getElementById('fl-battlefield');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const out = [];
+        for (let gy = 1; gy < 16; gy++)
+          for (let gx = 1; gx < 16; gx++) {
+            const i = (Math.floor((c.height * gy) / 16) * c.width + Math.floor((c.width * gx) / 16)) * 4;
+            out.push(d[i] + d[i + 1] + d[i + 2]);
+          }
+        return out;
+      });
+    const targets = page.locator('[data-testid="objectives"] .fl-objective button');
+    let moved = 0;
+    for (let i = 0; i < (await targets.count()); i++) {
+      const before = await sample();
+      await targets.nth(i).evaluate(b => b.scrollIntoView({ block: 'nearest' }));
+      await targets.nth(i).tap();
+      await sleep(250);
+      const after = await sample();
+      if (before.filter((v, k) => Math.abs(v - after[k]) > 30).length > before.length / 3) moved++;
+    }
+    if (!moved) await fail(kind, 'tapping an objective that can be shown never moved the view');
+  }
+  // A power that needs a target puts its hint in the banners: the panel keeps clear of that too.
+  const power = page.locator('.fl-barstrip [data-testid^="power-"]:not([disabled])').first();
+  if (await power.count()) {
+    await power.tap();
+    if (await page.getByTestId('hint').count()) {
+      await check('with a targeting hint showing');
+      await page.getByRole('button', { name: 'Cancel' }).tap();
+    }
+  }
+  // The hero drawer opens over the panel, never under it.
+  if (await page.getByTestId('heroes-button').count()) {
+    await page.getByTestId('heroes-button').tap();
+    await page.getByTestId('hero-drawer').waitFor({ timeout: 3000 });
+    const d = await objectiveBoxes(page);
+    if (d.panel && d.drawer && meets(d.panel, d.drawer)) {
+      const x = (Math.max(d.panel.left, d.drawer.left) + Math.min(d.panel.right, d.drawer.right)) / 2;
+      const y = (Math.max(d.panel.top, d.drawer.top) + Math.min(d.panel.bottom, d.drawer.bottom)) / 2;
+      const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-testid="hero-drawer"]'), [x, y]);
+      if (!onTop) await fail(kind, 'the objectives panel lies over the hero drawer');
+    }
+    await page.getByTestId('hero-drawer-close').tap();
+    await sleep(200);
+  }
+  await page.getByTestId('objectives-hide').tap();
+  await page.getByTestId('objectives-show').waitFor({ timeout: 3000 });
+  await check('with the panel hidden');
+  await objectiveTapTargets(page, kind, fail, 'with the panel hidden');
+  await page.getByTestId('objectives-show').tap();
+}
+
+/**
+ * The battle header's controls (the back button, the clock, a save warning, Pause and Menu): each
+ * box must lie wholly inside the window and the header, none may overlap another, every button must
+ * be a 40px tap target with its label unclipped, and the page must not scroll sideways. Checked
+ * running and paused in every case, and once more with the save warning showing. On the 320px
+ * iPhone SE the Menu button once ran 42px off the right edge in a campaign mission.
+ */
+const headerBoxes = page =>
+  page.evaluate(() => {
+    const header = document.querySelector('header.fl-d-top');
+    if (!header) return null;
+    const box = el => {
+      const b = el.getBoundingClientRect();
+      return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    };
+    const items = [...header.querySelectorAll('button, .fl-d-clock, .fl-d-save')]
+      .filter(el => el.getClientRects().length && !el.parentElement.closest('button'))
+      .map(el => ({
+        name: el.getAttribute('data-testid') || el.getAttribute('aria-label') || el.className.split(' ').pop(),
+        button: el.tagName === 'BUTTON',
+        clipped: el.scrollWidth > el.clientWidth + 1,
+        ...box(el),
+      }));
+    return { header: box(header), items, width: innerWidth, height: innerHeight, pageWidth: document.documentElement.scrollWidth };
+  });
+
+async function headerFits(page, kind, fail, when = 'running') {
+  const h = await headerBoxes(page);
+  if (!h) return await fail(kind, `no battle header (${when})`);
+  kind = `${kind}, ${when}`;
+  if (h.items.length < 4) await fail(kind, `the header holds ${h.items.length} controls, not 4 or more`);
+  const px = n => Math.round(n);
+  for (const it of h.items) {
+    if (it.left < -0.5 || it.right > h.width + 0.5 || it.top < -0.5 || it.bottom > h.height + 0.5)
+      await fail(kind, `the header's ${it.name} (${px(it.left)}..${px(it.right)}) runs off the ${h.width}px window by ${px(Math.max(it.right - h.width, -it.left))}px`);
+    else if (it.left < h.header.left - 0.5 || it.right > h.header.right + 0.5 || it.top < h.header.top - 0.5 || it.bottom > h.header.bottom + 0.5)
+      await fail(kind, `the header's ${it.name} sticks out of the header`);
+    if (it.button && (it.right - it.left < 39.5 || it.bottom - it.top < 39.5))
+      await fail(kind, `the header's ${it.name} is a ${px(it.right - it.left)}x${px(it.bottom - it.top)} tap target, under 40px`);
+    if (it.clipped) await fail(kind, `the header's ${it.name} cuts off its own label`);
+  }
+  for (let i = 0; i < h.items.length; i++)
+    for (let j = i + 1; j < h.items.length; j++)
+      if (meets(h.items[i], h.items[j])) await fail(kind, `the header's ${h.items[i].name} and ${h.items[j].name} overlap`);
+  if (h.pageWidth > h.width) await fail(kind, `the page scrolls sideways (${h.pageWidth}px in ${h.width}px)`);
+}
+
+/** The header running and paused: "Resume" is a longer word than "Pause". */
+async function headerBothWays(page, kind, fail) {
+  await headerFits(page, kind, fail);
+  await page.getByTestId('pause').tap();
+  await sleep(150);
+  await headerFits(page, kind, fail, 'paused');
+  await page.getByTestId('pause').tap();
+}
+
+/**
+ * The widest header there is: the mission again, signed in to an account whose saves fail, so the
+ * header carries "Not saving" too. The API is answered in the page: the battle loads, every save gets
+ * a 500. The first save goes out after 15 seconds of play.
+ */
+async function headerWithSaveWarning(page, fail) {
+  const id = await buildMission(page);
+  const state = await page.evaluate(id => JSON.parse(localStorage.getItem('fireline_save_' + id)), id);
+  await page.evaluate(() => {
+    // A token the session code accepts (unexpired, with a user that says whether it is an admin).
+    localStorage.setItem('tm_token', 'e30.' + btoa(JSON.stringify({ exp: 9999999999 })) + '.x');
+    localStorage.setItem('tm_last_active', String(Date.now()));
+    localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 'local-dev', isAdmin: false }));
+  });
+  await page.route('**/api/play/fireline**', r => {
+    const q = r.request();
+    if (q.method() !== 'GET') return r.fulfill({ status: 500, json: { message: 'Header check: saves fail.' } });
+    return r.fulfill({ json: q.url().includes('id=') ? { state, version: 1 } : { saves: [] } });
+  });
+  await page.goto(`${BASE}/game/${id}`);
+  await page.locator('.fl-d-top .fl-d-save[data-state="error"]').waitFor({ timeout: 40000 });
+  await headerBothWays(page, 'mission, not saving', fail);
+}
+
 /** The bar row against the battle feed (and the command bar), on one phone. */
 async function barRow(browser, name) {
   const tag = name.replace(/ /g, '-');
@@ -380,9 +636,18 @@ async function barRow(browser, name) {
       if (m.feed.bottom <= m.field.top) await fail(kind, 'the newest feed line is above the battlefield');
       if (m.row.left < m.field.left - 0.5 || m.row.right > m.field.right + 0.5) await fail(kind, `the bar row (${Math.round(m.row.left)}..${Math.round(m.row.right)}) runs off the battlefield`);
       if (m.pageWidth > m.width) await fail(kind, `the page scrolls sideways (${m.pageWidth}px in ${m.width}px)`);
+      await headerBothWays(page, kind, fail);
       if (kind !== 'bare') await heroDrawer(page, kind, fail);
+      if (kind === 'mission') await objectivesClear(page, kind, fail);
     }
-    if (problems.length === before) console.log(`  ${name}: the bar row is one line and clears the battle feed; the hero drawer works`);
+    // The busiest objectives panel, with targets to show: the same checks, and every row's target.
+    const located = await buildLocatedMission(page);
+    await page.goto(`${BASE}/game/${located}`);
+    await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
+    await sleep(600);
+    await objectivesClear(page, 'mission, objectives to show', fail, true);
+    await headerWithSaveWarning(page, fail);
+    if (problems.length === before) console.log(`  ${name}: every header control fits the window; the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header`);
   } catch (e) {
     await fail('run', e.message.split('\n')[0]);
   } finally {
@@ -390,7 +655,9 @@ async function barRow(browser, name) {
   }
 }
 
-(async () => {
+module.exports = { buildSkirmish, buildMission, buildLocatedMission, buildPlanet, headerBoxes };
+
+if (require.main === module) (async () => {
   require('fs').mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
   try {

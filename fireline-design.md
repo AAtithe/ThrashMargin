@@ -2308,6 +2308,73 @@ fireline fireline-planet` (full): all ok, the 320px SE included. `npm run tours 
 ok. `npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed"
 (Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
 
+### 2026-11-12: The computer's heroes act on Hard
+
+`fireline-improvements.md` logged that on Hard the computer's heroes rarely acted before the end.
+Measured on main (d441237) over 40 Hard advanced battles with heroes on (random map, development
+lines, quick pace), Hard against Hard, both seats: the Tech Centre came in only 29 of 80 sides, at
+minute 15.9 on average (the commander holds it back, as an extra, until the army at home is up to
+the next wave's size and the opponent's, and on Hard that rarely happens), so the Academy came at
+17.0 and the first hero at about 18, in a battle lasting 20.3. And the heroes that did come mostly
+waited: the Engineer, Commando and Spy only acted on a target out on its own (nothing armed near it,
+no gun covering it), which a Hard base seldom offers, and a Commando below 70% health never set out
+again. Of 25 Engineers recruited, 8 acted.
+
+The fix is in the computer (`aiHeroes.ts`, and `isExtra` in `ai.ts` behind B's marker), and on Hard
+only; hero prices, build times and the Academy's requirements are unchanged.
+
+- On Hard with heroes on, the Tech Centre goes up in its turn in the plan instead of being held for
+  the army (`heroesNeedTechCentre`).
+- On Hard, while a wave is attacking, the Engineer, Commando and Spy go with it, three tiles behind
+  its middle, and use their abilities on what it has reached (within 10 tiles of its middle): the
+  Engineer captures a structure nothing armed is guarding within 5 tiles (and mends the wave's
+  vehicles on the way), the Commando charges the nearest structure that is not crowded by their
+  troops (at 45% health or more), the Spy slips into one without waiting for the guns to be out of
+  reach, since the wave keeps them busy. Between waves they behave as before.
+- Normal and Easy are untouched: their battles run long enough for heroes kept at home to act. Over
+  the same 40 battles at Normal with heroes on, every battle's outcome, length and hero record is
+  identical to main's (a hero acts in 20, 5.08 abilities a battle), and `drive-heroes`' eight
+  computer battles at Normal and at Easy end in the same state as on main, digest for digest.
+
+| Hard, 40 battles, both seats | before (main) | after |
+|---|---|---|
+| Tech Centre (sides with one; mean minute) | 29/80, 15.9 | 46/80, 13.3 |
+| Command Academy | 27/80, 17.0 | 45/80, 14.6 |
+| Engineer / Ace / Commando / Spy recruited (mean minute) | 17.7 / 19.0 / 19.9 / 20.8 | 15.7 / 17.0 / 17.9 / 18.8 |
+| Heroes recruited that acted (E / A / C / S) | 8/25, 17/21, 8/19, 6/17 | 22/45, 32/35, 12/31, 15/29 |
+| Battles in which a hero acted | 20 (50%) | 27 (68%) |
+| Sides in which a hero acted | 20/80 | 36/80 |
+| Abilities used per battle | 2.60 | 8.53 |
+| Battle length, mean (median) | 20.3 (20.7) | 23.0 (21.4) |
+| Unfinished at the 100-minute cap | 0 | 1 |
+
+Strength, `ai-ladder.ts --heroes` (new: the switch, with `--generals`; both default off, kept beside
+main's `--pace`, `--research` and `--factions`), random map, 150 seeds per match, both seats:
+
+| | before (main) | after |
+|---|---|---|
+| Hard beats Normal, both ways round | 198 of 300 (66.0%, 61-71%) | 214 of 300 (71.3%, 66-76%) |
+| ...Hard on side 0 / on side 1 | 73 / 125 of 150 | 85 / 129 of 150 |
+| Hard beats the frozen `prev` Hard, both ways round | 153 of 300 (51.0%, 45-57%) | 151 of 300 (50.3%, 45-56%) |
+| Battles unfinished at the cap, of 600 | 4 | 5 |
+
+Hard stays above Normal with heroes on, a little further than before; against the frozen Hard it
+is level, within the noise, and the seat decides almost every one of those battles either way. The
+default card (no setup, heroes off) is unchanged: all 1,350 battles over 150 seeds equal main's,
+battle for battle. Stalls at the cap did not rise over the ladder (4 and 5 of 600). Two stalls seen
+in the 40-battle runs are the end-game kind already known: Hard seed 12 ends with both sides broke
+and no haulers, Normal seed 27 (before the change was confined to Hard) with the ore gone and an
+army at home that never attacks.
+
+`drive-heroes.ts`'s computer section is back on Hard (it had moved to Normal only because heroes
+seldom acted there): the first four seeds keep every original assertion, and over eight seeds the
+heroes must use an ability in at least five. Harness: `npm run drive:fire` 401,465 assertions
+(main 401,464; the one more is that new check), 0 failed, and every summary line equals main's
+(heroes are off in every other section, and both changes do nothing unless heroes are in play on
+Hard). `npm run drive:planet` 35,255, 0 failed, identical to main's (a planet battle never has
+round 6's heroes). `npm run campaign:fire` 7,699, 0 failures. `npm run check`: all checks passed.
+`node scripts/tours/run.mjs --quick`: all eight ok.
+
 ### 2026-11-13: Return to base, Helipad repairs, and support that holds back
 
 The player asked for a way to send aircraft back to the Helipad, how boats and aircraft are repaired,
@@ -2550,3 +2617,151 @@ The player asked for phase 2: a supply network that can be cut.
   throughout; Normal v Normal 45% / 51% / 55%; new Normal v previous Normal 65% / 63% / 71%. Every
   row within the ±8 points 150 seeds allows, and the commander that uses the chain beats the one
   that ignores it. Unfinished at the cap: 0 to 4 per 150 (off: 1 to 3), all on mined-out maps.
+
+### 2026-11-21: On a phone, the objectives keep their own lane
+
+**Why.** On a phone the mission's objectives panel still sat where it sits on a desktop, absolute at the
+map's top right, `min(270px, 46%)` wide and as tall as its rows. The bar row entries (2026-11-12) gave
+the banners, the feed and the strip separate lanes in the dock, but the panel was outside the dock and
+lay over them until the player tapped Hide. Measured on origin/main in the "fireline" mission: on the
+iPhone 13 upright the panel ran 61..245px, over the feed (201..272) by 44px; on the 320px iPhone SE,
+where 46% is 138px and every row wraps, it ran 61..279px, over the feed and the 50px strip, so its
+third row could not be tapped at all; on every phone, both ways up, it covered the centre of a
+targeting hint ("Reinforcements: tap the map...").
+
+**Options weighed.** Capping its height with a measured offset would have needed a ResizeObserver on
+the dock and still met the centred banners, which head the same strip of map. Opening it as the pill
+on phones would only defer the overlap to the moment it is opened. Chosen: on a phone the panel heads
+the dock itself, in flow (`.fl-dock[data-phone] > .fl-objectives`), above the banners, the feed and the
+strip. It cannot meet any of them, because it is a flex item in the same column, and it needs no
+measuring. It gives way first when room is short (flex-shrink 100), down to its header with Hide; the
+rows sit in one box (`.fl-objectives-body`, a plain div elsewhere) that scrolls inside the panel, so
+every row stays tappable and the header stays put. It is `min(270px, 100%)` wide instead of 46%, so a
+row wraps less and the panel is shorter. The pill takes the same place. The hero drawer, positioned and
+later in the dock, opens over the panel. The dock already drops below the alert chip when one shows,
+and the panel goes with it. The map wrapper clips its children, so the header was never at risk.
+
+**Numbers.** Panel boxes in the same mission (top, height): iPhone SE 320px 61, 75px (header and first
+row, the rest scrolls); SE 375px 61, 130px; iPhone 13 upright 61, 128px; on its side 61, 76px; Pixel 7
+61, 155px (every row, no scroll). Desktop (1440 by 900) panel box unchanged at 892, 55, 270 by 155, and
+its pixels identical to origin/main's in light and dark. Tablets are not phones (`layout.phone`) and
+take the desktop branch.
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in the mission case of the bar-row check, opens the
+panel and fails if it meets the feed, the strip, any banner, the header or the command bar or leaves
+the map; scrolls each objective row into the panel's view and fails if a tap at it would hit anything
+else; taps a ready power and repeats the box checks against its targeting hint; opens the hero drawer
+and fails if the panel lies over it; then hides the panel and checks the pill the same way. On
+origin/main: 14 failures over all five phones; now none.
+
+**Checks.** Screenshots at twice the pixel density on the five phones, panel open and hidden, light and
+dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch fireline` (full): ok.
+`npm run tours -- --quick`: all eight ok. `npm run check:loading -- fireline`: 27/27.
+`npm run check:ui -- fireline`: 32/32 (its game screen is a skirmish, so the panel is not in it).
+`npm run check`, before and after merging main: "All checks passed" (Fireline drive 401,690
+assertions, campaign-check 7,699, drive:planet 35,255). Left open: the Menu button clipped at 320px (`fireline-improvements.md`).
+
+### 2026-11-21: The battle header fits a 320px phone
+
+**Why.** On a phone the battle header holds the back button, the T+ clock, Pause and Menu (and "Not
+saving" when the account's saves fail). The touch sizing (40px tall, 12px either side) was an inline
+style on each button, and nothing gave way when the row ran out of width. Measured on the objectives
+branch, header boxes at 320px (iPhone SE): in the "fireline" mission the back button ("Campaign") ran
+10..122, the clock 128..199, Pause 211..293 and Menu 299..362, so 42px of Menu lay past the edge; in a
+skirmish or a War for the Planet battle ("Lobby", "Planet") Menu ended at 336 or 337, 16 or 17px off.
+With the save warning showing, the mission header needed 434px: Menu was clipped by 104px on the SE,
+49px on the 375px SE, 34px on the iPhone 13 and 12px on the 412px Pixel 7.
+
+**Options weighed.** Tighter padding and gaps alone would have bought about 35px at 320, short of the
+42 the mission needed and far short of the save warning's case. A shorter back label ("Back") still
+left the warning case over. A compact clock (no "T+") saves 15px and loses the one cue that the
+numbers are battle time. Moving the save warning into the Menu would hide a failure the player needs
+to see. Chosen: below 480px the back button keeps only its arrow and Pause only its glyph (the same
+pause bars and play triangle it already drew), each a 40px square; their words stay in the button as
+visually hidden text, so the accessible names ("Campaign", "Lobby", "Planet", "Pause", "Resume") do
+not change. Menu keeps its word, because it is the way to everything else (speed, sound, the tour, the
+controls). The header's side padding goes from 10 to 8px and its gap from 6 to 4px at the same widths.
+The touch sizing moved from the inline style to the stylesheet (`.fl-d-top[data-touch="1"]`, with
+`.fl-d-back`, `.fl-d-pause` and a new `.fl-d-menu`), which is what lets a media query change it. 480px
+is above the widest phone (430px) and the 434px the worst header needs, and below every phone on its
+side, so landscape phones, tablets and desktops keep the full labels. That does change the iPhone 13
+and the Pixel 7 upright, which is required: both clipped with the save warning showing. No new colours.
+
+**Numbers.** After, at 320px: back 8..48, clock 52..124, Pause 205..245, Menu 249..312, 8px clear of
+the edge; with "Not saving" (145..201) and paused, the same 8px. 375px SE: Menu 304..367; iPhone 13
+upright: 319..382; Pixel 7: 341..404, and with the warning the Pixel 7's runs 237..404. The iPhone 13
+on its side (750px) is unchanged (back 10..122, Menu 677..740), as is the desktop at 1440 by 900: every
+header box the same, and the header's pixels identical to before in light and dark on both.
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in every case of the bar-row check (three skirmishes, the
+four-hero mission and a War for the Planet battle) on all five phones, running and again paused, fails
+if a header control (button, clock or save warning) leaves the window or the header, overlaps
+another, is a tap target under 40px either way or cuts off its own label, or if the page scrolls
+sideways. It then loads the mission signed in to an account whose saves fail (the API answered in the
+page: the battle loads, every save gets a 500), waits for "Not saving" (about 16 seconds) and checks
+again, running and paused. Before the fix: 21 failures (15 on the 320px SE, 2 each on the 375px SE,
+the iPhone 13 and the Pixel 7); now none. The script also exports its save builders, so a one-off
+screenshot script can use them.
+
+**Checks.** Screenshots at twice the pixel density of the header on the five phones in the mission, a
+skirmish and a War for the Planet battle, light and dark, plus the desktop. `node scripts/tours/run.mjs
+fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok. `npm run check:ui --
+fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All checks passed"
+(Fireline drive 401,690 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-21: The objectives' buttons are a finger wide
+
+**Why.** On a phone the objectives panel heads the dock (above), but its controls were still sized for
+a mouse: Hide was 57 by 17px, each objective's Show 44 by 18px, and the hidden pill 148 by 26px (26
+tall in "fireline", 28 in "The Quiet Man"), all under the 40px that `npm run check:ui` asks of a
+phone's tap targets. `check:ui` never saw them, because its game screen is a skirmish and never opens
+a mission.
+
+**Options weighed.** Growing the Show chip to 40px would have made it about 55 by 40px: it would take
+that width from every row's text (more wrapping, a taller panel) and still leave a finger aiming at a
+chip beside the words it acts on. Hiding the rows behind the header on a small phone would hide what
+the panel is for. Chosen, on a phone only (`.fl-dock[data-phone]`, and a `phone` prop that GameScreen
+passes to the panel it puts in the dock): a row whose target can be shown is one button, the whole
+row, at least 40px tall and the panel's width less its padding, labelled "Show on the map: ..." for
+screen readers, with "Show" kept as a chip inside it as the visible cue. The text keeps the width it
+had, and the target is the thing the player is reading. Rows meet with a hairline between them instead
+of a 4px gap, so the 40px rows pay for most of their height out of the spacing they already had. Hide
+fills the header's height at its right end, a flush segment with a rule on its left rather than a
+40px box inside a taller header, so the header grows from 29 to 41px and no more. The pill gets a 40px
+minimum height. To give the small phones' rows back what the header took, the panel drops its 8px
+padding under the rows and the 6px over the first one (the rows carry their own), and the dock's
+banners drop their 6px gap while no banner is showing (the panel's own margin still parts it from the
+feed). The sizing is in the stylesheet, as with the header's touch sizing. The kit's `Button` was not
+used: these are HUD controls styled from the console's tokens like the header's, and the kit would
+bring the lobby's look into the battle. No new colours: the row's pressed state is
+`--ui-panel-raised` and the rules are `--d-groove`, both already defined for light and dark. Desktops,
+tablets (`layout.phone` is false) and the desktop branch of the panel are untouched; the iPhone 13 on
+its side does change, because a touch screen under 520px tall is a phone.
+
+**Numbers.** After, on every phone: Hide 69 by 40px, each row that can be shown 248 by 40px, the pill 148 or 203 by 40px. Panel heights, before and after, in "The Quiet Man"
+(three objectives, two bonus, four of them showable once the map is explored): iPhone SE 320px 75 and
+81px; 375px SE 130 and 136; iPhone 13 upright 128 and 134; on its side 76 and 82; Pixel 7 225 and 232,
+where every row used to fit and the last one now scrolls by about 34px. On the 320px SE the rows had
+about 28px visible before (one line of the first row and the top of its second); now 36px of the first
+row's 40, both its lines and its Show cue in view. The battle feed's box is the same before and after
+on every phone in both missions (SE 148..219, 375px SE 203..274, iPhone 13 201..272, on its side
+149..220, Pixel 7 299..370), still three lines. Desktop (1440 by 900): every panel, button and row box
+unchanged in both missions, and the panel's pixels identical to before in light and dark in
+"fireline" (in "The Quiet Man" only the running clock's digits differ).
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in the mission case on all five phones, now fails if a
+button in the objectives panel or the pill is under 40px either way, open and hidden. A second
+mission, "The Quiet Man" with the whole map explored, runs every objectives check again (feed, strip,
+banners, header, command bar, targeting hint, hero drawer, every row tappable, the pill), requires at
+least one objective that can be shown so the check cannot pass on an empty panel, and taps each one,
+failing unless at least one tap moves the view (a grid of the battlefield's pixels, before and after).
+Before the fix: 40 failures, eight on each phone (Hide twice, the pill twice, four Shows); now none.
+With the row's handler emptied the view check fails, so it is not passing on luck.
+
+**Checks.** Screenshots at twice the pixel density on the five phones in both missions, panel open and
+hidden, light and dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch
+fireline` (full): ok. `npm run tours -- --quick`: all eight ok. `npm run check:ui -- fireline`: 32/32 (still
+a skirmish, so the panel is not in it; the touch guard is what covers it). `npm run check:loading --
+fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check
+7,699, drive:planet 35,255). Left open: a tablet keeps the desktop's small Hide and Show
+(`fireline-improvements.md`).
