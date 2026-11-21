@@ -1,4 +1,6 @@
 import { dockTile } from '../sim/grid';
+import { alloyStore, fuelStore, industryOn, wellDry } from '../sim/industry';
+import { FOUNDRY_ALLOYS, FOUNDRY_CREDITS, FOUNDRY_FUEL, FOUNDRY_RESERVE } from '../sim/rules';
 import { cargoMaxOf } from '../sim/loadout';
 import { isDetected } from '../sim/mission';
 import {
@@ -1188,6 +1190,14 @@ export class Renderer {
     }
     // A Research Lab at work: every Lab of a side researching.
     for (const b of s.buildings) if (b.kind === 'researchlab' && s.players[b.owner]?.research) set.add(b.id);
+    // Industry: a Fuel Well with ore in reach and room in the store, a Foundry with what it smelts and room.
+    if (industryOn(s))
+      for (const b of s.buildings) {
+        const p = s.players[b.owner];
+        if (!p) continue;
+        if (b.kind === 'fuelwell' && !wellDry(s, b) && (p.fuel ?? 0) < fuelStore(s, b.owner)) set.add(b.id);
+        if (b.kind === 'foundry' && p.credits >= FOUNDRY_CREDITS + FOUNDRY_RESERVE && (p.fuel ?? 0) >= FOUNDRY_FUEL && (p.alloys ?? 0) + FOUNDRY_ALLOYS <= alloyStore(s, b.owner)) set.add(b.id);
+      }
     for (const u of s.units) if (u.order.type === 'harvest' && u.order.phase === 'unload' && u.order.refinery) set.add(u.order.refinery);
     this.working = set;
     return set;

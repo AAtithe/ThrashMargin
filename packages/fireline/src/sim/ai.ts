@@ -32,6 +32,7 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
+import { economyPlan, industryPlanFor, wellFocus } from './aiEconomy';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
 import { heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
@@ -468,6 +469,8 @@ function commander(s: GameState, owner: Owner): void {
   // line below this comment (recruiting, keeping with the wave, retreating), and nothing else here.
   generalPlan(s, owner, home, enemyHome, units);
   // round6:C end.
+  // Industry (2026-11-21): a drained Fuel Well sold, so the plan can put one by another field. A no-op without industry.
+  economyPlan(s, owner);
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
@@ -1024,6 +1027,8 @@ function nextStructure(
         // heavy units, and on Hard the Strike Command.
         ['barracks', 1],
         ['factory', 1],
+        // Industry (2026-11-21): the chain right after the first factory; nothing without industry.
+        ...industryPlanFor(s, owner),
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
@@ -1041,6 +1046,8 @@ function nextStructure(
     : [
         ['barracks', 1],
         ['factory', 1],
+        // Industry (2026-11-21): the chain right after the first factory; nothing without industry.
+        ...industryPlanFor(s, owner),
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
@@ -1067,6 +1074,8 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
   if (kind === 'repairbay') focus = toward(home, enemyHome, 4);
+  // Industry: a Fuel Well beside the nearest field rich enough to feed it.
+  if (kind === 'fuelwell') focus = wellFocus(s, owner, home) ?? home;
   if (kind === 'techcentre' || kind === 'strikecommand') focus = toward(home, enemyHome, -4);
   if (kind === 'refinery') {
     let best = -1;

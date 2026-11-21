@@ -1,4 +1,5 @@
 import { extraLine } from './aiScale';
+import { refundGoods } from './industry';
 import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { isShip } from './naval';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
@@ -512,8 +513,9 @@ export function fund(s: GameState, owner: Owner, need: number): boolean {
       if (q[i].progress !== 0 || !spare(q[i].kind)) continue;
       const kind = q[i].kind;
       const extra = q[i].extra ?? 0;
-      q.splice(i, 1);
+      const [item] = q.splice(i, 1);
       p.credits += costFor(s, owner, kind) + extra;
+      refundGoods(p, item);
     }
   }
   return p.credits >= need;

@@ -60,11 +60,12 @@ import {
   type UnitKind,
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
-import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, Perks, PlanetBattle, PlayerState, Squad, Stance, Unit } from './types';
+import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, Perks, PlanetBattle, PlayerState, QueueItem, Squad, Stance, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
+import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
 
@@ -137,7 +138,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
     const pick = isGeneral(rg[i]) || rg[i] === null ? rg[i] : isGeneral(base.generalPicks?.[i]) ? base.generalPicks![i] : null;
     return pick && GENERAL_FACTION[pick] === factions[i] ? pick : null;
   });
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks };
+  // Industry (2026-11-21): on only when exactly true.
+  const industry = typeof r.industry === 'boolean' ? r.industry : (base.industry ?? false);
+  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks, industry };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -174,6 +177,9 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round6:C begin. Generals: the field General allowed only with setup.generals.
   if (kind === 'general' && !fieldGenerals(s)) return false;
   // round6:C end.
+  // Industry (2026-11-21): the Fuel Well and the Foundry only with setup.industry.
+  // Either tech level: the chain is an economy rule, not a tier of technology.
+  if (INDUSTRY_BUILDINGS.includes(kind as BuildingKind)) return industryOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -316,6 +322,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     // round6:C begin. Generals: the doctrine Generals' perks (perks for side 0, sidePerks for the rest).
     if (setup.generals || setup.generalPicks?.some(g => g)) applyDoctrines(s, setup);
     // round6:C end.
+    // Industry (2026-11-21): every side's opening fuel and alloys.
+    startIndustry(s);
     // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
     if (size !== 'standard') {
       const first = scaledFor(s, d).firstAttack;
@@ -517,8 +525,16 @@ export function costOf(kind: BuildingKind | UnitKind): number {
   return kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].cost : UNITS[kind as UnitKind].cost;
 }
 
-/** What this side pays for it in this battle: its army's price, less its Procurement perk's share. */
+/**
+ * What this side pays for it in credits in this battle: its army's price, less its Procurement
+ * perk's share, less (industry on) the share paid in alloys and fuel (industry.ts, goodsFor).
+ */
 export function costFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
+  return creditsPart(s, kind, fullCostFor(s, owner, kind));
+}
+
+/** Its whole price, in credits and goods together: costFor before industry takes its share. */
+export function fullCostFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
   // round6:B begin. Heroes in free play: a skirmish hero's recruit price (B's constant) in place of the spec's.
   const base =
     heroesOn(s) && kind in UNITS && UNITS[kind as UnitKind].hero
@@ -780,7 +796,32 @@ export function migrateState(raw: unknown): GameState | null {
     if (p) out.planet = p;
     else delete out.planet;
   }
+  // Industry (2026-11-21): each side's fuel and alloys kept only with industry on, and only as
+  // whole numbers of at least nought; a store and a queue item without industry lose them.
+  migrateIndustry(out);
   return out;
+}
+
+function migrateIndustry(out: GameState): void {
+  const on = industryOn(out);
+  const clean = (v: unknown): number => (Number.isFinite(v) && (v as number) > 0 ? Math.floor(v as number) : 0);
+  out.players = out.players.map(p => {
+    if (!p || typeof p !== 'object') return p;
+    const { fuel, alloys, ...rest } = p;
+    const q = rest.queues;
+    if (q && typeof q === 'object')
+      for (const cat of Object.keys(q) as (keyof typeof q)[])
+        if (Array.isArray(q[cat]))
+          q[cat] = q[cat].map(it => {
+            if (!it || typeof it !== 'object' || (!('alloys' in it) && !('fuel' in it))) return it;
+            const { alloys: a, fuel: f, ...item } = it;
+            if (on && clean(a)) (item as QueueItem).alloys = clean(a);
+            if (on && clean(f)) (item as QueueItem).fuel = clean(f);
+            return item as QueueItem;
+          });
+    if (!on) return rest as PlayerState;
+    return { ...rest, fuel: clean(fuel), alloys: clean(alloys) } as PlayerState;
+  });
 }
 
 const AI_MODES: AiMode[] = ['normal', 'defend', 'raid', 'passive'];

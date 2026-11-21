@@ -1,5 +1,6 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
+import { industryStep } from './industry';
 import { enlistHeroes, heroesInPlay } from './heroes';
 import { spreadOre } from './maps';
 import {
@@ -216,6 +217,8 @@ export function step(s: GameState): void {
   }
   // round6:B end.
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
+  // Industry (2026-11-21): Fuel Wells pump and Foundries smelt. A no-op without setup.industry.
+  industryStep(s, ctx.power);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);

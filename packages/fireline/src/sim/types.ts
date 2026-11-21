@@ -196,6 +196,9 @@ export interface QueueItem {
   modules?: ModuleId[];
   /** Credits paid for those modules on top of the unit's price; refunded with it. Absent: 0. */
   extra?: number;
+  /** Industry: alloys and fuel paid for it on top of its credits; refunded with it. Absent: 0. */
+  alloys?: number;
+  fuel?: number;
 }
 
 export interface PlayerState {
@@ -237,6 +240,9 @@ export interface PlayerState {
   doctrines?: Partial<Record<LineId, UpgradeId>>;
   /** Lines battles: the loadout per vehicle kind. Absent or missing kind: no modules. */
   loadouts?: Partial<Record<UnitKind, ModuleId[]>>;
+  /** Industry (setup.industry): fuel and alloys in store. Absent on every other battle. */
+  fuel?: number;
+  alloys?: number;
 }
 
 export interface Projectile {

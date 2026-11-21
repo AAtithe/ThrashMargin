@@ -1,4 +1,5 @@
 import { canQueue, doAttack, doMove, doQueue } from './commands';
+import { refundGoods } from './industry';
 import { dist, occupancy, passable, tileAt } from './grid';
 import {
   BUILDINGS,
@@ -257,8 +258,9 @@ function fund(s: GameState, owner: Owner, need: number): boolean {
     for (let i = q.length - 1; i >= 0 && p.credits < need; i--) {
       if (q[i].progress !== 0 || !spare(q[i].kind)) continue;
       const kind = q[i].kind;
-      q.splice(i, 1);
+      const [item] = q.splice(i, 1);
       p.credits += costFor(s, owner, kind);
+      refundGoods(p, item);
     }
   }
   return p.credits >= need;

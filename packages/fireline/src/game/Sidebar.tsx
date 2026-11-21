@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { goodsFor } from '../sim/commands';
+import { alloyStore, fuelStore, hasGoods, industryOn } from '../sim/industry';
 import {
   AIR_AMMO,
   HELIPAD_SLOTS,
@@ -234,7 +236,7 @@ export function statsOf(
   const rows: StatRow[] = [];
   if (kind !== 'hq') {
     const listed = listedCost(kind, faction, state, owner);
-    rows.push({ label: 'Cost', value: `${listed.cost.toLocaleString('en-GB')} credits` });
+    rows.push({ label: 'Cost', value: `${listed.cost.toLocaleString('en-GB')} credits${state ? goodsWords(goodsFor(state, owner, kind)) : ''}` });
     rows.push({ label: 'Build time', value: secs(listed.ticks) });
   }
   rows.push({ label: 'Health', value: `${spec.hp}` });
@@ -523,6 +525,9 @@ export function BuildPanel({
       )}
       </div>
 
+      {/* Industry (2026-11-21): fuel and alloys in store, against what this side may hold. */}
+      {industryOn(state) && <IndustryGauge state={state} />}
+
       {!compact && (
         <section className="fl-d-block" aria-label="Radar">
           <h3 className="fl-d-sect">Radar</h3>
@@ -712,7 +717,8 @@ export function BuildButton({
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
   const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
   const full = tab !== 'building' && q.length >= queueCap(state, 0, tab);
-  const affordable = p.credits >= cost;
+  const goods = goodsFor(state, 0, kind);
+  const affordable = p.credits >= cost && hasGoods(p, goods);
   // Unaffordable stays clickable: the click is refused with a toast that says why.
   const disabled = !open || blockedByOther || (!isHead && !isReady && full);
   // A hotkey letter means nothing without a keyboard.
@@ -739,7 +745,7 @@ export function BuildButton({
           data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
           data-afford={affordable ? '1' : '0'}
           disabled={disabled}
-          aria-label={`${nameOf(kind)}, ${cost} credits${key ? `, hotkey ${key}` : ''}${missing.length ? `, needs ${missing.map(r => BUILDINGS[r].name).join(', ')}` : ''}`}
+          aria-label={`${nameOf(kind)}, ${cost} credits${goodsWords(goods)}${key ? `, hotkey ${key}` : ''}${missing.length ? `, needs ${missing.map(r => BUILDINGS[r].name).join(', ')}` : ''}`}
           aria-keyshortcuts={key}
           aria-pressed={placing === kind}
           {...tipBind}
@@ -787,6 +793,8 @@ export function BuildButton({
           </span>
           <span className="fl-build-cost" data-short={affordable ? '0' : '1'}>
             {cost}
+            {goods.alloys > 0 && <span className="fl-build-goods" data-good="alloys" title="Alloys">{` ${goods.alloys}A`}</span>}
+            {goods.fuel > 0 && <span className="fl-build-goods" data-good="fuel" title="Fuel">{` ${goods.fuel}F`}</span>}
           </span>
           {isHead && !isReady && (
             <span className="fl-build-prog" aria-hidden="true">
@@ -1135,6 +1143,11 @@ export function BuildTipFooter({
   if (state.allowed && !state.allowed.includes(kind)) notes.push('Not available in this mission.');
   else if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
   else if (short > 0 && !p.queues[tab].some(q => q.kind === kind)) notes.push(`Need ${money(short)} more credits.`);
+  const goods = goodsFor(state, 0, kind);
+  if (!missing.length && !p.queues[tab].some(q => q.kind === kind)) {
+    if (goods.alloys > (p.alloys ?? 0)) notes.push(`Need ${goods.alloys - (p.alloys ?? 0)} more alloys: a Foundry smelts them.`);
+    if (goods.fuel > (p.fuel ?? 0)) notes.push(`Need ${goods.fuel - (p.fuel ?? 0)} more fuel: a Fuel Well pumps it.`);
+  }
   if (lowPower) notes.push('Power is low: everything builds at half speed.');
   const k = hotkey?.toUpperCase();
   const how =
@@ -1602,3 +1615,36 @@ function Bar({ frac }: { frac: number }) {
   );
 }
 
+
+/** ", and 24 alloys and 14 fuel" for a price paid partly in goods; empty otherwise. */
+function goodsWords(g: { alloys: number; fuel: number }): string {
+  const parts = [g.alloys ? `${g.alloys} alloys` : '', g.fuel ? `${g.fuel} fuel` : ''].filter(Boolean);
+  return parts.length ? ` and ${parts.join(' and ')}` : '';
+}
+
+/** Industry: fuel and alloys in store, each against what this side may hold. */
+function IndustryGauge({ state }: { state: GameState }) {
+  const p = state.players[0];
+  const fuel = Math.floor(p.fuel ?? 0);
+  const alloys = Math.floor(p.alloys ?? 0);
+  const fCap = fuelStore(state, 0);
+  const aCap = alloyStore(state, 0);
+  return (
+    <div
+      className="fl-d-gauge fl-d-industry"
+      id="fl-industry"
+      data-testid="industry"
+      title="Industry. Fuel Wells pump fuel from ore fields; Foundries smelt credits and fuel into alloys. Each stops when its store is full."
+    >
+      <span className="fl-d-gauge-label">Industry</span>
+      <span className="fl-d-goods">
+        <span data-full={fuel >= fCap ? '1' : '0'}>
+          Fuel <span className="fl-d-goods-n" data-testid="fuel">{fuel}</span>/{fCap}
+        </span>
+        <span data-full={alloys >= aCap ? '1' : '0'}>
+          Alloys <span className="fl-d-goods-n" data-testid="alloys">{alloys}</span>/{aCap}
+        </span>
+      </span>
+    </div>
+  );
+}

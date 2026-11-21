@@ -792,8 +792,9 @@ function navalWarBothArmies(ok: Ok): void {
     ok(NAVY.every(k => factionAllows(f, k) && unitSpecFor(f, k) === UNITS[k]), `${f}: every ship at the catalogue's exact numbers`);
     ok(factionAllows(f, 'shipyard') && buildingSpecFor(f, 'shipyard') === BUILDINGS.shipyard, `${f}: the Naval Yard at the catalogue's exact numbers`);
     const list = menuOf(f, 'building');
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list[list.length - 1] === 'academy',
-      `${f}: the Structures list ends Fortress, Naval Yard, Academy (${list.slice(-3).join(', ')})`);
+    // Industry's Fuel Well and Foundry (2026-11-21) come after the Academy, so nothing before them moved.
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list.slice(-3).join() === 'academy,fuelwell,foundry',
+      `${f}: the Structures list ends Fortress, Naval Yard, Academy, then industry's two (${list.slice(-5).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');
 

@@ -9,6 +9,26 @@ import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+import {
+  AIR_LOAD_FUEL,
+  ALLOY_STORE_BASE,
+  ALLOY_STORE_PER_FOUNDRY,
+  ALLOY_VALUE,
+  FOUNDRY_ALLOYS,
+  FOUNDRY_CREDITS,
+  FOUNDRY_FUEL,
+  FOUNDRY_RESERVE,
+  FOUNDRY_TICKS,
+  FUEL_STORE_BASE,
+  FUEL_STORE_PER_WELL,
+  FUEL_WELL_ORE,
+  FUEL_WELL_REACH,
+  FUEL_WELL_TICKS,
+  INDUSTRY_AIR_FUEL_SHARE,
+  INDUSTRY_ALLOY_SHARE,
+  INDUSTRY_START_ALLOYS,
+  INDUSTRY_START_FUEL,
+} from '../sim/rules';
 // round6:B. Heroes in free play: its panel's numbers.
 import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
 import {
@@ -289,6 +309,8 @@ export default function HowToPlay() {
         <FreeHeroesPanel />
         {/* round6:C. Generals: its panel goes on the line below. */}
         <GeneralsPanel />
+        {/* Industry (2026-11-21): its panel goes on the line below. */}
+        <IndustryPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -520,6 +542,7 @@ const SECTIONS = [
   'Two armies',
   'Heroes in free play',
   'Generals',
+  'Industry',
   'Formations and groups',
   'Campaign',
   'War for the Planet',
@@ -608,6 +631,46 @@ const duration = (ticks: number) => {
   const secs = Math.round(ticks / TICKS_PER_SECOND);
   return secs < 120 ? `${secs}s` : `${Math.round((secs / 60) * 10) / 10} min`;
 };
+
+// Industry (2026-11-21): the panel, from the same numbers the battle reads.
+function IndustryPanel() {
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const perMinute = (amount: number, ticks: number) => Math.round((amount * 600) / ticks);
+  return (
+    <Section title="Industry">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Industry</strong> in the lobby and the economy has three goods, not one: credits, fuel and alloys. The
+          Industry gauge under credits and power shows fuel and alloys against what you can store.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.fuelwell.name}</strong> must stand within {FUEL_WELL_REACH} tiles of an ore field. It pumps{' '}
+          {perMinute(1, FUEL_WELL_TICKS)} fuel a minute by drawing {FUEL_WELL_ORE} ore out of the ground for each: ore your haulers
+          will never bring in. Once the field round it is worked out it runs dry; sell it and build another by a fresh field.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.foundry.name}</strong> smelts {FOUNDRY_CREDITS} credits and {FOUNDRY_FUEL} fuel into {FOUNDRY_ALLOYS} alloys
+          every {FOUNDRY_TICKS / TICKS_PER_SECOND} seconds: {perMinute(FOUNDRY_ALLOYS, FOUNDRY_TICKS)} alloys a minute, for{' '}
+          {perMinute(FOUNDRY_CREDITS, FOUNDRY_TICKS)} credits and {perMinute(FOUNDRY_FUEL, FOUNDRY_TICKS)} fuel. It never smelts your last{' '}
+          {FOUNDRY_RESERVE} credits, so a second Foundry adds speed without draining you dry. Both run at half speed when power is short.
+        </li>
+        <li>
+          Vehicles and ships cost {pct(INDUSTRY_ALLOY_SHARE)} of their price in alloys, at {ALLOY_VALUE} credits an alloy; aircraft{' '}
+          {pct(INDUSTRY_ALLOY_SHARE)} in alloys and {pct(INDUSTRY_AIR_FUEL_SHARE)} in fuel, and every load an aircraft takes on at its
+          Helipad burns {AIR_LOAD_FUEL} fuel (without it the load takes twice as long). Infantry, structures, the Ore Hauler and the
+          Forward Base Truck stay credits only, so you can always rebuild your economy.
+        </li>
+        <li>
+          The stores cap what is made, not what is held: a Fuel Well stops at {FUEL_STORE_BASE} fuel plus {FUEL_STORE_PER_WELL} a well,
+          a Foundry at {ALLOY_STORE_BASE} alloys plus {ALLOY_STORE_PER_FOUNDRY} a Foundry. Alloys sitting in store are credits you
+          cannot spend on anything else: smelt what the factory will use. Every side starts with {INDUSTRY_START_ALLOYS} alloys and{' '}
+          {INDUSTRY_START_FUEL} fuel.
+        </li>
+        <li>The computer builds the same chain right after its first War Factory: one Fuel Well and one Foundry, at every level.</li>
+      </ul>
+    </Section>
+  );
+}
 
 // round5:D begin. Neutral sites and tier three: the panel, from the same numbers the battle reads.
 const seconds = (ticks: number) => `${ticks / TICKS_PER_SECOND} second${ticks === TICKS_PER_SECOND ? '' : 's'}`;
