@@ -1806,7 +1806,7 @@ export function Battle({
               )}
             </div>
           )}
-          {mission && !ended && !phoneDock && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {mission && !ended && !phoneDock && <ObjectivesPanel s={s} onLocate={centreOn} touch={layout.touch} />}
           {/* The battle feed and the bar row share one dock along the foot of the map, in flow: the
               feed always sits on the row's real height, so a row that wraps on a phone lifts the feed
               instead of covering its lowest lines. The row keeps a one-line minimum height, which is

@@ -2765,3 +2765,66 @@ a skirmish, so the panel is not in it; the touch guard is what covers it). `npm 
 fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check
 7,699, drive:planet 35,255). Left open: a tablet keeps the desktop's small Hide and Show
 (`fireline-improvements.md`).
+
+### 2026-11-21: The objectives are a finger wide on a tablet too
+
+**Why.** The phone fix (above) sized the objectives for a finger only under `.fl-dock[data-phone]`,
+and a tablet is not a phone: `layout.phone` is a window 760px wide or narrower, or a touch screen
+under 520px tall. So on the iPad mini, the iPad (7th generation) and the iPad Pro 11 either way up,
+and the Galaxy Tab S4 on its side, a mission's panel kept the desktop's Hide (57 by 17px), each
+objective's Show (44 by 18px) and a pill 26px tall in "fireline" and 28px in "The Quiet Man" (148
+and 203px wide). The Galaxy Tab S4 upright is 712px wide, so it is a phone by width and already had
+the phone's panel. Opening a mission on a tablet also found a second fault: the centred banners start
+at the map's top, where the panel sits, and on any map under about 1000px wide a targeting hint ran
+under the open panel (iPad mini upright: hint 31..469px, panel from 260), and under the pill as well
+on the three upright iPads. On the desktop at 1440 by 900 the hint ends well short of the panel.
+
+**Options weighed.** Treating tablets as phones (widening `layout.phone`) would have moved the panel
+into the dock and folded the bar row into the phone's strip on screens with room for the full row.
+A third set of tablet rules would have copied the phone's. Chosen: the sizing is keyed on touch, not
+on the phone. `ObjectivesPanel` takes `touch` (GameScreen passes `layout.touch` to the panel it puts
+at the top right) and puts `data-touch` on the panel and the pill whenever `phone || touch`, and the
+phone's sizing rules moved from `.fl-dock[data-phone] ...` to `.fl-objectives[data-touch] ...` and
+`.fl-objectives-pill[data-touch]`, unchanged. Placing stays where it was: the phone's panel heads the
+dock, the tablet's keeps the desktop's place. `phone || touch` rather than `touch` alone because a
+mouse window 760px wide or narrower is a phone too and already had the 40px controls; it keeps them.
+This is the same signal as the header's touch sizing (`.fl-d-top[data-touch="1"]`), which already
+applied on tablets: the back button and Pause are 40px tall on all eight. For the banners, while the
+panel is open on a touch screen they keep to the lane left of it (`left: 10px`, `right:
+calc(min(270px, 46%) + 20px)`, the panel's own width and inset plus a 10px gap), and while the pill
+shows they drop to 60px from the top, below it; the dock is excluded, since on a phone both are in
+flow. Dropping the banners below the open panel instead would have put a hint 250px down the map. No
+new colours: the rules reuse `--d-groove` and `--ui-panel-raised`, defined in both modes.
+
+**Numbers.** After, on all eight tablets: Hide 69 by 40px, each showable row 208 to 248 by 40px
+(the panel's width less its padding), the pill 40px tall. Panel heights, before and after: "fireline"
+155 and 162px on every tablet; "The Quiet Man" with the map explored, 256 and 254 on the iPad mini and
+iPad upright (narrower panels, where the rows already wrapped), 240 and 254 on the iPad Pro 11
+upright, 225 and 254 on every tablet on its side. The battle feed's box is the same before and after
+on every tablet in both missions and both modes. With the recon power aimed, the hint now runs
+10..250px on the iPad mini upright (panel from 260) and 104..542 on the iPad Pro 11 on its side
+(panel from 646). Desktop (1440 by 900, mouse): every panel, Hide and row box unchanged in both
+missions, and the panel's pixels identical to before in light and dark in "fireline" (in "The Quiet
+Man" only the mission clock's digits differ, since the battle runs).
+
+**Guard.** `scripts/tours/fireline-touch.cjs` gains a tablet check (Playwright's iPad Mini, iPad (gen
+7), iPad Pro 11 and Galaxy Tab S4, each both ways up; the iPad mini upright in quick mode;
+`TOUR_TABLET` runs one, or "all", alone). In both missions it runs the objectives checks the phones
+run: every control in the panel and the pill 40px both ways, open and hidden; the panel and the pill
+clear of the feed, the bar row and each hero and power bar in it, the banners (a targeting hint with
+the panel open and again with it hidden), the header, the command bar and the alert chip; every row
+tappable; and in "The Quiet Man" a tap on a showable row must move the view. It also holds the
+header's touch-sized buttons at 40px. The objectives check's targeting-hint step used to look for
+`[data-testid^="power-"]`, which the power bar's own `power-bar` matched first, so it tapped the bar
+and never aimed a power; it now looks for a power button, on phones as on tablets. Before the fix:
+66 failures, 56 tap targets (eight on each of the seven tablets that are not phones: Hide twice, the
+pill twice, four Shows) and 10 hints under the panel (seven) or the pill (three); now none. With the
+row's handler emptied the view check fails, so it is not passing on luck.
+
+**Checks.** Screenshots at the devices' own density (2, or 2.25 on the Galaxy Tab S4) on the eight
+tablets, both missions, panel open and a hint aimed, light and dark, plus the desktop at twice the
+density, before and after. `node scripts/tours/run.mjs fireline-touch fireline` (full): ok.
+`npm run tours -- --quick`: all eight ok. `npm run check:ui -- fireline`: 32/32 (a skirmish, so the panel is not in it).
+`npm run check:loading -- fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check 7,699, drive:planet 35,255). Left open: on a touch
+screen 1100px wide or more the header's full row (Controls, Motion, theme, Fullscreen) is not touch
+sized (`fireline-improvements.md`).
