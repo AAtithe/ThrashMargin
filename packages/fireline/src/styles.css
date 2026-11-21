@@ -6526,23 +6526,27 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
 }
 .fl-dock[data-phone] > .fl-objectives-pill {
   flex-shrink: 0;
+}
+/* A finger's targets in the objectives, 40px each way, on a phone and on a tablet alike (`data-touch`:
+   a phone, or a touch screen where the panel keeps its desktop place at the map's top right). Hide
+   fills the header's height at its right end, a flush segment rather than a chip, so the header is
+   exactly one target tall. A row that can be shown is one button the width of the panel
+   (ObjectiveRow's `finger`): its "Show" is the cue, not a second, smaller target, and the text loses
+   no width to it. The rows meet, with a hairline between them instead of a gap, so a 40px row pays
+   for its height out of the spacing it already had, and the panel drops the padding under its rows
+   and over the first one (the rows carry their own). The Hide button and the Show chip used to be 57
+   by 17px and 44 by 18px, the pill 26 or 28px tall. */
+.fl-objectives-pill[data-touch] {
   min-height: 40px;
 }
-/* A finger's targets in the objectives, 40px each way. Hide fills the header's height at its right
-   end, a flush segment rather than a chip, so the header is exactly one target tall. A row that can
-   be shown is one button the width of the panel (ObjectiveRow's `phone`): its "Show" is the cue, not
-   a second, smaller target, and the text loses no width to it. The rows meet, with a hairline between
-   them instead of a gap, so a 40px row pays for its height out of the spacing it already had, and
-   the panel drops the padding under its rows and over the first one (the rows carry their own). The
-   Hide button and the Show chip used to be 57 by 17px and 44 by 18px, the pill 26 or 28px tall. */
-.fl-dock[data-phone] > .fl-objectives {
+.fl-objectives[data-touch] {
   padding-bottom: 0;
 }
-.fl-dock[data-phone] > .fl-objectives > header {
+.fl-objectives[data-touch] > header {
   padding-block: 0;
   padding-right: 0;
 }
-.fl-dock[data-phone] .fl-objectives-hide {
+.fl-objectives[data-touch] .fl-objectives-hide {
   align-self: stretch;
   min-width: 40px;
   min-height: 40px;
@@ -6553,22 +6557,38 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
   border-left: 1px solid var(--d-groove);
   border-radius: 0;
 }
-.fl-dock[data-phone] .fl-objectives-hide:active,
+.fl-objectives[data-touch] .fl-objectives-hide:active,
 .fl-objective-locate:active {
   background: var(--ui-panel-raised);
 }
-.fl-dock[data-phone] .fl-objectives ul {
+.fl-objectives[data-touch] ul {
   margin-top: 0;
   gap: 0;
 }
-.fl-dock[data-phone] .fl-objectives .fl-objective {
+.fl-objectives[data-touch] .fl-objective {
   padding: 5px 0;
 }
-.fl-dock[data-phone] .fl-objectives .fl-objective + .fl-objective {
+.fl-objectives[data-touch] .fl-objective + .fl-objective {
   border-top: 1px solid var(--d-groove);
 }
-.fl-dock[data-phone] .fl-objectives .fl-objective[data-locate] {
+.fl-objectives[data-touch] .fl-objective[data-locate] {
   padding: 0;
+}
+/* A tablet keeps the panel at the map's top right, where the centred banners also start, and on a
+   map under about 1000px wide the two met: a targeting hint ran under the open panel on every tablet
+   (on the iPad mini upright the hint spanned 31..469px and the panel began at 260). With the panel
+   open the banners keep to the lane left of it (the panel is min(270px, 46%) wide, 10px in, and
+   10px more parts them); with the pill they drop below it. Not in a phone's dock, where both are in
+   flow. Mouse-driven desktops are untouched. */
+div:not(.fl-dock):has(> .fl-objectives[data-touch]) > .fl-banners {
+  left: 10px;
+  right: calc(min(270px, 46%) + 20px);
+  transform: none;
+  width: auto;
+  max-width: none;
+}
+div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
+  top: 60px;
 }
 .fl-objective-locate {
   display: flex;

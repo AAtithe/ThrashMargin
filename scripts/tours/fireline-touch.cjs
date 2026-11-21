@@ -27,6 +27,12 @@
  * running and paused, and once more in the mission with the save warning showing, it fails if a
  * header control leaves the window, overlaps another, is under 40px or cuts off its label.
  * TOUR_SKIP_TOUR=1 runs those checks alone.
+ *
+ * On tablets (four, both ways up, in the full run; the iPad mini upright in quick mode) it opens both
+ * missions and runs the same objectives checks against the panel in its desktop place at the top
+ * right: every control and the pill 40px both ways, clear of the feed, the bar row and its bars, the
+ * banners (a targeting hint, panel open and hidden), the header and the command bar, and a tap on a
+ * showable row moves the view. TOUR_TABLET names one tablet, or "all", and runs those checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -390,6 +396,8 @@ const objectiveBoxes = page =>
         ['bar strip', strip],
         ['header', document.querySelector('header')],
         ['command bar', document.querySelector('[data-testid="command-bar"]')],
+        ['alert chip', document.querySelector('.fl-alert-chip')],
+        ...[...document.querySelectorAll('.fl-cbar .fl-herobar, .fl-cbar .fl-powerbar')].map(b => [b.classList.contains('fl-herobar') ? 'hero bar' : 'power bar', b]),
         ...[...document.querySelectorAll('.fl-banners > *')].map(b => [`banner "${b.textContent.trim().slice(0, 24)}"`, b]),
       ]
         .filter(([, el]) => el && el.getClientRects().length)
@@ -485,15 +493,18 @@ async function objectivesClear(page, kind, fail, locate = false) {
     }
     if (!moved) await fail(kind, 'tapping an objective that can be shown never moved the view');
   }
-  // A power that needs a target puts its hint in the banners: the panel keeps clear of that too.
-  const power = page.locator('.fl-barstrip [data-testid^="power-"]:not([disabled])').first();
-  if (await power.count()) {
+  // A power that needs a target puts its hint in the banners: the panel and the pill keep clear of
+  // that too. (A power button, not the bar: the bar's own test id also starts "power-".)
+  const hint = async when => {
+    const power = page.locator('.fl-cbar button[data-testid^="power-"]:not([disabled])').first();
+    if (!(await power.count())) return;
     await power.tap();
     if (await page.getByTestId('hint').count()) {
-      await check('with a targeting hint showing');
+      await check(`with a targeting hint showing ${when}`);
       await page.getByRole('button', { name: 'Cancel' }).tap();
     }
-  }
+  };
+  await hint('and the panel open');
   // The hero drawer opens over the panel, never under it.
   if (await page.getByTestId('heroes-button').count()) {
     await page.getByTestId('heroes-button').tap();
@@ -512,6 +523,7 @@ async function objectivesClear(page, kind, fail, locate = false) {
   await page.getByTestId('objectives-show').waitFor({ timeout: 3000 });
   await check('with the panel hidden');
   await objectiveTapTargets(page, kind, fail, 'with the panel hidden');
+  await hint('and the panel hidden');
   await page.getByTestId('objectives-show').tap();
 }
 
@@ -655,15 +667,83 @@ async function barRow(browser, name) {
   }
 }
 
+/**
+ * The objectives on a tablet: a touch screen that `layout.phone` does not count as a phone, so the
+ * panel keeps the desktop's place at the map's top right (the Galaxy Tab S4 upright, 712px wide, is
+ * a phone by width and takes the dock). Both missions, panel open and hidden: every control in the
+ * panel and the pill must be 40px both ways, the panel must clear the feed, the bar row and its hero
+ * and power bars, the banners (a targeting hint included), the header and the command bar, every row
+ * must be tappable, and tapping a showable row must move the view. The header's touch sizing is
+ * checked too (`touchHeader`). Hide was 57 by 17px and each Show 44 by 18px on every tablet.
+ */
+async function tabletObjectives(browser, name) {
+  const tag = name.replace(/[ ()]/g, '-');
+  const ctx = await browser.newContext({ ...devices[name] });
+  const page = await ctx.newPage();
+  const before = problems.length;
+  const fail = async (kind, msg) => {
+    problems.push(`${name}, tablet (${kind}): ${msg}`);
+    await page.screenshot({ path: path.join(OUT, `${tag}-tablet-${kind.replace(/[ ,]+/g, '-')}.png`) }).catch(() => {});
+  };
+  try {
+    await page.goto(BASE + '/');
+    await page.evaluate(u => {
+      localStorage.setItem('tm_user', u);
+      localStorage.setItem('fireline_tour_seen', '1');
+    }, USER);
+    for (const [kind, build, locate] of [['mission', buildMission, false], ['mission, objectives to show', buildLocatedMission, true]]) {
+      const id = await build(page);
+      await page.goto(`${BASE}/game/${id}`);
+      await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
+      await sleep(600);
+      if (!(await page.getByTestId('command-bar').isVisible())) await fail(kind, 'no command bar on a touch screen');
+      await touchHeader(page, kind, fail);
+      await objectivesClear(page, kind, fail, locate);
+    }
+    if (problems.length === before) console.log(`  ${name}: every objectives control and the pill are 40px both ways; the panel clears the feed, bar row, banners and header; Show moves the view`);
+  } catch (e) {
+    await fail('run', e.message.split('\n')[0]);
+  } finally {
+    await ctx.close();
+  }
+}
+
+/**
+ * The header's touch sizing (the back button, Pause and Menu, 40px tall) is keyed on `layout.touch`,
+ * so it applies on a tablet as on a phone. The full header of a window 1100px or wider carries other
+ * controls (speed, sound, the Controls sheet, motion, theme, fullscreen) that are not touch sized;
+ * that is logged in fireline-improvements.md, and only the three touch-sized buttons are held here.
+ */
+async function touchHeader(page, kind, fail) {
+  const bs = await page.evaluate(() =>
+    [...document.querySelectorAll('header.fl-d-top .fl-d-back, header.fl-d-top .fl-d-pause, header.fl-d-top .fl-d-menu')]
+      .filter(b => b.getClientRects().length)
+      .map(b => {
+        const r = b.getBoundingClientRect();
+        return { name: b.className.split(' ').pop(), w: r.width, h: r.height };
+      }),
+  );
+  if (bs.length < 2) await fail(kind, `the header shows ${bs.length} of its touch-sized buttons, not 2 or more`);
+  for (const b of bs) if (b.w < 39.5 || b.h < 39.5) await fail(kind, `the header's ${b.name} is a ${Math.round(b.w)}x${Math.round(b.h)} tap target, under 40px`);
+}
+
+const ALL_TABLETS = ['iPad Mini', 'iPad Mini landscape', 'iPad (gen 7)', 'iPad (gen 7) landscape', 'iPad Pro 11', 'iPad Pro 11 landscape', 'Galaxy Tab S4', 'Galaxy Tab S4 landscape'];
+
 module.exports = { buildSkirmish, buildMission, buildLocatedMission, buildPlanet, headerBoxes };
 
 if (require.main === module) (async () => {
   require('fs').mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
   try {
-    if (!process.env.TOUR_SKIP_TOUR) for (const d of DEVICES) await play(browser, d);
-    const rowDevices = process.env.TOUR_DEVICE || process.env.TOUR_QUICK ? DEVICES : [...DEVICES, 'iPhone SE', 'iPhone SE (3rd gen)'];
-    for (const d of rowDevices) await barRow(browser, d);
+    // TOUR_TABLET names one tablet (or "all") and runs the tablet check alone.
+    const tabletOnly = process.env.TOUR_TABLET;
+    if (!tabletOnly) {
+      if (!process.env.TOUR_SKIP_TOUR) for (const d of DEVICES) await play(browser, d);
+      const rowDevices = process.env.TOUR_DEVICE || process.env.TOUR_QUICK ? DEVICES : [...DEVICES, 'iPhone SE', 'iPhone SE (3rd gen)'];
+      for (const d of rowDevices) await barRow(browser, d);
+    }
+    const tablets = tabletOnly ? (tabletOnly === 'all' ? ALL_TABLETS : [tabletOnly]) : process.env.TOUR_DEVICE ? [] : process.env.TOUR_QUICK ? ['iPad Mini'] : ALL_TABLETS;
+    for (const d of tablets) await tabletObjectives(browser, d);
   } finally {
     await browser.close();
   }
