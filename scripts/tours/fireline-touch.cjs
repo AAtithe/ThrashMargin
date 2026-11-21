@@ -32,7 +32,10 @@
  * missions and runs the same objectives checks against the panel in its desktop place at the top
  * right: every control and the pill 40px both ways, clear of the feed, the bar row and its bars, the
  * banners (a targeting hint, panel open and hidden), the header and the command bar, and a tap on a
- * showable row moves the view. TOUR_TABLET names one tablet, or "all", and runs those checks alone.
+ * showable row moves the view. In both missions, a skirmish and a War for the Planet battle, running
+ * and paused, every header control must be 40px both ways, inside the header and the window, clear
+ * of the others, with no sideways scroll; and the Menu must hold the display settings, every
+ * button in it 40px both ways. TOUR_TABLET names one tablet, or "all", and runs those checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -528,11 +531,16 @@ async function objectivesClear(page, kind, fail, locate = false) {
 }
 
 /**
- * The battle header's controls (the back button, the clock, a save warning, Pause and Menu): each
- * box must lie wholly inside the window and the header, none may overlap another, every button must
- * be a 40px tap target with its label unclipped, and the page must not scroll sideways. Checked
- * running and paused in every case, and once more with the save warning showing. On the 320px
- * iPhone SE the Menu button once ran 42px off the right edge in a campaign mission.
+ * The battle header's controls (every button and slider, the clock and the save state): each box
+ * must lie wholly inside the window and the header, none may overlap another, every button and
+ * slider must be a 40px tap target with its label unclipped, and the page must not scroll sideways.
+ * Checked running and paused in every case, and once more with the save warning showing. On the
+ * 320px iPhone SE the Menu button once ran 42px off the right edge in a campaign mission; on a touch
+ * screen 1100px wide or more the full row's Controls button was 26 by 26px.
+ *
+ * The one overlap allowed is the speed buttons' seam: they are a joined strip (`.fl-d-seg`) whose
+ * neighbours share a single 1px border (`margin-left: -1px`), so two buttons of the same strip may
+ * meet by at most 1px, and no further.
  */
 const headerBoxes = page =>
   page.evaluate(() => {
@@ -542,12 +550,14 @@ const headerBoxes = page =>
       const b = el.getBoundingClientRect();
       return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
     };
-    const items = [...header.querySelectorAll('button, .fl-d-clock, .fl-d-save')]
+    const strips = [...header.querySelectorAll('.fl-d-seg')];
+    const items = [...header.querySelectorAll('button, input, .fl-d-clock, .fl-d-save')]
       .filter(el => el.getClientRects().length && !el.parentElement.closest('button'))
       .map(el => ({
-        name: el.getAttribute('data-testid') || el.getAttribute('aria-label') || el.className.split(' ').pop(),
-        button: el.tagName === 'BUTTON',
-        clipped: el.scrollWidth > el.clientWidth + 1,
+        name: el.getAttribute('data-testid') || el.getAttribute('aria-label') || (el.tagName === 'BUTTON' && el.textContent.trim()) || el.className.split(' ').pop(),
+        button: el.tagName === 'BUTTON' || el.tagName === 'INPUT',
+        clipped: el.tagName !== 'INPUT' && el.scrollWidth > el.clientWidth + 1,
+        strip: strips.indexOf(el.parentElement),
         ...box(el),
       }));
     return { header: box(header), items, width: innerWidth, height: innerHeight, pageWidth: document.documentElement.scrollWidth };
@@ -569,8 +579,13 @@ async function headerFits(page, kind, fail, when = 'running') {
     if (it.clipped) await fail(kind, `the header's ${it.name} cuts off its own label`);
   }
   for (let i = 0; i < h.items.length; i++)
-    for (let j = i + 1; j < h.items.length; j++)
-      if (meets(h.items[i], h.items[j])) await fail(kind, `the header's ${h.items[i].name} and ${h.items[j].name} overlap`);
+    for (let j = i + 1; j < h.items.length; j++) {
+      const [a, b] = [h.items[i], h.items[j]];
+      if (!meets(a, b)) continue;
+      const seam = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      if (a.strip >= 0 && a.strip === b.strip && seam <= 1.5) continue;
+      await fail(kind, `the header's ${a.name} and ${b.name} overlap by ${px(seam)}px`);
+    }
   if (h.pageWidth > h.width) await fail(kind, `the page scrolls sideways (${h.pageWidth}px in ${h.width}px)`);
 }
 
@@ -673,8 +688,10 @@ async function barRow(browser, name) {
  * a phone by width and takes the dock). Both missions, panel open and hidden: every control in the
  * panel and the pill must be 40px both ways, the panel must clear the feed, the bar row and its hero
  * and power bars, the banners (a targeting hint included), the header and the command bar, every row
- * must be tappable, and tapping a showable row must move the view. The header's touch sizing is
- * checked too (`touchHeader`). Hide was 57 by 17px and each Show 44 by 18px on every tablet.
+ * must be tappable, and tapping a showable row must move the view. The whole header is checked in
+ * the missions, a skirmish and a War for the Planet battle, running and paused (`headerFits`). Hide
+ * was 57 by 17px and each Show 44 by 18px on every tablet; on the two tablets 1100px wide or more
+ * on their sides the header's full row had a 26 by 26px Controls button.
  */
 async function tabletObjectives(browser, name) {
   const tag = name.replace(/[ ()]/g, '-');
@@ -697,10 +714,20 @@ async function tabletObjectives(browser, name) {
       await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
       await sleep(600);
       if (!(await page.getByTestId('command-bar').isVisible())) await fail(kind, 'no command bar on a touch screen');
-      await touchHeader(page, kind, fail);
+      await headerBothWays(page, kind, fail);
       await objectivesClear(page, kind, fail, locate);
     }
-    if (problems.length === before) console.log(`  ${name}: every objectives control and the pill are 40px both ways; the panel clears the feed, bar row, banners and header; Show moves the view`);
+    // The header in the other two kinds of battle: a skirmish (which has the Tour button) and a War
+    // for the Planet battle.
+    for (const [kind, build] of [['skirmish', p => buildSkirmish(p, 'heroes')], ['planet', buildPlanet]]) {
+      const id = await build(page);
+      await page.goto(`${BASE}/game/${id}`);
+      await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
+      await sleep(600);
+      await headerBothWays(page, kind, fail);
+      await displayInReach(page, kind, fail);
+    }
+    if (problems.length === before) console.log(`  ${name}: every header control is 40px both ways and fits; every objectives control and the pill are 40px both ways; the panel clears the feed, bar row, banners and header; Show moves the view`);
   } catch (e) {
     await fail('run', e.message.split('\n')[0]);
   } finally {
@@ -709,22 +736,32 @@ async function tabletObjectives(browser, name) {
 }
 
 /**
- * The header's touch sizing (the back button, Pause and Menu, 40px tall) is keyed on `layout.touch`,
- * so it applies on a tablet as on a phone. The full header of a window 1100px or wider carries other
- * controls (speed, sound, the Controls sheet, motion, theme, fullscreen) that are not touch sized;
- * that is logged in fireline-improvements.md, and only the three touch-sized buttons are held here.
+ * The display settings (motion, light or dark, fullscreen) on a touch screen live in the Menu, so
+ * they must be there, every button in the open Menu must be 40px both ways, and the theme switch
+ * there must work. On a touch screen 1100px wide or more they were in the header, 26px tall.
  */
-async function touchHeader(page, kind, fail) {
+async function displayInReach(page, kind, fail) {
+  kind = `${kind}, menu`;
+  const menu = page.getByTestId('menu-button');
+  if (!(await menu.isVisible())) return await fail(kind, 'no Menu button in the header on a touch screen');
+  await menu.tap();
+  await page.getByTestId('menu').waitFor({ timeout: 5000 });
   const bs = await page.evaluate(() =>
-    [...document.querySelectorAll('header.fl-d-top .fl-d-back, header.fl-d-top .fl-d-pause, header.fl-d-top .fl-d-menu')]
-      .filter(b => b.getClientRects().length)
-      .map(b => {
-        const r = b.getBoundingClientRect();
-        return { name: b.className.split(' ').pop(), w: r.width, h: r.height };
-      }),
+    [...document.querySelectorAll('[data-testid="menu"] button')].map(b => {
+      const r = b.getBoundingClientRect();
+      return { name: b.getAttribute('aria-label') || b.textContent.trim(), w: r.width, h: r.height };
+    }),
   );
-  if (bs.length < 2) await fail(kind, `the header shows ${bs.length} of its touch-sized buttons, not 2 or more`);
-  for (const b of bs) if (b.w < 39.5 || b.h < 39.5) await fail(kind, `the header's ${b.name} is a ${Math.round(b.w)}x${Math.round(b.h)} tap target, under 40px`);
+  for (const want of [/^Motion/, /^Switch to (dark|light)/, /fullscreen/i])
+    if (!bs.some(b => want.test(b.name))) await fail(kind, `the Menu has no ${want} button`);
+  for (const b of bs) if (b.w < 39.5 || b.h < 39.5) await fail(kind, `the Menu's ${b.name} is a ${Math.round(b.w)}x${Math.round(b.h)} tap target, under 40px`);
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme || 'light');
+  const was = await theme();
+  await page.locator('[data-testid="menu"] button[aria-label^="Switch to"]').tap();
+  if ((await theme()) === was) await fail(kind, "the Menu's theme switch did nothing");
+  await page.locator('[data-testid="menu"] button[aria-label^="Switch to"]').tap();
+  await page.locator('[data-testid="menu"] .fl-d-primary').tap();
+  if (await page.getByTestId('menu').isVisible()) await fail(kind, 'Close left the Menu open');
 }
 
 const ALL_TABLETS = ['iPad Mini', 'iPad Mini landscape', 'iPad (gen 7)', 'iPad (gen 7) landscape', 'iPad Pro 11', 'iPad Pro 11 landscape', 'Galaxy Tab S4', 'Galaxy Tab S4 landscape'];

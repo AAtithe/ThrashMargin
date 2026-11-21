@@ -4856,6 +4856,20 @@ kbd {
   font-size: 0.85rem;
 }
 /*
+ * The full row on a touch screen 1100px wide or more (the iPad Pro 11 and the Galaxy Tab S4 on their
+ * sides): the Controls button a 40px square and the volume slider 40px tall, so a finger has the
+ * same target as everywhere else. Speed, sound and the Tour button take the touch size inline; the
+ * display settings move into the Menu. The Controls button was 26 by 26px and the slider 16px tall.
+ */
+.fl-d-top[data-touch="1"] .fl-d-help {
+  width: 40px;
+  min-height: 40px;
+  font-size: 0.85rem;
+}
+.fl-d-top[data-touch="1"] .fl-d-range {
+  height: 40px;
+}
+/*
  * An upright phone. The worst header (a campaign mission, paused, with the save warning showing) needs
  * 434px with every label, more than the widest phone (430px), so below 480px the back button keeps only its arrow and Pause only its
  * glyph, each a 40px square whose label stays for screen readers. Menu keeps its word: it is the way

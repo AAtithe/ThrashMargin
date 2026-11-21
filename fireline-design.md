@@ -2682,3 +2682,65 @@ density, before and after. `node scripts/tours/run.mjs fireline-touch fireline` 
 `npm run check:loading -- fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check 7,699, drive:planet 35,255). Left open: on a touch
 screen 1100px wide or more the header's full row (Controls, Motion, theme, Fullscreen) is not touch
 sized (`fireline-improvements.md`).
+
+### 2026-11-21: The battle header is a finger wide on a wide tablet
+
+**Why.** The header's touch sizing (`.fl-d-top[data-touch="1"]`) covered the back button, Pause and
+Menu, which is the whole header on a window under 1100px wide. A touch screen 1100px wide or more
+gets the full desktop row instead, and of the eight tablet views two are that wide: the iPad Pro 11
+on its side (1194 by 834) and the Galaxy Tab S4 on its side (1138 by 712). Measured in a mission, a
+skirmish and a War for the Planet battle on both: the speed buttons, Sound and Tour already took the
+40px touch size inline, but the Controls button was 26 by 26px, Motion, the theme switch and
+Fullscreen 72, 72 and 69 by 26px, and the volume slider 64 (52 on the Galaxy Tab S4) by 16px. In a
+skirmish on the Galaxy Tab S4 the row needed about 1149px, so Fullscreen ran 1070..1139, 1px off
+the window and 11px past the header's padding. The two pairs of overlapping buttons the earlier
+check reported are Slow and Normal, and Normal and Fast: the speed strip (`.fl-d-seg`) joins its
+buttons with `margin-left: -1px` so neighbours share one border, a 1px seam that is meant. The
+other six tablet views (both iPads under 1100px either way up, the two upright) show the compact
+header and were already sound.
+
+**Options weighed.** Growing every control in place adds 14px to Controls and 14px to each of the
+three display buttons, about 56px, onto a row that already overflowed at 1138 and has 38px less at
+1100. Compact labels or glyphs for Sound and the speeds would save the width but make the most used
+controls harder to read. Treating every touch screen as compact (back, clock, Pause, Menu) is one
+line in `layout.ts`, but it takes the speeds and Sound out of reach on the two tablets with room for
+them. Chosen: on a touch screen the full row's display group (motion, light or dark, fullscreen),
+set once and rarely touched, gives way to the same Menu button the compact header has, and the
+Menu sheet shows only what the row lacks: the battle's name and sides, the display settings and
+Close (speed, sound, the save state, Tour and Controls stay in the row). The Controls button
+becomes a 40px square and the slider 40px tall, in the stylesheet beside the existing touch rules.
+The Menu's display buttons were 26px tall on every touch screen, phones included; since the Menu is
+now their only place on a wide tablet, they take a 40px minimum height whenever `layout.touch` is
+set, which also lifts them on phones and the narrower tablets (the phone header is unchanged).
+Mouse windows are untouched: every change is keyed on `layout.touch` or `data-touch="1"`. No new
+colours.
+
+**Numbers.** After, in a skirmish on the Galaxy Tab S4 on its side: speeds 496..679, Pause 682..764,
+Sound 776..880, slider 888..940 (52 by 40), Tour 958..1013, Controls 1016..1056 (40 by 40), Menu
+1065..1128, 10px clear of the edge, with 124px of slack beside the clock. On a 1100 by 800
+touch window, the narrowest full row there can be, the skirmish's Menu runs 1027..1090. iPad Pro 11
+on its side, mission: Controls 1069..1109, Menu 1121..1184. The header grows from 59 to 63px on the
+iPad Pro 11 and 57 to 61px on the Galaxy Tab S4, both on their sides. Menu on those two: Light or
+Dark mode 78 by 40, Motion 78 by 40, Fullscreen 75 by 40, Close 65 by 40. Desktop (1440 by 900,
+mouse): every header box unchanged in all three battle types, and the header's pixels byte-identical
+to before in light and dark. The six compact tablet views' headers are unchanged too (the only
+differing pixels are the clock's digits and the live map under the header's bottom edge).
+
+**Guard.** `scripts/tours/fireline-touch.cjs`: the tablet check's header test (it held back, Pause
+and Menu only) is replaced by the phones' full one, which now also takes sliders, on all eight tablet
+views in both missions, a skirmish and a War for the Planet battle, running and paused: every button
+and slider 40px both ways, inside the header and the window, none overlapping, no sideways scroll.
+The one overlap allowed is two buttons of the same `.fl-d-seg` strip meeting by 1.5px or less. In
+the skirmish and the planet battle it then opens the Menu and fails unless motion, theme and
+fullscreen are there, every button in it is 40px both ways, the theme switch flips the page's theme
+and Close shuts it. Before the fix: 121 failures (80 header tap targets and Fullscreen off the
+window on the two wide tablets, 4 for no Menu button on them, and 36 Menu display buttons 26px tall
+on the other six); now none. The phones' checks still pass.
+
+**Checks.** Screenshots of the header on all eight tablet views in the three battle types, light and
+dark, the open Menu on each, plus the desktop at twice the density, before and after.
+`node scripts/tours/run.mjs fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all
+eight ok. `npm run check:ui -- fireline`: 32/32. `npm run check:loading -- fireline`: 27/27.
+`npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check 7,699,
+drive:planet 35,255). Left open: the
+Menu's volume slider on a phone or a narrower tablet is 110 by 16px (`fireline-improvements.md`).
