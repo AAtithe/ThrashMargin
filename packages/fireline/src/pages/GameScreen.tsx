@@ -1820,7 +1820,7 @@ export function Battle({
           >
           {/* On a phone the objectives head the dock, in flow above the banners and the feed: they
               take their own lane at the top right and give way (scrolling inside) before the feed. */}
-          {phoneDock && mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {phoneDock && mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} phone />}
           {phoneDock && banners}
           <div
             className="fl-d-feed"

@@ -6490,6 +6490,10 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
   margin-bottom: auto;
   padding-bottom: 6px;
 }
+/* No banner showing: no gap for one. The objectives' own margin already parts them from the feed. */
+.fl-dock[data-phone] > .fl-banners:empty {
+  padding-bottom: 0;
+}
 /* The objectives head the phone's dock, in flow at its top right, so they take their own lane above
    the banners, the feed and the strip and can meet none of them. Short of room they give way first
    (a large shrink factor), down to their header: the rows scroll inside. Wider than on a larger
@@ -6522,6 +6526,80 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
 }
 .fl-dock[data-phone] > .fl-objectives-pill {
   flex-shrink: 0;
+  min-height: 40px;
+}
+/* A finger's targets in the objectives, 40px each way. Hide fills the header's height at its right
+   end, a flush segment rather than a chip, so the header is exactly one target tall. A row that can
+   be shown is one button the width of the panel (ObjectiveRow's `phone`): its "Show" is the cue, not
+   a second, smaller target, and the text loses no width to it. The rows meet, with a hairline between
+   them instead of a gap, so a 40px row pays for its height out of the spacing it already had, and
+   the panel drops the padding under its rows and over the first one (the rows carry their own). The
+   Hide button and the Show chip used to be 57 by 17px and 44 by 18px, the pill 26 or 28px tall. */
+.fl-dock[data-phone] > .fl-objectives {
+  padding-bottom: 0;
+}
+.fl-dock[data-phone] > .fl-objectives > header {
+  padding-block: 0;
+  padding-right: 0;
+}
+.fl-dock[data-phone] .fl-objectives-hide {
+  align-self: stretch;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.72rem;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--d-groove);
+  border-radius: 0;
+}
+.fl-dock[data-phone] .fl-objectives-hide:active,
+.fl-objective-locate:active {
+  background: var(--ui-panel-raised);
+}
+.fl-dock[data-phone] .fl-objectives ul {
+  margin-top: 0;
+  gap: 0;
+}
+.fl-dock[data-phone] .fl-objectives .fl-objective {
+  padding: 5px 0;
+}
+.fl-dock[data-phone] .fl-objectives .fl-objective + .fl-objective {
+  border-top: 1px solid var(--d-groove);
+}
+.fl-dock[data-phone] .fl-objectives .fl-objective[data-locate] {
+  padding: 0;
+}
+.fl-objective-locate {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.fl-objective-cue {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 7px;
+  font-size: 0.66rem;
+  color: var(--ui-text-soft);
+  background: var(--ui-panel-raised);
+  border: 1px solid var(--ui-rule);
+  border-radius: 3px;
+}
+.fl-objective-locate:hover .fl-objective-cue {
+  border-color: var(--ui-accent);
+  color: var(--ui-text);
 }
 .fl-dock[data-phone] > .fl-d-feed {
   flex: 0 1 auto;

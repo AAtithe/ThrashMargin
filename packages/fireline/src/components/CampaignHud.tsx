@@ -104,9 +104,11 @@ function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: num
  * small pill, so it never sits over something the player needs to click; the choice is remembered.
  * On a phone it heads the battle dock instead (GameScreen), in flow above the banners and the feed,
  * and its rows scroll inside it when the map is short.
- * Objectives whose target has been seen carry a Show button that centres the view on it.
+ * Objectives whose target has been seen carry a Show button that centres the view on it. On a phone
+ * (`phone`) the whole row is that button instead, at least 40px tall, with "Show" kept as its cue: a
+ * finger gets the row's full width rather than a 44 by 18px chip, and the text loses no width to it.
  */
-export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: number, y: number) => void }) {
+export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; onLocate?: (x: number, y: number) => void; phone?: boolean }) {
   const [open, setOpenState] = useState(readOpen);
   const setOpen = (v: boolean) => {
     setOpenState(v);
@@ -168,7 +170,7 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
         <div className="fl-objectives-body">
           <ul>
             {m.objectives.map((o, i) => (
-              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} />
+              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} phone={phone} />
             ))}
           </ul>
           {m.bonus.length > 0 && (
@@ -176,7 +178,7 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
               <p className="fl-objectives-sub">Bonus, optional: a star each</p>
               <ul>
                 {m.bonus.map((o, i) => (
-                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} />
+                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} phone={phone} />
                 ))}
               </ul>
             </>
@@ -198,6 +200,7 @@ function ObjectiveRow({
   at,
   onLocate,
   left = null,
+  phone = false,
 }: {
   o: ObjectiveRuntime;
   bonus?: boolean;
@@ -205,29 +208,55 @@ function ObjectiveRow({
   onLocate?: (x: number, y: number) => void;
   /** Ticks left on the objective's own clock, if it has one. */
   left?: number | null;
+  /** On a phone a row that can be shown is one button, the whole row. */
+  phone?: boolean;
 }) {
   const state = o.failed ? 'failed' : o.done ? 'done' : 'open';
+  const locate = state === 'open' && at && onLocate ? () => onLocate(at.x, at.y) : null;
+  const mark = (
+    <span className="fl-objective-mark" aria-label={state === 'done' ? 'Done' : state === 'failed' ? 'Failed' : 'Not yet'}>
+      {state === 'done' ? '✓' : state === 'failed' ? '✕' : bonus ? '☆' : '○'}
+    </span>
+  );
+  const text = (
+    <span className="fl-objective-text">
+      {o.label}
+      {left !== null && (
+        <span className="fl-objective-clock" data-low={left < 60 * TICKS_PER_SECOND ? '1' : '0'} title="Time left for this objective">
+          {' '}
+          {clockOf(left)} left
+        </span>
+      )}
+      {state === 'open' && o.progress > 0 && o.progress < 1 && (
+        <span className="fl-bar" aria-hidden="true">
+          <span style={{ width: `${Math.round(o.progress * 100)}%` }} />
+        </span>
+      )}
+    </span>
+  );
+  if (phone && locate)
+    return (
+      <li className="fl-objective" data-state={state} data-bonus={bonus ? '1' : '0'} data-locate="1">
+        <button
+          type="button"
+          className="fl-objective-locate"
+          onClick={locate}
+          aria-label={`Show on the map: ${o.label}${left !== null ? `, ${clockOf(left)} left` : ''}`}
+        >
+          {mark}
+          {text}
+          <span className="fl-objective-cue" aria-hidden="true">
+            Show
+          </span>
+        </button>
+      </li>
+    );
   return (
     <li className="fl-objective" data-state={state} data-bonus={bonus ? '1' : '0'}>
-      <span className="fl-objective-mark" aria-label={state === 'done' ? 'Done' : state === 'failed' ? 'Failed' : 'Not yet'}>
-        {state === 'done' ? '✓' : state === 'failed' ? '✕' : bonus ? '☆' : '○'}
-      </span>
-      <span className="fl-objective-text">
-        {o.label}
-        {left !== null && (
-          <span className="fl-objective-clock" data-low={left < 60 * TICKS_PER_SECOND ? '1' : '0'} title="Time left for this objective">
-            {' '}
-            {clockOf(left)} left
-          </span>
-        )}
-        {state === 'open' && o.progress > 0 && o.progress < 1 && (
-          <span className="fl-bar" aria-hidden="true">
-            <span style={{ width: `${Math.round(o.progress * 100)}%` }} />
-          </span>
-        )}
-      </span>
-      {state === 'open' && at && onLocate && (
-        <button type="button" className="fl-objective-show" onClick={() => onLocate(at.x, at.y)} title="Centre the view on it">
+      {mark}
+      {text}
+      {locate && (
+        <button type="button" className="fl-objective-show" onClick={locate} title="Centre the view on it">
           Show
         </button>
       )}
