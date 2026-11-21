@@ -1807,7 +1807,7 @@ export function Battle({
               )}
             </div>
           )}
-          {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {mission && !ended && !phoneDock && <ObjectivesPanel s={s} onLocate={centreOn} />}
           {/* The battle feed and the bar row share one dock along the foot of the map, in flow: the
               feed always sits on the row's real height, so a row that wraps on a phone lifts the feed
               instead of covering its lowest lines. The row keeps a one-line minimum height, which is
@@ -1819,6 +1819,9 @@ export function Battle({
             data-phone={phoneDock ? '1' : undefined}
             data-testid="battle-dock"
           >
+          {/* On a phone the objectives head the dock, in flow above the banners and the feed: they
+              take their own lane at the top right and give way (scrolling inside) before the feed. */}
+          {phoneDock && mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
           {phoneDock && banners}
           <div
             className="fl-d-feed"

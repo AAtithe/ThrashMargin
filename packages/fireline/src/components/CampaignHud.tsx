@@ -102,6 +102,8 @@ function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: num
 /**
  * The mission's objectives, top right of the battlefield. It can be hidden (button or O) down to a
  * small pill, so it never sits over something the player needs to click; the choice is remembered.
+ * On a phone it heads the battle dock instead (GameScreen), in flow above the banners and the feed,
+ * and its rows scroll inside it when the map is short.
  * Objectives whose target has been seen carry a Show button that centres the view on it.
  */
 export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: number, y: number) => void }) {
@@ -161,8 +163,9 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
           Hide <kbd>O</kbd>
         </button>
       </header>
+      {/* The rows, in one box: on a phone it scrolls inside the panel while the header stays put. */}
       {(
-        <>
+        <div className="fl-objectives-body">
           <ul>
             {m.objectives.map((o, i) => (
               <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} />
@@ -178,7 +181,7 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
               </ul>
             </>
           )}
-        </>
+        </div>
       )}
     </section>
   );
