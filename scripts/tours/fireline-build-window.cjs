@@ -7,7 +7,8 @@
  * On a fresh advanced-tech skirmish on a fixed Coast map (so the Naval tab is always there) it checks that:
  * - every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure it needs
  *   is missing, with the lines and tiers the rules give; the round 6 recruits (the Academy, the
- *   heroes, the field General) are absent, since this battle has Heroes and Generals off;
+ *   heroes, the field General) are absent, since this battle has Heroes and Generals off, and so
+ *   are the economy's toggled structures (Industry, Supply lines and Territory off);
  * - the window opens and closes by the Build button, the backquote key and Esc, focus moving into it
  *   and back to the Build button, and Tab cycles the lists with it open or closed;
  * - a hotkey queues with the window closed (Q, Generator) and with it open (W, Refinery);
@@ -82,8 +83,11 @@ async function checkBuildWindow(browser, base, problems, out) {
         return memo[k];
       };
       // Round 6: the Academy, the heroes and the field General are listed only with Heroes or
-      // Generals on; this battle has both off, so they must be absent.
-      const optional = k => k === r.HERO_ACADEMY || k === 'general' || (k in r.UNITS && !!r.UNITS[k].hero);
+      // Generals on; this battle has both off, so they must be absent. Likewise the economy's
+      // structures (2026-11-21): the Fuel Well and Foundry need Industry, the Depot Supply lines,
+      // the Quarters and Watchtower Territory, all off here.
+      const economy = ['fuelwell', 'foundry', 'depot', 'quarters', 'watchtower'];
+      const optional = k => k === r.HERO_ACADEMY || k === 'general' || economy.includes(k) || (k in r.UNITS && !!r.UNITS[k].hero);
       const menus = {};
       const absent = {};
       for (const [tab, list] of Object.entries(r.MENUS)) {
@@ -138,9 +142,9 @@ async function checkBuildWindow(browser, base, problems, out) {
       if (!list.length || !(await page.locator(`#fl-tab-${tab}`).count())) continue;
       await page.locator(`#fl-tab-${tab}`).click();
       await sleep(150);
-      for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes and Generals off`);
+      for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes, Generals and the economy toggles off`);
     }
-    console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes and Generals off`);
+    console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes, Generals and the economy toggles off`);
 
     // ---- Tab cycles, open and closed --------------------------------------------------------------
     await page.locator('#fl-tab-building').click();

@@ -1,5 +1,7 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
+import { cutOff, supplied, supplyOn, supplyStep } from './supply';
+import { industryStep } from './industry';
 import { enlistHeroes, heroesInPlay } from './heroes';
 import { spreadOre } from './maps';
 import {
@@ -33,6 +35,7 @@ import {
   SCOOP_TICKS,
   UNITS,
   UNLOAD_PER_TICK,
+  REFINERY_HOLD,
   VET_DAMAGE,
   VET_NAMES,
   VET_RELOAD,
@@ -120,6 +123,9 @@ import { lostAboard, transportStep } from './transport';
 import { canReach, isShip, launchTile, navalStep } from './naval';
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
+/** Supply lines: a cut-off refinery counts as this many tiles further when a hauler chooses where to unload. */
+const CUT_REFINERY_PENALTY = 1000;
+
 function crossDomain(u: Unit, t: Target): boolean {
   if (t.unit && isAir(t.unit)) return false;
   return isShip(u) !== !!(t.unit && isShip(t.unit));
@@ -216,6 +222,11 @@ export function step(s: GameState): void {
   }
   // round6:B end.
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
+  // Industry (2026-11-21): Fuel Wells pump and Foundries smelt. A no-op without setup.industry.
+  // Supply lines (2026-11-21): producers cut off from every yard work for their own site, and what
+  // they hold flows home once they are linked again. No-ops without setup.supply.
+  industryStep(s, ctx.power, supplyOn(s) ? new Set(sidesOf(s).flatMap(o => cutOff(s, o).map(b => b.id))) : undefined);
+  supplyStep(s);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
@@ -1074,10 +1085,15 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       if (!ref || ref.hp <= 0 || ref.owner !== u.owner || ref.kind !== 'refinery') {
         ref = undefined;
         let bestD = Infinity;
+        // Supply lines: a supplied refinery first; a cut-off one only when nothing supplied stands,
+        // and never one already full on site.
+        const sup = supplyOn(s);
         for (const b of s.buildings) {
           if (b.owner !== u.owner || b.kind !== 'refinery' || b.hp <= 0) continue;
+          const cut = sup && !supplied(s, b);
+          if (cut && (b.held ?? 0) >= REFINERY_HOLD) continue;
           const dk = dockTile(s, b);
-          const d = dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5);
+          const d = dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5) + (cut ? CUT_REFINERY_PENALTY : 0);
           if (d < bestD) {
             bestD = d;
             ref = b;
@@ -1117,7 +1133,18 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       const refined = incomeMulOf(s, u.owner);
       if (refined !== 1) mul *= refined;
       const credits = Math.round(amount * mul);
-      p.credits += credits;
+      // Supply lines: a cut-off refinery keeps the credits on site; full, its haulers wait.
+      if (supplyOn(s) && !supplied(s, ref)) {
+        if ((ref.held ?? 0) >= REFINERY_HOLD) {
+          // Full on site: take the rest to another refinery, or wait if there is none.
+          u.cargo += amount;
+          h.phase = 'return';
+          h.refinery = 0;
+          halt(u);
+          return;
+        }
+        ref.held = (ref.held ?? 0) + credits;
+      } else p.credits += credits;
       p.stats.harvested += credits;
       if (u.cargo <= 0) {
         u.cargo = 0;

@@ -9,6 +9,7 @@ import type { Target } from './grid';
 import {
   BUILD_RADIUS,
   BUILDINGS,
+  FUEL_WELL_MIN_ORE,
   MAX_FIELD_YARDS,
   MAX_QUEUE,
   ORDER_QUEUE_MAX,
@@ -27,6 +28,7 @@ import {
   buildTicksOf,
   categoryOf,
   costFor,
+  fullCostFor,
   isStructure,
   log,
   queueCap,
@@ -35,7 +37,8 @@ import {
   techAllowed,
   unlocked,
 } from './state';
-import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
+import type { Building, GameState, QueueItem, QueuedOrder, Stance, Unit } from './types';
+import { goodsPart, hasGoods, oreInReach, payGoods, refundGoods } from './industry';
 import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
@@ -84,22 +87,32 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;
   // Forward Base Trucks: no more than MAX_FIELD_YARDS, counting yards, trucks and trucks queued.
   if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
+  // Industry: the alloys and fuel part of the price must be in store too.
+  if (!hasGoods(p, goodsFor(s, owner, kind))) return false;
   // Vehicles: the price includes the current loadout's modules (development lines only).
   if (category === 'vehicle') return p.credits >= queueCostFor(s, owner, kind as UnitKind);
   return p.credits >= costFor(s, owner, kind);
 }
 
+/** The alloys and fuel part of this side's price for a kind: nothing without industry (industry.ts). */
+export const goodsFor = (s: GameState, owner: Owner, kind: BuildingKind | UnitKind): { alloys: number; fuel: number } =>
+  goodsPart(s, kind, fullCostFor(s, owner, kind));
+
 export function doQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): void {
   const p = s.players[owner];
   const mods = category === 'vehicle' ? loadoutOf(s, owner, kind as UnitKind) : [];
+  const goods = goodsFor(s, owner, kind);
+  let item: QueueItem;
   if (mods.length) {
     const extra = loadoutCost(mods);
     p.credits -= costFor(s, owner, kind) + extra;
-    p.queues[category].push({ kind, progress: 0, modules: [...mods], extra });
-    return;
+    item = { kind, progress: 0, modules: [...mods], extra };
+  } else {
+    p.credits -= costFor(s, owner, kind);
+    item = { kind, progress: 0 };
   }
-  p.credits -= costFor(s, owner, kind);
-  p.queues[category].push({ kind, progress: 0 });
+  payGoods(p, item, goods);
+  p.queues[category].push(item);
 }
 
 /** Cancels the last queued item of that kind, refunding it in full. */
@@ -112,8 +125,9 @@ export function doCancel(s: GameState, owner: Owner, category: Category, kind: B
   for (let i = q.length - 1; i >= 0; i--) {
     if (q[i].kind === kind) {
       const extra = q[i].extra ?? 0;
-      q.splice(i, 1);
+      const [item] = q.splice(i, 1);
       s.players[owner].credits += costFor(s, owner, kind) + extra;
+      refundGoods(s.players[owner], item);
       return;
     }
   }
@@ -177,6 +191,8 @@ export function placementProblem(
     const d = { x: x + 1, y: frontRow(s, owner, y, spec.h) };
     if (!onMap(s, d.x, d.y) || !isWalkable(s.tiles[tileAt(s, d.x, d.y)]) || occ[tileAt(s, d.x, d.y)]) return 'The dock pad below needs clear ground';
   }
+  // Industry: a Fuel Well stands beside an ore field.
+  if (kind === 'fuelwell' && oreInReach(s, x, y, spec.w, spec.h) < FUEL_WELL_MIN_ORE) return 'A Fuel Well needs an ore field within three tiles';
   // The naval war: a Naval Yard stands on the shore of open sea.
   if (kind === 'shipyard') {
     const sea = shoreProblem(s, x, y);

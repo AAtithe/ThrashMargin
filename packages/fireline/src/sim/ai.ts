@@ -32,6 +32,8 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
+import { depotSpot, economyPlan, industryPlanFor, wellFocus } from './aiEconomy';
+import { isProducer, linkedHubs, servedBy, supplyOn } from './supply';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
 import { heroesNeedTechCentre, heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
@@ -468,6 +470,8 @@ function commander(s: GameState, owner: Owner): void {
   // line below this comment (recruiting, keeping with the wave, retreating), and nothing else here.
   generalPlan(s, owner, home, enemyHome, units);
   // round6:C end.
+  // Industry (2026-11-21): a drained Fuel Well sold, so the plan can put one by another field. A no-op without industry.
+  economyPlan(s, owner);
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
@@ -1020,6 +1024,8 @@ function nextStructure(
   if (count('refinery') === 0) return powerFor('refinery');
   if (needRefineryForHauler && count('refinery') < 4) return powerFor('refinery');
   if (headroom < 25 && count('power') < 12) return 'power';
+  // Supply lines (2026-11-21): a cut-off producer is reconnected before anything else. Never without them.
+  if (depotSpot(s, owner) && unlocked(s, owner, 'depot')) return powerFor('depot');
   const t = advanced ? TACTICS[advanced] : null;
   const plan: [BuildingKind, number][] = t
     ? [
@@ -1028,6 +1034,8 @@ function nextStructure(
         // heavy units, and on Hard the Strike Command.
         ['barracks', 1],
         ['factory', 1],
+        // Industry (2026-11-21): the chain right after the first factory; nothing without industry.
+        ...industryPlanFor(s, owner),
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
@@ -1045,6 +1053,8 @@ function nextStructure(
     : [
         ['barracks', 1],
         ['factory', 1],
+        // Industry (2026-11-21): the chain right after the first factory; nothing without industry.
+        ...industryPlanFor(s, owner),
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
@@ -1067,10 +1077,13 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   const spec = buildingSpec(s, owner, kind);
   // The naval war: a Naval Yard on the shore, and Generators toward it while it is out of reach.
   if (kind === 'shipyard') return navalSpot(s, owner, home);
+  if (kind === 'depot') return depotSpot(s, owner);
   let focus = (kind === 'power' && creepFocus(s, owner)) || home;
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
   if (kind === 'repairbay') focus = toward(home, enemyHome, 4);
+  // Industry: a Fuel Well beside the nearest field rich enough to feed it.
+  if (kind === 'fuelwell') focus = wellFocus(s, owner, home) ?? home;
   if (kind === 'techcentre' || kind === 'strikecommand') focus = toward(home, enemyHome, -4);
   if (kind === 'refinery') {
     let best = -1;
@@ -1099,7 +1112,11 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   // Ties broken in mirrored order for side 1, so both sides build mirror-image bases.
   const sign = frontDir(s, owner);
   candidates.sort((a, b) => a[2] - b[2] || sign * (a[1] - b[1]) || sign * (a[0] - b[0]));
+  // Supply lines: a Refinery, Fuel Well or Foundry only where a linked hub supplies it, so nothing
+  // the commander builds starts cut off (a far Refinery stranded its haulers' credits on site).
+  const hubs = supplyOn(s) && isProducer(kind) ? linkedHubs(s, owner) : null;
   for (const [x, y] of candidates) {
+    if (hubs && !servedBy(hubs, { x: x + spec.w / 2, y: y + spec.h / 2 })) continue;
     if (placementProblem(s, owner, kind, x, y, occ)) continue;
     let clear = true;
     for (let ty = y - 1; ty <= y + spec.h && clear; ty++)
