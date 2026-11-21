@@ -9,6 +9,33 @@ import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+import {
+  AIR_LOAD_FUEL,
+  ALLOY_STORE_BASE,
+  ALLOY_STORE_PER_FOUNDRY,
+  ALLOY_VALUE,
+  FOUNDRY_ALLOYS,
+  FOUNDRY_CREDITS,
+  FOUNDRY_FUEL,
+  FOUNDRY_RESERVE,
+  FOUNDRY_TICKS,
+  FUEL_STORE_BASE,
+  FUEL_STORE_PER_WELL,
+  FUEL_WELL_ORE,
+  FUEL_WELL_REACH,
+  FUEL_WELL_TICKS,
+  INDUSTRY_AIR_FUEL_SHARE,
+  INDUSTRY_ALLOY_SHARE,
+  INDUSTRY_START_ALLOYS,
+  INDUSTRY_START_FUEL,
+  REFINERY_HOLD,
+  SUPPLY_FLOW_CREDITS,
+  SUPPLY_FLOW_GOODS,
+  SUPPLY_LINK_RANGE,
+  SUPPLY_SERVE_RANGE,
+  SUPPLY_TICKS,
+  WELL_HOLD,
+} from '../sim/rules';
 // round6:B. Heroes in free play: its panel's numbers.
 import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
 import {
@@ -289,6 +316,10 @@ export default function HowToPlay() {
         <FreeHeroesPanel />
         {/* round6:C. Generals: its panel goes on the line below. */}
         <GeneralsPanel />
+        {/* Industry (2026-11-21): its panel goes on the line below. */}
+        <IndustryPanel />
+        {/* Supply lines (2026-11-21): its panel goes on the line below. */}
+        <SupplyPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -520,6 +551,8 @@ const SECTIONS = [
   'Two armies',
   'Heroes in free play',
   'Generals',
+  'Industry',
+  'Supply lines',
   'Formations and groups',
   'Campaign',
   'War for the Planet',
@@ -608,6 +641,77 @@ const duration = (ticks: number) => {
   const secs = Math.round(ticks / TICKS_PER_SECOND);
   return secs < 120 ? `${secs}s` : `${Math.round((secs / 60) * 10) / 10} min`;
 };
+
+// Industry (2026-11-21): the panel, from the same numbers the battle reads.
+function IndustryPanel() {
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const perMinute = (amount: number, ticks: number) => Math.round((amount * 600) / ticks);
+  return (
+    <Section title="Industry">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Industry</strong> in the lobby and the economy has three goods, not one: credits, fuel and alloys. The
+          Industry gauge under credits and power shows fuel and alloys against what you can store.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.fuelwell.name}</strong> must stand within {FUEL_WELL_REACH} tiles of an ore field. It pumps{' '}
+          {perMinute(1, FUEL_WELL_TICKS)} fuel a minute by drawing {FUEL_WELL_ORE} ore out of the ground for each: ore your haulers
+          will never bring in. Once the field round it is worked out it runs dry; sell it and build another by a fresh field.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.foundry.name}</strong> smelts {FOUNDRY_CREDITS} credits and {FOUNDRY_FUEL} fuel into {FOUNDRY_ALLOYS} alloys
+          every {FOUNDRY_TICKS / TICKS_PER_SECOND} seconds: {perMinute(FOUNDRY_ALLOYS, FOUNDRY_TICKS)} alloys a minute, for{' '}
+          {perMinute(FOUNDRY_CREDITS, FOUNDRY_TICKS)} credits and {perMinute(FOUNDRY_FUEL, FOUNDRY_TICKS)} fuel. It never smelts your last{' '}
+          {FOUNDRY_RESERVE} credits, so a second Foundry adds speed without draining you dry. Both run at half speed when power is short.
+        </li>
+        <li>
+          Vehicles and ships cost {pct(INDUSTRY_ALLOY_SHARE)} of their price in alloys, at {ALLOY_VALUE} credits an alloy; aircraft{' '}
+          {pct(INDUSTRY_ALLOY_SHARE)} in alloys and {pct(INDUSTRY_AIR_FUEL_SHARE)} in fuel, and every load an aircraft takes on at its
+          Helipad burns {AIR_LOAD_FUEL} fuel (without it the load takes twice as long). Infantry, structures, the Ore Hauler and the
+          Forward Base Truck stay credits only, so you can always rebuild your economy.
+        </li>
+        <li>
+          The stores cap what is made, not what is held: a Fuel Well stops at {FUEL_STORE_BASE} fuel plus {FUEL_STORE_PER_WELL} a well,
+          a Foundry at {ALLOY_STORE_BASE} alloys plus {ALLOY_STORE_PER_FOUNDRY} a Foundry. Alloys sitting in store are credits you
+          cannot spend on anything else: smelt what the factory will use. Every side starts with {INDUSTRY_START_ALLOYS} alloys and{' '}
+          {INDUSTRY_START_FUEL} fuel.
+        </li>
+        <li>The computer builds the same chain right after its first War Factory: one Fuel Well and one Foundry, at every level.</li>
+      </ul>
+    </Section>
+  );
+}
+
+// Supply lines (2026-11-21): the panel, from the same numbers the battle reads.
+function SupplyPanel() {
+  return (
+    <Section title="Supply lines">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Supply lines</strong> in the lobby (it needs Industry) and what your Refineries, Fuel Wells and Foundries
+          make only reaches your stores while they are linked to a yard.
+        </li>
+        <li>
+          Your Command Yard and Field Yards are the roots. A <strong>{BUILDINGS.depot.name}</strong> links to a yard or another linked
+          Depot within {SUPPLY_LINK_RANGE} tiles, centre to centre, so a chain of Depots carries supply out across the map. A
+          Refinery, Fuel Well or Foundry is supplied within {SUPPLY_SERVE_RANGE} tiles of a linked yard or Depot. Your links show as
+          moving dashed lines; placing one of these structures shows the rings it must stand inside.
+        </li>
+        <li>
+          Cut off, a Refinery keeps what its haulers bring on site, up to {REFINERY_HOLD.toLocaleString('en-GB')} credits (then they
+          wait), a Fuel Well keeps up to {WELL_HOLD} fuel (then it stops), and a Foundry stops. A CUT badge shows over each one and the
+          Industry gauge counts them. Link it again and what it held comes home at {(SUPPLY_FLOW_CREDITS * 600) / SUPPLY_TICKS}{' '}
+          credits or {(SUPPLY_FLOW_GOODS * 600) / SUPPLY_TICKS} fuel a minute.
+        </li>
+        <li>
+          Lose a Depot and everything beyond it is cut. Lose a cut-off structure and what it held is gone. A hauler that finds its
+          Refinery cut off and full takes its ore to another. The computer plays by the same rules: it builds its Refineries, Fuel
+          Wells and Foundries only where they are supplied, and reconnects anything cut off before it builds anything else.
+        </li>
+      </ul>
+    </Section>
+  );
+}
 
 // round5:D begin. Neutral sites and tier three: the panel, from the same numbers the battle reads.
 const seconds = (ticks: number) => `${ticks / TICKS_PER_SECOND} second${ticks === TICKS_PER_SECOND ? '' : 's'}`;

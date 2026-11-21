@@ -56,7 +56,7 @@ import { normaliseSetup } from '../sim/state';
 import { TEAM, UI } from '../theme';
 import { Label } from './ui';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
-import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
+import { SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, INDUSTRY_AIR_FUEL_SHARE, INDUSTRY_ALLOY_SHARE, INDUSTRY_START_ALLOYS, INDUSTRY_START_FUEL, SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
 // round6:A. Two armies (fireline-round6-design.md, workstream A): the Army row.
 import ArmyField from './ArmyField';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
@@ -64,6 +64,19 @@ import { GeneralsSetup } from './Generals';
 
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
+
+/** What the Supply lines field says. */
+function supplyNote(setup: SkirmishSetup): string {
+  if (!setup.industry) return 'Needs Industry on.';
+  if (!setup.supply) return 'Off: every Refinery, Fuel Well and Foundry delivers wherever it stands.';
+  return `On: Refineries, Fuel Wells and Foundries deliver only within ${SUPPLY_SERVE_RANGE} tiles of a Command Yard, Field Yard or Depot, and a Depot must stand within ${SUPPLY_LINK_RANGE} tiles of another linked to a yard. Cut off, a Refinery or Fuel Well holds its output on site and a Foundry stops. Lose a Depot and everything beyond it is cut.`;
+}
+
+/** What the Industry field says. */
+function industryNote(setup: SkirmishSetup): string {
+  if (!setup.industry) return 'Off: credits buy everything, as in the original game.';
+  return `On: Fuel Wells pump fuel out of ore fields and Foundries smelt credits and fuel into alloys. Vehicles and ships cost ${Math.round(INDUSTRY_ALLOY_SHARE * 100)}% of their price in alloys, aircraft ${Math.round(INDUSTRY_ALLOY_SHARE * 100)}% in alloys and ${Math.round(INDUSTRY_AIR_FUEL_SHARE * 100)}% in fuel. Ore Haulers and infantry stay credits only. Every side starts with ${INDUSTRY_START_ALLOYS} alloys and ${INDUSTRY_START_FUEL} fuel.`;
+}
 
 /** What the Neutral sites field says each side gets at this map size. */
 // round6:B begin. Heroes in free play: the Heroes field's note.
@@ -132,6 +145,8 @@ export function readStoredSetup(): SkirmishSetup {
       heroes: r6.heroes,
       generals: r6.generals,
       generalPicks: r6.generalPicks,
+      industry: r.industry === true,
+      supply: r.industry === true && r.supply === true,
     };
   } catch {
     return FIRST_SETUP;
@@ -430,6 +445,38 @@ export default function SkirmishSetupPanel({
               ))}
             </div>
             <p className="fl-setup-note">{sitesNote(value)}</p>
+          </div>
+          {/* Industry (2026-11-21): fuel and alloys beside credits (src/sim/industry.ts). */}
+          <div className="fl-setup-field" data-testid="industry-field">
+            <Label>Industry</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Industry">
+              {[false, true].map(on => (
+                <button key={on ? 'on' : 'off'} type="button" role="radio" aria-checked={!!value.industry === on} data-testid={`industry-${on ? 'on' : 'off'}`} onClick={() => set({ industry: on })}>
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{industryNote(value)}</p>
+          </div>
+          {/* Supply lines (2026-11-21): phase 2, needs industry (src/sim/supply.ts). */}
+          <div className="fl-setup-field" data-testid="supply-field">
+            <Label>Supply lines</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Supply lines">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!value.industry && !!value.supply === on}
+                  disabled={!value.industry && on}
+                  data-testid={`supply-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ supply: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{supplyNote(value)}</p>
           </div>
         </div>
       </SetupStep>

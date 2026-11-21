@@ -30,6 +30,8 @@
  *   tsx scripts/ai-ladder.ts ... --out results.jsonl   also writes every battle as one JSON line
  *   tsx scripts/ai-ladder.ts --map random --size large a larger map (round 5): large or huge; the cap
  *                                                      defaults to 72000 ticks on large, 108000 on huge
+ *   tsx scripts/ai-ladder.ts --map random --industry   industry on (2026-11-21): fuel, alloys, Fuel Wells and Foundries
+ *   tsx scripts/ai-ladder.ts --map random --industry --supply   and supply lines (Depots; needs --industry)
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -128,6 +130,12 @@ const CREDITS = Number(arg('--credits', String(GAME_PACES[PACE].preset.credits))
 const ORE = arg('--ore', GAME_PACES[PACE].preset.ore);
 /** Research mode for a skirmish setup (fireline-round5b-design.md): 'lines' (the default setup's) or 'classic'. */
 const RESEARCH = arg('--research', 'lines');
+/** Industry (2026-11-21): fuel and alloys beside credits. Needs a skirmish setup. */
+const INDUSTRY = args.includes('--industry');
+/** Supply lines (2026-11-21): needs industry. */
+const SUPPLY = args.includes('--supply');
+if (SUPPLY && !INDUSTRY) throw new Error('--supply needs --industry');
+if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
@@ -149,6 +157,8 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(SIZE !== 'standard' ? { size: SIZE } : {}),
     ...(HEROES ? { heroes: true } : {}),
     ...(GENERALS ? { generals: true } : {}),
+    ...(INDUSTRY ? { industry: true } : {}),
+    ...(SUPPLY ? { supply: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -262,7 +272,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -280,6 +290,8 @@ if (workerAt >= 0) {
           ...(LEGACY ? [] : ['--pace', PACE]),
           ...(HEROES ? ['--heroes'] : []),
           ...(GENERALS ? ['--generals'] : []),
+          ...(INDUSTRY ? ['--industry'] : []),
+          ...(SUPPLY ? ['--supply'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

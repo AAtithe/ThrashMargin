@@ -1,8 +1,8 @@
 import type { BuildingKind, Owner, UnitKind } from '../sim/rules';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import type { SiteKind } from '../sim/rules';
-import type { GameState } from '../sim/types';
-import { BUILDINGS } from '../sim/rules';
+import type { Building, GameState } from '../sim/types';
+import { BUILDINGS, SUPPLY_LINK_RANGE } from '../sim/rules';
 import { ART, TEAM } from '../theme';
 
 /**
@@ -1696,6 +1696,17 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     // round6:B end.
     // round6:C begin. Generals: its structures' cases, if any, appended here.
     // round6:C end.
+    // Industry (2026-11-21).
+    case 'fuelwell':
+      drawFuelWell(ctx, w, h, team, pose);
+      break;
+    case 'foundry':
+      drawFoundry(ctx, w, h, team, pose);
+      break;
+    // Supply lines (2026-11-21).
+    case 'depot':
+      drawDepot(ctx, w, h, team, pose);
+      break;
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -5800,3 +5811,207 @@ function drawShipyard(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPos
   }
   lamp(ctx, w - 7, 7, on, '#7dff8a', p.t, 2);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Industry (2026-11-21, setup.industry)
+
+/** The Fuel Well: a pump jack nodding over the wellhead, and a team-banded fuel tank behind it. */
+function drawFuelWell(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const work = !!p.working && !p.lowPower;
+  // The tank, back right.
+  const tx = w - 22;
+  const ty = 8;
+  ctx.fillStyle = shade(ctx, tx, ty, 16, 26, '#c9c4b4', '#8d887a');
+  rrect(ctx, tx, ty, 16, 26, 6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(tx, ty + 11, 16, 4);
+  // A pipe from the wellhead to the tank.
+  ctx.strokeStyle = '#4a4e4b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(14, h - 14);
+  ctx.lineTo(tx + 8, h - 14);
+  ctx.lineTo(tx + 8, ty + 26);
+  ctx.stroke();
+  // The wellhead.
+  ctx.fillStyle = '#2d302e';
+  circle(ctx, 14, h - 14, 4);
+  ctx.fill();
+  // The jack: an A-frame and a beam that nods while it pumps.
+  const px = 22;
+  const py = h - 30;
+  ctx.strokeStyle = '#6b6f6a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px - 6, h - 10);
+  ctx.lineTo(px, py);
+  ctx.lineTo(px + 6, h - 10);
+  ctx.stroke();
+  const tilt = work ? Math.sin(p.t * 2.4) * 0.28 : 0.1;
+  const c = Math.cos(tilt);
+  const sn = Math.sin(tilt);
+  const head = { x: px - 13 * c, y: py - 13 * sn };
+  const tail = { x: px + 11 * c, y: py + 11 * sn };
+  ctx.strokeStyle = team.dark;
+  ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  ctx.moveTo(head.x, head.y);
+  ctx.lineTo(tail.x, tail.y);
+  ctx.stroke();
+  // The horse's head over the well, and its rod down to it.
+  ctx.fillStyle = team.light;
+  rrect(ctx, head.x - 3, head.y - 3, 6, 8, 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2a2c2b';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(head.x, head.y + 5);
+  ctx.lineTo(14, h - 15);
+  ctx.stroke();
+  // The counterweight.
+  ctx.fillStyle = '#3b3e3c';
+  circle(ctx, tail.x, tail.y + 2, 3.2);
+  ctx.fill();
+  lamp(ctx, w - 8, h - 8, work, '#7ee08a', p.t, 3);
+}
+
+/** The Foundry: a long casting hall, a furnace mouth glowing while it smelts, and a stack. */
+function drawFoundry(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const work = !!p.working && !p.lowPower;
+  // The hall.
+  const hx = 6;
+  const hy = 10;
+  const hw = w - 30;
+  const hh = h - 24;
+  block(ctx, hx, hy, hw, hh, shade(ctx, hx, hy, hw, hh, '#b9b2a2', '#857e6e'), '#625c4f', 4);
+  // Team stripe along the roof ridge, and the emblem.
+  ctx.fillStyle = team.main;
+  ctx.fillRect(hx, hy + 3, hw, 3);
+  emblem(ctx, team, hx + hw - 9, hy + hh / 2 + 3, 1.6);
+  // The furnace mouth, glowing while it smelts.
+  const fx = hx + 8;
+  const fy = hy + hh - 10;
+  ctx.fillStyle = '#1d1e1d';
+  rrect(ctx, fx, fy, 20, 9, 2);
+  ctx.fill();
+  if (work) {
+    const glow = 0.65 + 0.35 * Math.sin(p.t * 5);
+    ctx.fillStyle = `rgba(255,${Math.round(120 + 60 * glow)},40,${0.55 + 0.4 * glow})`;
+    rrect(ctx, fx + 2, fy + 2, 16, 5, 1.5);
+    ctx.fill();
+  }
+  // Ingots stacked on the apron.
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i % 2 ? '#a7adb1' : '#c3c9cc';
+    ctx.fillRect(fx + 26 + i * 7, fy + 3, 6, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(fx + 26 + i * 7, fy + 7, 6, 1);
+  }
+  // The stack, right, with smoke while it smelts.
+  const sx = w - 18;
+  ctx.fillStyle = shade(ctx, sx, 6, 10, h - 14, '#6d6a62', '#45433e');
+  ctx.fillRect(sx, 6, 10, h - 14);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(sx + 0.5, 6.5, 9, h - 15);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(sx, 12, 10, 3);
+  if (work) {
+    for (let i = 0; i < 3; i++) {
+      const f = frac(p.t * 0.5 + i / 3);
+      alpha(ctx, 0.35 * (1 - f));
+      ctx.fillStyle = '#8a8780';
+      circle(ctx, sx + 5 + f * 6, 4 - f * 10, 2.5 + f * 4);
+      ctx.fill();
+    }
+    alpha(ctx, 1);
+  }
+  lamp(ctx, w - 8, h - 7, work, '#ffb050', p.t, 3);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Supply lines (2026-11-21, setup.supply)
+
+/** The Depot: a fenced yard of stacked crates under a mast, its beacon lit while it stands linked. */
+function drawDepot(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  // Crates, stacked.
+  const crate = (x: number, y: number, s: number, tone: string) => {
+    ctx.fillStyle = tone;
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+    ctx.beginPath();
+    ctx.moveTo(x + 1, y + 1);
+    ctx.lineTo(x + s - 1, y + s - 1);
+    ctx.stroke();
+  };
+  crate(8, h - 26, 14, '#9c8458');
+  crate(23, h - 26, 14, '#8a744b');
+  crate(15, h - 39, 14, '#a88f60');
+  // A team-coloured tarpaulin over a pallet on the right.
+  ctx.fillStyle = shade(ctx, w - 26, 12, 18, 16, team.light, team.dark);
+  rrect(ctx, w - 26, 12, 18, 16, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.stroke();
+  // The mast and its beacon.
+  const mx = w - 12;
+  ctx.fillStyle = '#4b4f4c';
+  ctx.fillRect(mx - 1, h - 30, 2, 22);
+  lamp(ctx, mx, h - 31, !p.lowPower, '#78d8ff', p.t, 2, true);
+  hazardStripe(ctx, 5, h - 7, w - 10, 2);
+}
+
+/** Supply lines between linked hubs, drawn under the structures: a faint dashed line, its dashes moving outward. */
+export function drawSupplyLines(ctx: Ctx, hubs: Building[], t: number): void {
+  const centre = (b: Building) => {
+    const spec = BUILDINGS[b.kind];
+    return { x: (b.x + spec.w / 2) * TILE, y: (b.y + spec.h / 2) * TILE };
+  };
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.lineDashOffset = -((t * 12) % 14);
+  ctx.strokeStyle = 'rgba(120,220,255,0.6)';
+  const reach = SUPPLY_LINK_RANGE * TILE;
+  for (let i = 0; i < hubs.length; i++)
+    for (let j = i + 1; j < hubs.length; j++) {
+      const a = centre(hubs[i]);
+      const b = centre(hubs[j]);
+      if ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 > reach * reach) continue;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  ctx.restore();
+}
+
+/** A cut-off producer's badge: an amber pill reading CUT, with what it holds on site. */
+export function drawCutBadge(ctx: Ctx, cx: number, top: number, held: number, kind: BuildingKind, t: number): void {
+  const text = held > 0 ? `CUT ${Math.floor(held)}${kind === 'fuelwell' ? ' fuel' : kind === 'refinery' ? ' cr' : ''}` : 'CUT';
+  ctx.save();
+  ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+  const w = ctx.measureText(text).width + 12;
+  ctx.globalAlpha = 0.9 + 0.1 * Math.sin(t * 4);
+  ctx.fillStyle = 'rgba(30,18,6,0.95)';
+  rrect(ctx, cx - w / 2, top - 15, w, 16, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,170,80,1)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#ffc070';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, top - 7);
+  ctx.restore();
+}
+

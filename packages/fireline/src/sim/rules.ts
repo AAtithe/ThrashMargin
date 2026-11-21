@@ -177,6 +177,11 @@ export type BuildingKind =
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its structure kinds, if any.
   // round6:C end.
+  // Industry (2026-11-21, setup.industry): the Fuel Well and the Foundry.
+  | 'fuelwell'
+  | 'foundry'
+  // Supply lines (2026-11-21, setup.supply): the Depot.
+  | 'depot'
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -1033,6 +1038,47 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
   // round6:B end.
   // round6:C begin. Generals: its structures, if any, appended here.
   // round6:C end.
+  // Industry (2026-11-21): refused by techAllowed unless setup.industry is on (industry.ts).
+  fuelwell: {
+    name: 'Fuel Well',
+    w: 2,
+    h: 2,
+    cost: 600,
+    buildTicks: 90,
+    hp: 600,
+    power: -15,
+    sight: 4,
+    requires: ['refinery'],
+    blurb:
+      'Industry on only. Built beside an ore field, it draws ore from the ground within three tiles and pumps fuel: one every 1.5 seconds, three ore each. Dry once the ore round it is gone. Half speed when power is short.',
+  },
+  foundry: {
+    name: 'Foundry',
+    w: 3,
+    h: 2,
+    cost: 1200,
+    buildTicks: 140,
+    hp: 900,
+    power: -40,
+    sight: 4,
+    requires: ['refinery'],
+    blurb:
+      'Industry on only. Smelts 60 credits of refined ore with 4 fuel into 10 alloys every six seconds, while the alloy store has room, and never your last 200 credits. Vehicles, ships and aircraft are paid partly in alloys. Half speed when power is short.',
+  },  // Supply lines (2026-11-21): refused by techAllowed unless setup.supply and setup.industry are on (supply.ts).
+  depot: {
+    name: 'Depot',
+    w: 2,
+    h: 2,
+    cost: 500,
+    buildTicks: 70,
+    hp: 700,
+    power: -5,
+    sight: 6,
+    requires: [],
+    blurb:
+      'Supply lines on only. Relays supply: it links to a Command Yard, Field Yard or Depot within 12 tiles, and supplies every Refinery, Fuel Well and Foundry within 8 tiles. Lose one and everything beyond it is cut off.',
+  },
+
 };
 
 /** Structures in the order the build menu offers them. */
@@ -1063,6 +1109,11 @@ export const BUILD_MENU: BuildingKind[] = [
   // round6:B end.
   // round6:C begin. Generals: its structures, if any, appended here.
   // round6:C end.
+  // Industry (2026-11-21): last, so turning it on moves no item already listed.
+  'fuelwell',
+  'foundry',
+  // Supply lines (2026-11-21): last, so turning it on moves no item already listed.
+  'depot',
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1486,6 +1537,19 @@ export interface SkirmishSetup {
    * older setups, which normaliseSetup reads as every seat null.
    */
   generalPicks?: (GeneralId | null)[];
+  /**
+   * Industry (2026-11-21, fireline-design.md): fuel and alloys beside credits. Fuel Wells pump fuel
+   * from ore fields, Foundries smelt credits and fuel into alloys, and vehicles, ships and aircraft
+   * are paid partly in alloys (aircraft partly in fuel too, and each load rearmed burns fuel).
+   * Never in a mission or a planet battle. Absent on older setups, which normaliseSetup reads as false.
+   */
+  industry?: boolean;
+  /**
+   * Supply lines (2026-11-21, phase 2 of the economy; supply.ts): Refineries, Fuel Wells and
+   * Foundries deliver only while linked to a Command Yard or Field Yard, directly or through a chain
+   * of Depots. Needs industry on (normaliseSetup turns it off without). Absent: off.
+   */
+  supply?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1507,6 +1571,8 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   heroes: false,
   generals: false,
   generalPicks: [null, null],
+  industry: false,
+  supply: false,
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1527,6 +1593,8 @@ export const LEGACY_SETUP: SkirmishSetup = {
   heroes: false,
   generals: false,
   generalPicks: [null, null],
+  industry: false,
+  supply: false,
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -2378,3 +2446,57 @@ export const GENERAL_SQUAD_REFRESH_TICKS = 4;
 export const GENERAL_SQUAD_SLACK = 1;
 /** A General holds to half the squad's pace while any member is further than this from its slot (and not ahead of it). */
 export const GENERAL_SQUAD_HOLD = 1.5;
+
+// ---------------------------------------------------------------------------------------------
+// Industry (2026-11-21, setup.industry; fireline-design.md). The logic is in industry.ts.
+
+/** Share of a vehicle's, ship's or aircraft's price paid in alloys rather than credits. */
+export const INDUSTRY_ALLOY_SHARE = 0.3;
+/** Aircraft only: a further share of the price paid in fuel. */
+export const INDUSTRY_AIR_FUEL_SHARE = 0.1;
+/** Credits one alloy stands for in a price, and one fuel. */
+export const ALLOY_VALUE = 10;
+export const FUEL_VALUE = 10;
+/** Paid in credits alone whatever the setup: the economy's own vehicles, so a side can never be stuck without alloys to rebuild it. */
+export const INDUSTRY_EXEMPT: UnitKind[] = ['hauler', 'basetruck'];
+/** A Fuel Well pumps one fuel every FUEL_WELL_TICKS (twice that short of power), drawing FUEL_WELL_ORE ore for it. */
+export const FUEL_WELL_TICKS = 15;
+export const FUEL_WELL_ORE = 3;
+/** How far from its footprint a Fuel Well reaches for ore, and the ore it needs in reach to be placed. */
+export const FUEL_WELL_REACH = 3;
+export const FUEL_WELL_MIN_ORE = 1000;
+/** A Foundry's cycle: every FOUNDRY_TICKS (twice that short of power) it turns credits and fuel into alloys. */
+export const FOUNDRY_TICKS = 60;
+export const FOUNDRY_CREDITS = 60;
+export const FOUNDRY_FUEL = 4;
+export const FOUNDRY_ALLOYS = 10;
+/** A Foundry never smelts a side's last credits: it starts a cycle only with this many left over after it. */
+export const FOUNDRY_RESERVE = 200;
+/**
+ * Storage: a base amount and more per Fuel Well (fuel) or Foundry (alloys). Wells and Foundries idle
+ * while the store is full. It limits what is made, not what is held: a side that loses a Foundry keeps its alloys.
+ */
+export const FUEL_STORE_BASE = 100;
+export const FUEL_STORE_PER_WELL = 50;
+export const ALLOY_STORE_BASE = 100;
+export const ALLOY_STORE_PER_FOUNDRY = 50;
+/** What every side starts with, so a first scout can be bought before the chain stands. */
+export const INDUSTRY_START_FUEL = 60;
+export const INDUSTRY_START_ALLOYS = 60;
+/** Fuel burned for each load an aircraft takes on at its Helipad. Short of it, the load takes twice as long and is free. */
+export const AIR_LOAD_FUEL = 2;
+
+// ---------------------------------------------------------------------------------------------
+// Supply lines (2026-11-21, setup.supply with setup.industry; fireline-design.md). Logic in supply.ts.
+
+/** Two hubs (Command Yard, Field Yard, Depot) link when their centres are this close, in tiles. */
+export const SUPPLY_LINK_RANGE = 12;
+/** A producer is supplied when its centre is this close to a linked hub's centre, in tiles. */
+export const SUPPLY_SERVE_RANGE = 8;
+/** Every SUPPLY_TICKS, a supplied producer sends home up to this much of what it holds on site. */
+export const SUPPLY_TICKS = 10;
+export const SUPPLY_FLOW_CREDITS = 50;
+export const SUPPLY_FLOW_GOODS = 5;
+/** Most a cut-off Refinery holds in credits (its haulers then wait), and a cut-off Fuel Well in fuel (it then stops). */
+export const REFINERY_HOLD = 1500;
+export const WELL_HOLD = 50;

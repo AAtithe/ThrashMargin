@@ -2472,6 +2472,152 @@ tanks and riflemen to the point and the Repair Truck and Medic to 6 tiles short;
 isolate kinds; the Forces buttons select a kind anywhere on the map and Shift adds one; no console
 errors.
 
+### 2026-11-21: Industry (phase 1 of a deeper economy)
+
+The player asked what depth the economy could take next, with production chains and resource
+logistics from the settlement-building genre woven in. Phase 1 of the plan agreed then: a three-good
+production chain behind a lobby toggle. Phase 2 (a supply network that can be cut) and phase 3
+(territory and workforce) are not built.
+
+- **The toggle.** `setup.industry` (Industry, Off or On, in the lobby's customise step and the orders
+  summary). Absent on every older setup, which `normaliseSetup` reads as false; both presets state
+  it. Either tech level. Never in a mission or a planet battle (`industryOn`, `src/sim/industry.ts`),
+  even with the flag forced onto the state.
+- **Fuel Well** (2x2, 600, -15 power, needs a Refinery). Must stand with at least `FUEL_WELL_MIN_ORE`
+  (1,000) ore within `FUEL_WELL_REACH` (3) tiles of its footprint; the placement refusal says so.
+  Every 15 ticks it takes 3 ore from the richest tile in reach and adds 1 fuel: 40 fuel a minute
+  for 120 ore, ore no hauler will bring in. Dry once its reach is worked out.
+- **Foundry** (3x2, 1,200, -40 power, needs a Refinery). Every 60 ticks: 60 credits and 4 fuel into
+  10 alloys, while it has both, the store has room and `FOUNDRY_RESERVE` (200) credits would be left
+  after it. 100 alloys a minute for 600 credits and 40 fuel. Both structures work half as often short of power, each on its own beat (tick plus id).
+- **Prices.** Vehicles and ships: 70% credits, 30% in alloys at 10 credits an alloy. Aircraft: 60%
+  credits, 30% alloys, 10% fuel, and each load taken on at a Helipad burns 2 fuel (without it the
+  load takes twice as long and is free). Infantry, structures, heroes, the Ore Hauler and the
+  Forward Base Truck stay credits only, so a side can always rebuild its economy. `costFor` returns
+  the credits part; `goodsFor` (`commands.ts`) the rest. A queue item records the goods it was
+  paid with (`QueueItem.alloys`, `.fuel`) and every refund returns them: the player's cancel and
+  both of the computer's take-backs (`fund` in `aiAir.ts` and `aiSites.ts`).
+- **Stores.** 100 fuel plus 50 a Fuel Well; 100 alloys plus 50 a Foundry. They cap what is made,
+  not what is held: a side that sells a dry well keeps its fuel. A second Foundry adds speed, not
+  stock. Every side starts with 60 of each, enough for a first scout.
+- **The computer** (`src/sim/aiEconomy.ts`). Its plan gains a Fuel Well and a Foundry right after
+  its first War Factory, one of each at every level. No well is planned while no field near its
+  structures could feed one (a well it could never place held up every structure behind it). A well goes by the field with the most ore in reach,
+  less a little for distance from home, among fields within 7 tiles of its own structures. A dry
+  well is sold and the plan puts another by a fresh field. The first version searched every field
+  on the map, picked a rich one beside the enemy's base, was refused there every decision, and two
+  commanders went 30 minutes without fuel to a stalemate. Without industry every function returns
+  at once, so the commander plays exactly as before.
+- **Tuning: liquidity, not stock.** The first numbers (5 ore a fuel, stores growing 100 a well and
+  150 a Foundry, no reserve, two wells and two Foundries on Hard) failed in a telling way. In early
+  battles both commanders sat on 490 alloys with credits near nought, about 3,000 credits of value
+  smelted into stock nothing could buy. The 150-seed ladder then showed Hard in seat 0 losing 144 of
+  150 to Normal: its two wells drained the home field at 400 ore a minute, so the haulers brought
+  nothing in, and its two Foundries turned every credit it did earn into alloys. By minute 10 it held
+  400 alloys, no income and no army. Seat 1's Hard survived on the computer seat's 25% income
+  bonus, which hid the fault. The fix is in the rules, not a special case for the commander: a
+  Foundry never smelts the last 200 credits, a well draws 3 ore a fuel and stores grow 50 a
+  structure. That lifted seat-0 Hard to 15%; the remaining gap was Hard's second Foundry, and with
+  one of each at every level Hard plays as it does without industry (the ladder below).
+- **Screen.** An Industry gauge under credits and power (fuel and alloys against the stores, the
+  figure green when a store is full); build buttons show `560 24A` and say "560 credits and 24
+  alloys" to a screen reader; stat cards give the full price; the hover note says how many alloys
+  or how much fuel is missing and which structure makes them. Art for both structures (`art.ts`): a
+  pump jack that nods while it pumps, a furnace that glows and a stack that smokes while it smelts;
+  the renderer marks them working by the same conditions the simulation uses. How to play has an
+  Industry section, every number read from `rules.ts`.
+- **Saves.** `migrateIndustry` keeps fuel and alloys only with industry on, as whole numbers of at
+  least nought, on stores and queue items alike; without industry a save loads byte for byte as it
+  was.
+- **Checks.** `scripts/drive-industry.ts`, eight sections in `npm run drive`: the setup and where it
+  never applies (every campaign mission, a planet battle), prices, queueing and refunds including a
+  refused action returning the same state, placement by ore, pumping (rate, ore drawn, half rate on
+  low power, the store, dry), smelting (rate, each input short, the store), four whole computer
+  battles (both sides build the chain, tanks fielded, every battle decided, goods never negative or
+  fractional) and replays (byte-identical twice and through a save mid-battle; junk saves
+  repaired). Existing tests that list every setup field or the end of the Structures menu now name
+  the new ones; the hash strippers in `drive-size.ts` and `drive-planet-battle.ts` drop
+  `industry: false` as they drop round 6's fields. With industry off every recorded battle hash
+  is unchanged: `npm run drive` 401,776 assertions, none failed (71 of them industry's),
+  `campaign-check` 7,699 of 7,699, `drive:planet` 35,255 of 35,255, `npm run check` all passed,
+  `check:ui fireline` 32 of 32.
+- **Ladder** (`ai-ladder.ts` takes `--industry`; `--map random`, 150 seeds, seat 0 wins shown).
+  Without industry against with it, final rules: Hard v Normal 47% / 50%; Normal v Hard 15% / 9%;
+  Hard v previous Normal 52% / 59%; Normal v Easy 100% / 100%; Normal v Normal 45% / 51% (the
+  last from the full card before the Hard change, which moved no Normal row). Every row within the
+  ±8 points 150 seeds allows. Unfinished battles at the 100-minute cap: 1 to 3 per 150 either way,
+  on mined-out maps. Easy, Normal and Hard keep their order.
+- **In Chromium**: the Industry field in the customise step and the orders summary; the gauge
+  (Fuel 60/100, Alloys 60/100) at 1440 light and 375 dark with no sideways scroll; the Fuel Well
+  and Foundry in the build window's tree after the Academy; the Battle Tank button reading "560
+  credits and 24 alloys"; no console errors.
+- **Not built** in this entry: phase 2 (built next, below) and phase 3 (territory and workforce).
+
+### 2026-11-21: Supply lines (phase 2 of the economy)
+
+The player asked for phase 2: a supply network that can be cut.
+
+- **The toggle.** `setup.supply` (Supply lines, in the customise step under Industry, disabled
+  until Industry is on; in the orders summary when Industry is). `normaliseSetup` turns it off
+  without industry; absent on older setups. Industry alone, phase 1, stays exactly as it was.
+- **One change from the outline.** The outline had road tiles extending a Depot's reach. Roads would
+  be a new walkable, destroyable tile layer touching occupancy, pathfinding and the renderer; a chain
+  of Depots gives the same decision (extend your lines, and defend them) with none of that risk.
+- **The network** (`src/sim/supply.ts`, pure geometry over the structures standing). Roots: the
+  Command Yard and Field Yards. Hubs: roots and Depots. Two hubs of a side link within
+  `SUPPLY_LINK_RANGE` (12 tiles, centre to centre); a hub is linked when a chain reaches it from a
+  root. A Refinery, Fuel Well or Foundry is supplied within `SUPPLY_SERVE_RANGE` (8) of a linked hub.
+- **Cut off.** A Refinery keeps what its haulers unload on site (`Building.held`, up to
+  `REFINERY_HOLD`, 1,500; then they wait with their cargo), a Fuel Well keeps what it pumps (up to
+  `WELL_HOLD`, 50; then it stops, taking no ore), and a Foundry stops. Linked again, what is held comes
+  home at 50 credits or 5 fuel every 10 ticks (300 credits or 30 fuel a minute). A structure lost
+  with goods on site loses them. Harvest income is counted when it is unloaded, as before. A hauler
+  facing a full cut-off Refinery takes its ore to another, and when choosing where to unload a
+  supplied Refinery always comes first (a cut-off one counts as 1,000 tiles further).
+- **Depot** (2x2, 500, -5 power, no prerequisite). Art: crates under a mast whose beacon blinks.
+- **The computer** (`depotSpot`, `aiEconomy.ts`). It places Refineries, Fuel Wells and Foundries
+  only where a linked hub supplies them (`findSpot` and `wellFocus`). Before anything else in its plan, a cut-off
+  producer gets a Depot: a legal spot linked to a linked hub and serving the producer, nearest it;
+  when no single Depot can reach, the linked spot nearest it, one step along the chain. At most six.
+  No spot, no Depot queued, so it never holds its structure queue on a placement it cannot make.
+- **Screen.** Your links drawn as moving dashed lines between linked hubs; a CUT badge with what is
+  held over each cut-off producer; the Industry gauge counts them ("1 cut off"); the selection panel
+  says whether a producer is supplied and what it holds; placing a producer shows the serving rings
+  of every linked hub, placing a Depot the linking rings, blue when the spot is in reach and amber
+  when it is not. How to play has a Supply lines section, every number read from `rules.ts`.
+- **Saves.** `held` kept only with supply lines on, on a Refinery or Fuel Well, as a positive whole
+  number; anything else is dropped.
+- **Checks.** Six more sections in `drive-industry.ts`: the setup (needs industry; never in a
+  mission), the network (a chain of two Depots, cutting the first cuts everything beyond, another
+  side's hubs never link yours, no yard means nothing supplied), goods held and coming home (a real
+  hauler unloading at a cut-off Refinery, going to another when it is full, the flow rate exactly, a cut-off
+  well filling its own tank, a cut-off Foundry idle), the computer's Depot spot, four whole battles
+  (held goods only where they may be and within their caps, cut off under 5% of the time, every
+  battle decided or ending in the known mined-out stalemate, which one of the four does: no ore on
+  the map and no army on either side at minute 50) and
+  replays and saves. The hand-kept lists of setup fields and Structures-menu endings name the new
+  ones. In Chromium: the field disabled until Industry is on; a staged battle with a Yard-to-Depot
+  link, a cut-off well badged "CUT 22 fuel", the gauge reading "1 cut off" and the selection note in
+  amber; no console errors. The first link line and badge were too faint to read at a glance and were
+  strengthened.
+- **Tuning: stranded capital.** The first full ladder held the difficulty order, but the frozen
+  previous Normal commander, which ignores the chain entirely, beat the new Normal 61% to 39% from
+  both seats; with industry alone the new one had won about two in three. Measured over 16 battles
+  against it: refineries placed toward ore stood cut off, their haulers queued at a full site with
+  1,500 credits stranded, and wells sat cut off 9% of the time. A player who skipped the feature did
+  better than one who used it, which would have made it pointless. The fix: producers placed only
+  where supplied, and haulers rerouted from a full cut-off Refinery. After it, nothing was cut off in
+  those 16 battles and the new Normal won 13. The consequence is stated plainly: the computer now
+  rarely needs a Depot (none in those 16), and reconnects only what becomes cut off; pushing supply
+  out to a far field is a tactic for the player, not one the computer plays.
+- **Cost.** Supply lines add about 12% to simulation time (20 minutes of a battle: 3.4 s without,
+  3.7 s with).
+- **Ladder** (`--map random --industry --supply`, 150 seeds, seat 0 wins; then off, industry alone,
+  supply lines): Hard v Normal 47% / 50% / 42%; Normal v Hard 15% / 9% / 12%; Normal v Easy 100%
+  throughout; Normal v Normal 45% / 51% / 55%; new Normal v previous Normal 65% / 63% / 71%. Every
+  row within the ±8 points 150 seeds allows, and the commander that uses the chain beats the one
+  that ignores it. Unfinished at the cap: 0 to 4 per 150 (off: 1 to 3), all on mined-out maps.
+
 ### 2026-11-21: On a phone, the objectives keep their own lane
 
 **Why.** On a phone the mission's objectives panel still sat where it sits on a desktop, absolute at the

@@ -4934,6 +4934,29 @@ kbd {
 .fl-d-power {
   flex: 1;
 }
+/* Industry (setup.industry): fuel and alloys, a row under credits and power. */
+.fl-d-goods {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 0.85rem;
+  color: var(--d-label);
+}
+.fl-d-goods-n {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-d-goods [data-full="1"] .fl-d-goods-n {
+  color: var(--ui-good);
+}
+.fl-build-goods {
+  margin-left: 2px;
+  color: inherit;
+  opacity: 0.85;
+}
 .fl-d-gauge-label {
   display: flex;
   align-items: center;
@@ -4962,6 +4985,12 @@ kbd {
 }
 .fl-d-power[data-low="1"] {
   border-color: var(--ui-bad);
+}
+/* Supply lines: producers cut off, flagged in the Industry gauge. */
+.fl-d-gauge-state[data-cut="1"] {
+  color: var(--ui-ground);
+  background: var(--ui-warn);
+  border-color: var(--ui-warn);
 }
 .fl-d-power[data-low="1"] .fl-d-gauge-state {
   color: var(--ui-ground);
