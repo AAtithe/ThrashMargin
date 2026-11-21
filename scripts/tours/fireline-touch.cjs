@@ -21,8 +21,10 @@
  * it. A three-panel row once wrapped over the feed and pushed it under the header. In the mission it
  * also opens the objectives panel and fails if it meets the feed, the strip, a banner (a targeting
  * hint included), the header or the command bar, if an objective row cannot be tapped, if it lies
- * over the hero drawer, or if the hidden pill meets any of them. TOUR_SKIP_TOUR=1 runs those checks
- * alone.
+ * over the hero drawer, or if the hidden pill meets any of them. In every case, running and paused,
+ * and once more in the mission with the save warning showing, it fails if a header control leaves
+ * the window, overlaps another, is under 40px or cuts off its label. TOUR_SKIP_TOUR=1 runs those
+ * checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -437,6 +439,86 @@ async function objectivesClear(page, kind, fail) {
   await page.getByTestId('objectives-show').tap();
 }
 
+/**
+ * The battle header's controls (the back button, the clock, a save warning, Pause and Menu): each
+ * box must lie wholly inside the window and the header, none may overlap another, every button must
+ * be a 40px tap target with its label unclipped, and the page must not scroll sideways. Checked
+ * running and paused in every case, and once more with the save warning showing. On the 320px
+ * iPhone SE the Menu button once ran 42px off the right edge in a campaign mission.
+ */
+const headerBoxes = page =>
+  page.evaluate(() => {
+    const header = document.querySelector('header.fl-d-top');
+    if (!header) return null;
+    const box = el => {
+      const b = el.getBoundingClientRect();
+      return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    };
+    const items = [...header.querySelectorAll('button, .fl-d-clock, .fl-d-save')]
+      .filter(el => el.getClientRects().length && !el.parentElement.closest('button'))
+      .map(el => ({
+        name: el.getAttribute('data-testid') || el.getAttribute('aria-label') || el.className.split(' ').pop(),
+        button: el.tagName === 'BUTTON',
+        clipped: el.scrollWidth > el.clientWidth + 1,
+        ...box(el),
+      }));
+    return { header: box(header), items, width: innerWidth, height: innerHeight, pageWidth: document.documentElement.scrollWidth };
+  });
+
+async function headerFits(page, kind, fail, when = 'running') {
+  const h = await headerBoxes(page);
+  if (!h) return await fail(kind, `no battle header (${when})`);
+  kind = `${kind}, ${when}`;
+  if (h.items.length < 4) await fail(kind, `the header holds ${h.items.length} controls, not 4 or more`);
+  const px = n => Math.round(n);
+  for (const it of h.items) {
+    if (it.left < -0.5 || it.right > h.width + 0.5 || it.top < -0.5 || it.bottom > h.height + 0.5)
+      await fail(kind, `the header's ${it.name} (${px(it.left)}..${px(it.right)}) runs off the ${h.width}px window by ${px(Math.max(it.right - h.width, -it.left))}px`);
+    else if (it.left < h.header.left - 0.5 || it.right > h.header.right + 0.5 || it.top < h.header.top - 0.5 || it.bottom > h.header.bottom + 0.5)
+      await fail(kind, `the header's ${it.name} sticks out of the header`);
+    if (it.button && (it.right - it.left < 39.5 || it.bottom - it.top < 39.5))
+      await fail(kind, `the header's ${it.name} is a ${px(it.right - it.left)}x${px(it.bottom - it.top)} tap target, under 40px`);
+    if (it.clipped) await fail(kind, `the header's ${it.name} cuts off its own label`);
+  }
+  for (let i = 0; i < h.items.length; i++)
+    for (let j = i + 1; j < h.items.length; j++)
+      if (meets(h.items[i], h.items[j])) await fail(kind, `the header's ${h.items[i].name} and ${h.items[j].name} overlap`);
+  if (h.pageWidth > h.width) await fail(kind, `the page scrolls sideways (${h.pageWidth}px in ${h.width}px)`);
+}
+
+/** The header running and paused: "Resume" is a longer word than "Pause". */
+async function headerBothWays(page, kind, fail) {
+  await headerFits(page, kind, fail);
+  await page.getByTestId('pause').tap();
+  await sleep(150);
+  await headerFits(page, kind, fail, 'paused');
+  await page.getByTestId('pause').tap();
+}
+
+/**
+ * The widest header there is: the mission again, signed in to an account whose saves fail, so the
+ * header carries "Not saving" too. The API is answered in the page: the battle loads, every save gets
+ * a 500. The first save goes out after 15 seconds of play.
+ */
+async function headerWithSaveWarning(page, fail) {
+  const id = await buildMission(page);
+  const state = await page.evaluate(id => JSON.parse(localStorage.getItem('fireline_save_' + id)), id);
+  await page.evaluate(() => {
+    // A token the session code accepts (unexpired, with a user that says whether it is an admin).
+    localStorage.setItem('tm_token', 'e30.' + btoa(JSON.stringify({ exp: 9999999999 })) + '.x');
+    localStorage.setItem('tm_last_active', String(Date.now()));
+    localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 'local-dev', isAdmin: false }));
+  });
+  await page.route('**/api/play/fireline**', r => {
+    const q = r.request();
+    if (q.method() !== 'GET') return r.fulfill({ status: 500, json: { message: 'Header check: saves fail.' } });
+    return r.fulfill({ json: q.url().includes('id=') ? { state, version: 1 } : { saves: [] } });
+  });
+  await page.goto(`${BASE}/game/${id}`);
+  await page.locator('.fl-d-top .fl-d-save[data-state="error"]').waitFor({ timeout: 40000 });
+  await headerBothWays(page, 'mission, not saving', fail);
+}
+
 /** The bar row against the battle feed (and the command bar), on one phone. */
 async function barRow(browser, name) {
   const tag = name.replace(/ /g, '-');
@@ -478,10 +560,12 @@ async function barRow(browser, name) {
       if (m.feed.bottom <= m.field.top) await fail(kind, 'the newest feed line is above the battlefield');
       if (m.row.left < m.field.left - 0.5 || m.row.right > m.field.right + 0.5) await fail(kind, `the bar row (${Math.round(m.row.left)}..${Math.round(m.row.right)}) runs off the battlefield`);
       if (m.pageWidth > m.width) await fail(kind, `the page scrolls sideways (${m.pageWidth}px in ${m.width}px)`);
+      await headerBothWays(page, kind, fail);
       if (kind !== 'bare') await heroDrawer(page, kind, fail);
       if (kind === 'mission') await objectivesClear(page, kind, fail);
     }
-    if (problems.length === before) console.log(`  ${name}: the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header`);
+    await headerWithSaveWarning(page, fail);
+    if (problems.length === before) console.log(`  ${name}: every header control fits the window; the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header`);
   } catch (e) {
     await fail('run', e.message.split('\n')[0]);
   } finally {
@@ -489,7 +573,9 @@ async function barRow(browser, name) {
   }
 }
 
-(async () => {
+module.exports = { buildSkirmish, buildMission, buildPlanet, headerBoxes };
+
+if (require.main === module) (async () => {
   require('fs').mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
   try {

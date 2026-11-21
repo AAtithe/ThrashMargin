@@ -1429,13 +1429,12 @@ export function Battle({
       type="button"
       className="fl-d-btn fl-d-pause"
       data-paused={paused ? '1' : '0'}
-      style={big ?? undefined}
       onClick={() => setPaused(p => !p)}
       data-testid="pause"
       title={paused ? 'Resume (P)' : 'Pause (P)'}
     >
       <span className="fl-d-glyph" data-glyph={paused ? 'play' : 'pause'} aria-hidden="true" />
-      {paused ? 'Resume' : 'Pause'}
+      <span className="fl-d-btn-label">{paused ? 'Resume' : 'Pause'}</span>
     </button>
   );
   const soundControls = (
@@ -1578,9 +1577,9 @@ export function Battle({
 
   return (
     <div style={shell} className="fl-shell">
-      <header className="fl-d-top" data-compact={layout.compact ? '1' : '0'}>
-        <button type="button" className="fl-d-btn fl-d-back" style={big ?? undefined} onClick={leave} data-testid="leave">
-          <span aria-hidden="true">←</span> {campaign ? campaign.leaveLabel : 'Lobby'}
+      <header className="fl-d-top" data-compact={layout.compact ? '1' : '0'} data-touch={layout.touch ? '1' : '0'}>
+        <button type="button" className="fl-d-btn fl-d-back" onClick={leave} data-testid="leave">
+          <span aria-hidden="true">←</span> <span className="fl-d-btn-label">{campaign ? campaign.leaveLabel : 'Lobby'}</span>
         </button>
         {!layout.stacked && (
           <div className="fl-d-ident">
@@ -1604,7 +1603,7 @@ export function Battle({
           <>
             {saveError && <span className="fl-d-save" data-state="error">Not saving</span>}
             {pauseButton}
-            <button type="button" className="fl-d-btn" style={big ?? undefined} aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
+            <button type="button" className="fl-d-btn fl-d-menu" aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
               Menu
             </button>
           </>

@@ -4847,6 +4847,41 @@ kbd {
   border-color: var(--ui-accent);
   font-weight: 700;
 }
+/* A finger's buttons in the header: the back button, Pause and Menu, 40px tall. */
+.fl-d-top[data-touch="1"] .fl-d-back,
+.fl-d-top[data-touch="1"] .fl-d-pause,
+.fl-d-top[data-touch="1"] .fl-d-menu {
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+/*
+ * An upright phone. The worst header (a campaign mission, paused, with the save warning showing) needs
+ * 434px with every label, more than the widest phone (430px), so below 480px the back button keeps only its arrow and Pause only its
+ * glyph, each a 40px square whose label stays for screen readers. Menu keeps its word: it is the way
+ * to everything else. On the 320px iPhone SE the Menu button used to run 42px off the edge.
+ */
+@media (max-width: 479px) {
+  .fl-d-top {
+    padding-inline: 8px;
+  }
+  .fl-d-top[data-compact="1"] {
+    gap: 4px;
+  }
+  .fl-d-top[data-touch] .fl-d-back,
+  .fl-d-top[data-touch] .fl-d-pause {
+    min-width: 40px;
+    padding-inline: 0;
+  }
+  .fl-d-top .fl-d-btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
 .fl-d-view {
   gap: 1px;
 }
