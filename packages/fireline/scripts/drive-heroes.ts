@@ -204,14 +204,20 @@ function savesAndMissions(ok: Ok): void {
 }
 
 function computer(ok: Ok): void {
-  // Integration: four Normal battles rather than one Hard one. With workstream D's formations the
-  // computer's Hard advanced battles end sooner (a wedge arrives together), often before its heroes,
-  // recruited from about minute 13, have anything to do; over four battles they must still be used.
+  // Hard again. With workstream D's formations the computer's Hard advanced battles end sooner (a
+  // wedge arrives together), and with the Tech Centre held back for the army its heroes came at about
+  // minute 18 and seldom acted before the end, so these battles moved to Normal for a while. With
+  // heroes on the computer now builds the Tech Centre in its turn and its heroes go with each wave
+  // (aiHeroes.ts). The first four seeds carry the original assertions; over all eight, the heroes
+  // must use an ability in most battles.
+  const seeds = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const kinds = new Set<string>();
   let used = 0;
   let twice = '';
-  for (const seed of ['a', 'b', 'c', 'd']) {
-    let s = createAsWritten('hc', 'hc', { seed, difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+  const acted: string[] = [];
+  for (const [i, seed] of seeds.entries()) {
+    let s = createAsWritten('hc', 'hc', { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+    let uses = 0;
     while (s.winner === null && s.tick < 36000) {
       const before = s;
       s = processAction(s, { type: 'tick', n: 10 });
@@ -222,15 +228,20 @@ function computer(ok: Ok): void {
         }
       for (const u of s.units) {
         if (!u.hero) continue;
-        kinds.add(`${u.owner}:${u.kind}`);
+        if (i < 4) kinds.add(`${u.owner}:${u.kind}`);
         const was = before.units.find(v => v.id === u.id)?.hero;
-        if ((was && u.hero.abilityCd > was.abilityCd) || (u.hero.active?.kind === 'capture' && was?.active?.kind !== 'capture')) used++;
+        if ((was && u.hero.abilityCd > was.abilityCd) || (u.hero.active?.kind === 'capture' && was?.active?.kind !== 'capture')) uses++;
       }
     }
-    ok(s.winner !== null, `seed ${seed}: the battle with heroes on finishes (${(s.tick / 600).toFixed(1)} min)`);
+    if (i < 4) {
+      used += uses;
+      ok(s.winner !== null, `seed ${seed}: the battle with heroes on finishes (${(s.tick / 600).toFixed(1)} min)`);
+    }
+    if (uses > 0) acted.push(seed);
   }
   ok(kinds.size >= 3, `the computer recruits heroes (${[...kinds].join(', ')})`);
   ok(used >= 3, `and uses their abilities (${used} times over four battles)`);
   ok(!twice, `never more than one of each hero per side${twice ? `: ${twice}` : ''}`);
+  ok(acted.length >= 5, `on Hard, heroes use an ability in at least 5 of ${seeds.length} battles (${acted.length}: ${acted.join(', ') || 'none'})`);
 }
 // round6:B end.
