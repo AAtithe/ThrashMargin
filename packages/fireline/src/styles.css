@@ -6455,6 +6455,39 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
   margin-bottom: auto;
   padding-bottom: 6px;
 }
+/* The objectives head the phone's dock, in flow at its top right, so they take their own lane above
+   the banners, the feed and the strip and can meet none of them. Short of room they give way first
+   (a large shrink factor), down to their header: the rows scroll inside. Wider than on a larger
+   screen (270px or the dock's width, not 46%), so a row wraps less and the panel stays short. The
+   hero drawer, positioned and later in the dock, opens over them. */
+.fl-dock[data-phone] > .fl-objectives,
+.fl-dock[data-phone] > .fl-objectives-pill {
+  position: static;
+  align-self: flex-end;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-bottom: 6px;
+  pointer-events: auto;
+}
+.fl-dock[data-phone] > .fl-objectives {
+  width: min(270px, 100%);
+  flex: 0 100 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.fl-dock[data-phone] > .fl-objectives > header {
+  flex-shrink: 0;
+}
+.fl-dock[data-phone] .fl-objectives-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.fl-dock[data-phone] > .fl-objectives-pill {
+  flex-shrink: 0;
+}
 .fl-dock[data-phone] > .fl-d-feed {
   flex: 0 1 auto;
   min-height: 0;

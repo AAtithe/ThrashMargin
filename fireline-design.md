@@ -2404,3 +2404,44 @@ Gunship sent home lands, rearms and repairs from 37% to 80% in 20 seconds; a mix
 tanks and riflemen to the point and the Repair Truck and Medic to 6 tiles short; the chips drop and
 isolate kinds; the Forces buttons select a kind anywhere on the map and Shift adds one; no console
 errors.
+
+### 2026-11-21: On a phone, the objectives keep their own lane
+
+**Why.** On a phone the mission's objectives panel still sat where it sits on a desktop, absolute at the
+map's top right, `min(270px, 46%)` wide and as tall as its rows. The bar row entries (2026-11-12) gave
+the banners, the feed and the strip separate lanes in the dock, but the panel was outside the dock and
+lay over them until the player tapped Hide. Measured on origin/main in the "fireline" mission: on the
+iPhone 13 upright the panel ran 61..245px, over the feed (201..272) by 44px; on the 320px iPhone SE,
+where 46% is 138px and every row wraps, it ran 61..279px, over the feed and the 50px strip, so its
+third row could not be tapped at all; on every phone, both ways up, it covered the centre of a
+targeting hint ("Reinforcements: tap the map...").
+
+**Options weighed.** Capping its height with a measured offset would have needed a ResizeObserver on
+the dock and still met the centred banners, which head the same strip of map. Opening it as the pill
+on phones would only defer the overlap to the moment it is opened. Chosen: on a phone the panel heads
+the dock itself, in flow (`.fl-dock[data-phone] > .fl-objectives`), above the banners, the feed and the
+strip. It cannot meet any of them, because it is a flex item in the same column, and it needs no
+measuring. It gives way first when room is short (flex-shrink 100), down to its header with Hide; the
+rows sit in one box (`.fl-objectives-body`, a plain div elsewhere) that scrolls inside the panel, so
+every row stays tappable and the header stays put. It is `min(270px, 100%)` wide instead of 46%, so a
+row wraps less and the panel is shorter. The pill takes the same place. The hero drawer, positioned and
+later in the dock, opens over the panel. The dock already drops below the alert chip when one shows,
+and the panel goes with it. The map wrapper clips its children, so the header was never at risk.
+
+**Numbers.** Panel boxes in the same mission (top, height): iPhone SE 320px 61, 75px (header and first
+row, the rest scrolls); SE 375px 61, 130px; iPhone 13 upright 61, 128px; on its side 61, 76px; Pixel 7
+61, 155px (every row, no scroll). Desktop (1440 by 900) panel box unchanged at 892, 55, 270 by 155, and
+its pixels identical to origin/main's in light and dark. Tablets are not phones (`layout.phone`) and
+take the desktop branch.
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in the mission case of the bar-row check, opens the
+panel and fails if it meets the feed, the strip, any banner, the header or the command bar or leaves
+the map; scrolls each objective row into the panel's view and fails if a tap at it would hit anything
+else; taps a ready power and repeats the box checks against its targeting hint; opens the hero drawer
+and fails if the panel lies over it; then hides the panel and checks the pill the same way. On
+origin/main: 14 failures over all five phones; now none.
+
+**Checks.** Screenshots at twice the pixel density on the five phones, panel open and hidden, light and
+dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch fireline` (full): ok.
+`npm run tours -- --quick`: all ok. `npm run check:loading -- fireline`: ok. `npm run check`: all
+passed. Left open: the Menu button clipped at 320px (`fireline-improvements.md`).
