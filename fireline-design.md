@@ -2484,4 +2484,69 @@ production chain behind a lobby toggle. Phase 2 (a supply network that can be cu
   (Fuel 60/100, Alloys 60/100) at 1440 light and 375 dark with no sideways scroll; the Fuel Well
   and Foundry in the build window's tree after the Academy; the Battle Tank button reading "560
   credits and 24 alloys"; no console errors.
-- **Not built**: phase 2 (a supply network that can be cut) and phase 3 (territory and workforce).
+- **Not built** in this entry: phase 2 (built next, below) and phase 3 (territory and workforce).
+
+### 2026-11-21: Supply lines (phase 2 of the economy)
+
+The player asked for phase 2: a supply network that can be cut.
+
+- **The toggle.** `setup.supply` (Supply lines, in the customise step under Industry, disabled
+  until Industry is on; in the orders summary when Industry is). `normaliseSetup` turns it off
+  without industry; absent on older setups. Industry alone, phase 1, stays exactly as it was.
+- **One change from the outline.** The outline had road tiles extending a Depot's reach. Roads would
+  be a new walkable, destroyable tile layer touching occupancy, pathfinding and the renderer; a chain
+  of Depots gives the same decision (extend your lines, and defend them) with none of that risk.
+- **The network** (`src/sim/supply.ts`, pure geometry over the structures standing). Roots: the
+  Command Yard and Field Yards. Hubs: roots and Depots. Two hubs of a side link within
+  `SUPPLY_LINK_RANGE` (12 tiles, centre to centre); a hub is linked when a chain reaches it from a
+  root. A Refinery, Fuel Well or Foundry is supplied within `SUPPLY_SERVE_RANGE` (8) of a linked hub.
+- **Cut off.** A Refinery keeps what its haulers unload on site (`Building.held`, up to
+  `REFINERY_HOLD`, 1,500; then they wait with their cargo), a Fuel Well keeps what it pumps (up to
+  `WELL_HOLD`, 50; then it stops, taking no ore), and a Foundry stops. Linked again, what is held comes
+  home at 50 credits or 5 fuel every 10 ticks (300 credits or 30 fuel a minute). A structure lost
+  with goods on site loses them. Harvest income is counted when it is unloaded, as before. A hauler
+  facing a full cut-off Refinery takes its ore to another, and when choosing where to unload a
+  supplied Refinery always comes first (a cut-off one counts as 1,000 tiles further).
+- **Depot** (2x2, 500, -5 power, no prerequisite). Art: crates under a mast whose beacon blinks.
+- **The computer** (`depotSpot`, `aiEconomy.ts`). It places Refineries, Fuel Wells and Foundries
+  only where a linked hub supplies them (`findSpot` and `wellFocus`). Before anything else in its plan, a cut-off
+  producer gets a Depot: a legal spot linked to a linked hub and serving the producer, nearest it;
+  when no single Depot can reach, the linked spot nearest it, one step along the chain. At most six.
+  No spot, no Depot queued, so it never holds its structure queue on a placement it cannot make.
+- **Screen.** Your links drawn as moving dashed lines between linked hubs; a CUT badge with what is
+  held over each cut-off producer; the Industry gauge counts them ("1 cut off"); the selection panel
+  says whether a producer is supplied and what it holds; placing a producer shows the serving rings
+  of every linked hub, placing a Depot the linking rings, blue when the spot is in reach and amber
+  when it is not. How to play has a Supply lines section, every number read from `rules.ts`.
+- **Saves.** `held` kept only with supply lines on, on a Refinery or Fuel Well, as a positive whole
+  number; anything else is dropped.
+- **Checks.** Six more sections in `drive-industry.ts`: the setup (needs industry; never in a
+  mission), the network (a chain of two Depots, cutting the first cuts everything beyond, another
+  side's hubs never link yours, no yard means nothing supplied), goods held and coming home (a real
+  hauler unloading at a cut-off Refinery, going to another when it is full, the flow rate exactly, a cut-off
+  well filling its own tank, a cut-off Foundry idle), the computer's Depot spot, four whole battles
+  (held goods only where they may be and within their caps, cut off under 5% of the time, every
+  battle decided or ending in the known mined-out stalemate, which one of the four does: no ore on
+  the map and no army on either side at minute 50) and
+  replays and saves. The hand-kept lists of setup fields and Structures-menu endings name the new
+  ones. In Chromium: the field disabled until Industry is on; a staged battle with a Yard-to-Depot
+  link, a cut-off well badged "CUT 22 fuel", the gauge reading "1 cut off" and the selection note in
+  amber; no console errors. The first link line and badge were too faint to read at a glance and were
+  strengthened.
+- **Tuning: stranded capital.** The first full ladder held the difficulty order, but the frozen
+  previous Normal commander, which ignores the chain entirely, beat the new Normal 61% to 39% from
+  both seats; with industry alone the new one had won about two in three. Measured over 16 battles
+  against it: refineries placed toward ore stood cut off, their haulers queued at a full site with
+  1,500 credits stranded, and wells sat cut off 9% of the time. A player who skipped the feature did
+  better than one who used it, which would have made it pointless. The fix: producers placed only
+  where supplied, and haulers rerouted from a full cut-off Refinery. After it, nothing was cut off in
+  those 16 battles and the new Normal won 13. The consequence is stated plainly: the computer now
+  rarely needs a Depot (none in those 16), and reconnects only what becomes cut off; pushing supply
+  out to a far field is a tactic for the player, not one the computer plays.
+- **Cost.** Supply lines add about 12% to simulation time (20 minutes of a battle: 3.4 s without,
+  3.7 s with).
+- **Ladder** (`--map random --industry --supply`, 150 seeds, seat 0 wins; then off, industry alone,
+  supply lines): Hard v Normal 47% / 50% / 42%; Normal v Hard 15% / 9% / 12%; Normal v Easy 100%
+  throughout; Normal v Normal 45% / 51% / 55%; new Normal v previous Normal 65% / 63% / 71%. Every
+  row within the ±8 points 150 seeds allows, and the commander that uses the chain beats the one
+  that ignores it. Unfinished at the cap: 0 to 4 per 150 (off: 1 to 3), all on mined-out maps.

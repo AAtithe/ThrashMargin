@@ -1,8 +1,8 @@
 import type { BuildingKind, Owner, UnitKind } from '../sim/rules';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import type { SiteKind } from '../sim/rules';
-import type { GameState } from '../sim/types';
-import { BUILDINGS } from '../sim/rules';
+import type { Building, GameState } from '../sim/types';
+import { BUILDINGS, SUPPLY_LINK_RANGE } from '../sim/rules';
 import { ART, TEAM } from '../theme';
 
 /**
@@ -1702,6 +1702,10 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       break;
     case 'foundry':
       drawFoundry(ctx, w, h, team, pose);
+      break;
+    // Supply lines (2026-11-21).
+    case 'depot':
+      drawDepot(ctx, w, h, team, pose);
       break;
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
@@ -5930,3 +5934,84 @@ function drawFoundry(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose
   }
   lamp(ctx, w - 8, h - 7, work, '#ffb050', p.t, 3);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Supply lines (2026-11-21, setup.supply)
+
+/** The Depot: a fenced yard of stacked crates under a mast, its beacon lit while it stands linked. */
+function drawDepot(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  // Crates, stacked.
+  const crate = (x: number, y: number, s: number, tone: string) => {
+    ctx.fillStyle = tone;
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+    ctx.beginPath();
+    ctx.moveTo(x + 1, y + 1);
+    ctx.lineTo(x + s - 1, y + s - 1);
+    ctx.stroke();
+  };
+  crate(8, h - 26, 14, '#9c8458');
+  crate(23, h - 26, 14, '#8a744b');
+  crate(15, h - 39, 14, '#a88f60');
+  // A team-coloured tarpaulin over a pallet on the right.
+  ctx.fillStyle = shade(ctx, w - 26, 12, 18, 16, team.light, team.dark);
+  rrect(ctx, w - 26, 12, 18, 16, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.stroke();
+  // The mast and its beacon.
+  const mx = w - 12;
+  ctx.fillStyle = '#4b4f4c';
+  ctx.fillRect(mx - 1, h - 30, 2, 22);
+  lamp(ctx, mx, h - 31, !p.lowPower, '#78d8ff', p.t, 2, true);
+  hazardStripe(ctx, 5, h - 7, w - 10, 2);
+}
+
+/** Supply lines between linked hubs, drawn under the structures: a faint dashed line, its dashes moving outward. */
+export function drawSupplyLines(ctx: Ctx, hubs: Building[], t: number): void {
+  const centre = (b: Building) => {
+    const spec = BUILDINGS[b.kind];
+    return { x: (b.x + spec.w / 2) * TILE, y: (b.y + spec.h / 2) * TILE };
+  };
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.lineDashOffset = -((t * 12) % 14);
+  ctx.strokeStyle = 'rgba(120,220,255,0.6)';
+  const reach = SUPPLY_LINK_RANGE * TILE;
+  for (let i = 0; i < hubs.length; i++)
+    for (let j = i + 1; j < hubs.length; j++) {
+      const a = centre(hubs[i]);
+      const b = centre(hubs[j]);
+      if ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 > reach * reach) continue;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  ctx.restore();
+}
+
+/** A cut-off producer's badge: an amber pill reading CUT, with what it holds on site. */
+export function drawCutBadge(ctx: Ctx, cx: number, top: number, held: number, kind: BuildingKind, t: number): void {
+  const text = held > 0 ? `CUT ${Math.floor(held)}${kind === 'fuelwell' ? ' fuel' : kind === 'refinery' ? ' cr' : ''}` : 'CUT';
+  ctx.save();
+  ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+  const w = ctx.measureText(text).width + 12;
+  ctx.globalAlpha = 0.9 + 0.1 * Math.sin(t * 4);
+  ctx.fillStyle = 'rgba(30,18,6,0.95)';
+  rrect(ctx, cx - w / 2, top - 15, w, 16, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,170,80,1)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#ffc070';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, top - 7);
+  ctx.restore();
+}
+

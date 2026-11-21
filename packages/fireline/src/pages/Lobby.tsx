@@ -475,6 +475,7 @@ export default function Lobby() {
                 <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
                 <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
                 <Order k="Industry">{setup.industry ? 'On' : 'Off'}</Order>
+                {setup.industry && <Order k="Supply lines">{setup.supply ? 'On' : 'Off'}</Order>}
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
                 <Order k="Your General">{generalLabel(setup)}</Order>

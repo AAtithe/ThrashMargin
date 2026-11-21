@@ -38,6 +38,7 @@ import {
   INDUSTRY_START_ALLOYS,
   INDUSTRY_START_FUEL,
   UNITS,
+  WELL_HOLD,
   type BuildingKind,
   type Owner,
   type UnitKind,
@@ -151,7 +152,7 @@ export function startIndustry(s: GameState): void {
  * One tick of industry: every Fuel Well pumps and every Foundry smelts, on its own beat (its id
  * offsets it), half as often for a side short of power. `low[owner]` is true for a side short of power.
  */
-export function industryStep(s: GameState, low: ArrayLike<boolean>): void {
+export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: ReadonlySet<number> = NO_CUT): void {
   if (!industryOn(s)) return;
   for (const b of s.buildings) {
     if (b.hp <= 0 || (b.kind !== 'fuelwell' && b.kind !== 'foundry')) continue;
@@ -159,13 +160,17 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>): void {
     if (!p) continue;
     const beat = (b.kind === 'fuelwell' ? FUEL_WELL_TICKS : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1);
     if ((s.tick + b.id) % beat !== 0) continue;
+    // Supply lines (supply.ts): a cut-off well pumps into its own tank, a cut-off Foundry stops.
+    const isCut = cut.has(b.id);
     if (b.kind === 'fuelwell') {
-      if ((p.fuel ?? 0) + 1 > fuelStore(s, b.owner)) continue;
+      if (isCut ? (b.held ?? 0) >= WELL_HOLD : (p.fuel ?? 0) + 1 > fuelStore(s, b.owner)) continue;
       const k = richestTile(s, b);
       if (k < 0) continue;
       s.ore[k] = Math.max(0, s.ore[k] - FUEL_WELL_ORE);
-      p.fuel = (p.fuel ?? 0) + 1;
+      if (isCut) b.held = (b.held ?? 0) + 1;
+      else p.fuel = (p.fuel ?? 0) + 1;
     } else {
+      if (isCut) continue;
       if (p.credits < FOUNDRY_CREDITS + FOUNDRY_RESERVE || (p.fuel ?? 0) < FOUNDRY_FUEL) continue;
       if ((p.alloys ?? 0) + FOUNDRY_ALLOYS > alloyStore(s, b.owner)) continue;
       p.credits -= FOUNDRY_CREDITS;
@@ -174,6 +179,8 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>): void {
     }
   }
 }
+
+const NO_CUT: ReadonlySet<number> = new Set();
 
 /** An aircraft's load at its Helipad: burns AIR_LOAD_FUEL from the side's store. False when there is not enough. */
 export function burnLoadFuel(p: PlayerState | undefined): boolean {

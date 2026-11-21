@@ -66,6 +66,7 @@ import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kind
 import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
+import { isProducer, supplyOn } from './supply';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
 
@@ -140,7 +141,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   });
   // Industry (2026-11-21): on only when exactly true.
   const industry = typeof r.industry === 'boolean' ? r.industry : (base.industry ?? false);
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks, industry };
+  // Supply lines (2026-11-21): on only when exactly true, and only with industry.
+  const supply = industry && (typeof r.supply === 'boolean' ? r.supply : (base.supply ?? false));
+  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks, industry, supply };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -180,6 +183,8 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // Industry (2026-11-21): the Fuel Well and the Foundry only with setup.industry.
   // Either tech level: the chain is an economy rule, not a tier of technology.
   if (INDUSTRY_BUILDINGS.includes(kind as BuildingKind)) return industryOn(s);
+  // Supply lines (2026-11-21): the Depot only with setup.supply (which needs industry).
+  if (kind === 'depot') return supplyOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -821,6 +826,14 @@ function migrateIndustry(out: GameState): void {
           });
     if (!on) return rest as PlayerState;
     return { ...rest, fuel: clean(fuel), alloys: clean(alloys) } as PlayerState;
+  });
+  // Supply lines: goods held on site, kept only with supply lines on, on a Refinery or Fuel Well.
+  const supply = supplyOn(out);
+  out.buildings = out.buildings.map(b => {
+    if (!b || typeof b !== 'object' || !('held' in b)) return b;
+    const { held, ...rest } = b;
+    const n = clean(held);
+    return supply && n > 0 && (b.kind === 'refinery' || b.kind === 'fuelwell') && isProducer(b.kind) ? { ...rest, held: n } : (rest as Building);
   });
 }
 

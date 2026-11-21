@@ -167,6 +167,8 @@ export interface Building {
   // round6:B end.
   // round6:C begin. Generals: optional Building fields.
   // round6:C end.
+  /** Supply lines: what a cut-off Refinery (credits) or Fuel Well (fuel) holds on site. Absent: nothing. */
+  held?: number;
 }
 
 /**

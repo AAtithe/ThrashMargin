@@ -180,6 +180,8 @@ export type BuildingKind =
   // Industry (2026-11-21, setup.industry): the Fuel Well and the Foundry.
   | 'fuelwell'
   | 'foundry'
+  // Supply lines (2026-11-21, setup.supply): the Depot.
+  | 'depot'
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -1062,7 +1064,21 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: ['refinery'],
     blurb:
       'Industry on only. Smelts 60 credits of refined ore with 4 fuel into 10 alloys every six seconds, while the alloy store has room, and never your last 200 credits. Vehicles, ships and aircraft are paid partly in alloys. Half speed when power is short.',
+  },  // Supply lines (2026-11-21): refused by techAllowed unless setup.supply and setup.industry are on (supply.ts).
+  depot: {
+    name: 'Depot',
+    w: 2,
+    h: 2,
+    cost: 500,
+    buildTicks: 70,
+    hp: 700,
+    power: -5,
+    sight: 6,
+    requires: [],
+    blurb:
+      'Supply lines on only. Relays supply: it links to a Command Yard, Field Yard or Depot within 12 tiles, and supplies every Refinery, Fuel Well and Foundry within 8 tiles. Lose one and everything beyond it is cut off.',
   },
+
 };
 
 /** Structures in the order the build menu offers them. */
@@ -1096,6 +1112,8 @@ export const BUILD_MENU: BuildingKind[] = [
   // Industry (2026-11-21): last, so turning it on moves no item already listed.
   'fuelwell',
   'foundry',
+  // Supply lines (2026-11-21): last, so turning it on moves no item already listed.
+  'depot',
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1526,6 +1544,12 @@ export interface SkirmishSetup {
    * Never in a mission or a planet battle. Absent on older setups, which normaliseSetup reads as false.
    */
   industry?: boolean;
+  /**
+   * Supply lines (2026-11-21, phase 2 of the economy; supply.ts): Refineries, Fuel Wells and
+   * Foundries deliver only while linked to a Command Yard or Field Yard, directly or through a chain
+   * of Depots. Needs industry on (normaliseSetup turns it off without). Absent: off.
+   */
+  supply?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1548,6 +1572,7 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   generals: false,
   generalPicks: [null, null],
   industry: false,
+  supply: false,
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1569,6 +1594,7 @@ export const LEGACY_SETUP: SkirmishSetup = {
   generals: false,
   generalPicks: [null, null],
   industry: false,
+  supply: false,
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -2459,3 +2485,18 @@ export const INDUSTRY_START_FUEL = 60;
 export const INDUSTRY_START_ALLOYS = 60;
 /** Fuel burned for each load an aircraft takes on at its Helipad. Short of it, the load takes twice as long and is free. */
 export const AIR_LOAD_FUEL = 2;
+
+// ---------------------------------------------------------------------------------------------
+// Supply lines (2026-11-21, setup.supply with setup.industry; fireline-design.md). Logic in supply.ts.
+
+/** Two hubs (Command Yard, Field Yard, Depot) link when their centres are this close, in tiles. */
+export const SUPPLY_LINK_RANGE = 12;
+/** A producer is supplied when its centre is this close to a linked hub's centre, in tiles. */
+export const SUPPLY_SERVE_RANGE = 8;
+/** Every SUPPLY_TICKS, a supplied producer sends home up to this much of what it holds on site. */
+export const SUPPLY_TICKS = 10;
+export const SUPPLY_FLOW_CREDITS = 50;
+export const SUPPLY_FLOW_GOODS = 5;
+/** Most a cut-off Refinery holds in credits (its haulers then wait), and a cut-off Fuel Well in fuel (it then stops). */
+export const REFINERY_HOLD = 1500;
+export const WELL_HOLD = 50;

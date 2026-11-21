@@ -1,4 +1,7 @@
 import { dockTile } from '../sim/grid';
+import { centreOf, cutOff, isProducer, linkedHubs, supplyOn } from '../sim/supply';
+import { SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE } from '../sim/rules';
+import { drawCutBadge, drawSupplyLines } from './art';
 import { alloyStore, fuelStore, industryOn, wellDry } from '../sim/industry';
 import { FOUNDRY_ALLOYS, FOUNDRY_CREDITS, FOUNDRY_FUEL, FOUNDRY_RESERVE } from '../sim/rules';
 import { cargoMaxOf } from '../sim/loadout';
@@ -411,6 +414,11 @@ export class Renderer {
       ctx.drawImage(footprint(spec.w * TILE, spec.h * TILE, !spec.wall), px - SKIRT, py - SKIRT);
     }
     ctx.globalAlpha = 1;
+    // Supply lines (2026-11-21): your linked hubs joined by dashed lines, each supplied producer tied
+    // to the hub serving it, and the producers that are cut off, marked after the structures.
+    const supplyHubs = supplyOn(cur) ? linkedHubs(cur, 0) : null;
+    const cutIds = new Set(supplyHubs ? cutOff(cur, 0).map(b => b.id) : []);
+    if (supplyHubs) drawSupplyLines(ctx, supplyHubs, t);
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
       const px = b.x * TILE;
@@ -454,6 +462,7 @@ export class Renderer {
         ctx.fillRect(cx - 2, cy - 7, 4, 14);
         ctx.globalAlpha = 1;
       }
+      if (cutIds.has(b.id)) drawCutBadge(ctx, px + (spec.w * TILE) / 2, py - 4, b.held ?? 0, b.kind, t);
       if (b.chargeAt !== undefined && b.chargeAt + 1 > rt) {
         const left = Math.max(0, Math.min(1, (b.chargeAt - rt) / CHARGE_FUSE));
         drawChargeOnBuilding(ctx, px, py, spec.w * TILE, spec.h * TILE, left, t);
@@ -913,6 +922,26 @@ export class Renderer {
       if (kind === 'refinery') {
         ctx.setLineDash([4, 3]);
         ctx.strokeRect((tx + 1) * TILE + 2, (ty + spec.h) * TILE + 2, TILE - 4, TILE - 4);
+        ctx.setLineDash([]);
+      }
+      // Supply lines: placing a producer shows how far each linked hub supplies; placing a Depot,
+      // how far each reaches to link, and whether this spot would link or be supplied.
+      if (supplyHubs && (isProducer(kind) || kind === 'depot')) {
+        const r = kind === 'depot' ? SUPPLY_LINK_RANGE : SUPPLY_SERVE_RANGE;
+        const c = { x: tx + spec.w / 2, y: ty + spec.h / 2 };
+        const reached = supplyHubs.some(h => {
+          const hc = centreOf(h);
+          return (hc.x - c.x) ** 2 + (hc.y - c.y) ** 2 <= r * r;
+        });
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 5]);
+        ctx.strokeStyle = reached ? 'rgba(120,220,255,0.75)' : 'rgba(255,170,80,0.75)';
+        for (const h of supplyHubs) {
+          const hc = centreOf(h);
+          ctx.beginPath();
+          ctx.arc(hc.x * TILE, hc.y * TILE, r * TILE, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         ctx.setLineDash([]);
       }
     }

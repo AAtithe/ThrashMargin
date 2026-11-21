@@ -35,6 +35,11 @@ import {
 } from '../src/sim/rules';
 import { addBuilding, costFor, costOf, createInitialState, migrateState, normaliseSetup, techAllowed } from '../src/sim/state';
 import type { Building, GameState } from '../src/sim/types';
+import { centreOf, cutOff, linkedHubs, supplied, supplyOn, supplyStep } from '../src/sim/supply';
+import { depotSpot } from '../src/sim/aiEconomy';
+import { REFINERY_HOLD, SUPPLY_FLOW_CREDITS, SUPPLY_FLOW_GOODS, SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, SUPPLY_TICKS, WELL_HOLD } from '../src/sim/rules';
+import { addUnit } from '../src/sim/state';
+import { unitSpecOf } from '../src/sim/specs';
 
 type Ok = (cond: unknown, what: string) => void;
 
@@ -75,7 +80,7 @@ function setup(ok: Ok): void {
   ok(normaliseSetup({}).industry === false, 'a setup saved before industry reads as off');
   ok(normaliseSetup({ industry: true }).industry === true, 'industry: true is kept');
   ok(normaliseSetup({ industry: 'yes' as unknown as boolean }).industry === false, 'anything but a boolean reads as off');
-  ok(BUILD_MENU.slice(-2).join() === 'fuelwell,foundry', 'the Fuel Well and the Foundry close the build menu, so nothing already listed moves');
+  ok(BUILD_MENU.slice(-3).join() === 'fuelwell,foundry,depot', 'the Fuel Well, the Foundry and the Depot close the build menu, so nothing already listed moves');
   const off = fresh({ map: 'plains', tech: 'advanced' });
   ok(!industryOn(off) && !techAllowed(off, 0, 'fuelwell') && !techAllowed(off, 0, 'foundry'), 'off: neither structure may be built');
   ok(off.players.every(p => !('fuel' in p) && !('alloys' in p)), 'off: no side holds fuel or alloys');
@@ -306,6 +311,207 @@ function saves(ok: Ok): void {
   ok(JSON.stringify(migrateState(copy(off))) === JSON.stringify(off), 'off: a save loads exactly as it was');
 }
 
+// ---------------------------------------------------------------------------------------------
+// Supply lines (2026-11-21, setup.supply; src/sim/supply.ts)
+
+const SUPPLY: Partial<SkirmishSetup> = { ...ON, supply: true };
+
+/** A state with supply on, side 0's yard at a known spot, and a free place `far` tiles east of it. */
+function supplyArena(seed = 'supply'): { s: GameState; hq: Building; at: (dx: number, dy?: number) => { x: number; y: number } } {
+  const s = fresh(SUPPLY, seed);
+  const hq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+  const dir = hq.x < s.mapW / 2 ? 1 : -1;
+  return { s, hq, at: (dx, dy = 0) => ({ x: hq.x + dir * dx, y: hq.y + dy }) };
+}
+
+function supplySetup(ok: Ok): void {
+  ok(DEFAULT_SETUP.supply === false && LEGACY_SETUP.supply === false, 'both presets state supply lines: off');
+  ok(normaliseSetup({}).supply === false, 'a setup saved before supply lines reads as off');
+  ok(normaliseSetup({ industry: true, supply: true }).supply === true, 'with industry, supply: true is kept');
+  ok(normaliseSetup({ supply: true }).supply === false, 'without industry, supply lines are off whatever the setup says');
+  ok(BUILD_MENU[BUILD_MENU.length - 1] === 'depot', 'the Depot closes the build menu');
+  const ind = fresh();
+  ok(!supplyOn(ind) && !techAllowed(ind, 0, 'depot'), 'industry alone: no Depot, no supply rules');
+  ok(ind.buildings.filter(b => b.kind === 'refinery' || b.kind === 'hq').every(b => supplied(ind, b)), 'industry alone: everything counts as supplied');
+  const on = fresh(SUPPLY);
+  ok(supplyOn(on) && techAllowed(on, 0, 'depot') && techAllowed(on, 1, 'depot'), 'supply on: every side may build Depots');
+  const c = newCampaign('T');
+  const ms = createMissionState(MISSIONS[0], missionContext(c, MISSIONS[0], 'sup', 0));
+  ms.setup = { ...normaliseSetup({}), industry: true, supply: true };
+  ok(!supplyOn(ms) && !techAllowed(ms, 0, 'depot'), 'never in a mission, even with the flag forced on');
+}
+
+function network(ok: Ok): void {
+  const { s, hq, at } = supplyArena();
+  ok(linkedHubs(s, 0).map(b => b.id).join() === String(hq.id), 'the Command Yard alone is linked at the start');
+  const near = at(4);
+  const ref = addBuilding(s, 0, 'refinery', near.x, near.y);
+  ok(supplied(s, ref), 'a Refinery beside the yard is supplied');
+  const f = at(SUPPLY_LINK_RANGE + SUPPLY_SERVE_RANGE - 3);
+  const well = addBuilding(s, 0, 'fuelwell', f.x, f.y);
+  const fc = centreOf(well);
+  const hc = centreOf(hq);
+  ok(Math.hypot(fc.x - hc.x, fc.y - hc.y) > SUPPLY_SERVE_RANGE && !supplied(s, well), 'a Fuel Well far out is cut off');
+  ok(cutOff(s, 0).map(b => b.id).join() === String(well.id), 'and it is the only thing cut off');
+  const d1 = at(SUPPLY_LINK_RANGE - 2);
+  const depot = addBuilding(s, 0, 'depot', d1.x, d1.y);
+  ok(linkedHubs(s, 0).some(b => b.id === depot.id), 'a Depot within reach of the yard links');
+  ok(supplied(s, well) && cutOff(s, 0).length === 0, 'and supplies the well');
+  // A chain: a second Depot beyond the first, and a well beyond that.
+  const d2 = at(2 * (SUPPLY_LINK_RANGE - 2));
+  const depot2 = addBuilding(s, 0, 'depot', d2.x, d2.y);
+  const f2 = at(2 * (SUPPLY_LINK_RANGE - 2) + SUPPLY_SERVE_RANGE - 3, 3);
+  const well2 = addBuilding(s, 0, 'fuelwell', f2.x, f2.y);
+  ok(linkedHubs(s, 0).some(b => b.id === depot2.id) && supplied(s, well2), 'a second Depot links through the first, and supplies further out');
+  // Cut the chain: the first Depot falls.
+  s.buildings = s.buildings.filter(b => b.id !== depot.id);
+  ok(!linkedHubs(s, 0).some(b => b.id === depot2.id), 'with the first Depot gone, the second is no longer linked');
+  ok(!supplied(s, well) && !supplied(s, well2), 'and everything beyond it is cut off');
+  // Another side's hubs never link yours.
+  const theirs = addBuilding(s, 1, 'depot', d1.x, d1.y + 3);
+  ok(!linkedHubs(s, 0).some(b => b.id === theirs.id) && !linkedHubs(s, 1).some(b => b.id === depot2.id), "a side's hubs link only its own");
+  // Losing the yard cuts even the Refinery beside it.
+  s.buildings = s.buildings.filter(b => b.id !== hq.id);
+  ok(!supplied(s, ref), 'without a yard nothing is supplied');
+}
+
+const holding = quiet((ok: Ok): void => {
+  const { s, at } = supplyArena('holding');
+  const f = at(SUPPLY_LINK_RANGE + SUPPLY_SERVE_RANGE - 3);
+  const ref = addBuilding(s, 0, 'refinery', f.x, f.y);
+  ok(!supplied(s, ref), 'a far Refinery is cut off');
+  // A hauler unloading there: the credits stay on site.
+  const h = addUnit(s, 0, 'hauler', f.x + 1.5, f.y + 2.5);
+  h.cargo = 200;
+  h.order = { type: 'harvest', phase: 'unload', tile: -1, refinery: ref.id };
+  const cr0 = s.players[0].credits;
+  let x = s;
+  for (let i = 0; i < 6; i++) x = processAction(x, { type: 'tick', n: 1 });
+  const r1 = x.buildings.find(b => b.id === ref.id)!;
+  ok(x.players[0].credits <= cr0 && (r1.held ?? 0) === 200, `unloaded at a cut-off Refinery, 200 credits are held on site (${r1.held}), none reach the store`);
+  // Full: the hauler waits with its cargo.
+  const full = copy(x);
+  const rf = full.buildings.find(b => b.id === ref.id)!;
+  rf.held = REFINERY_HOLD;
+  const hf = full.units.find(u => u.id === h.id)!;
+  hf.cargo = 100;
+  hf.order = { type: 'harvest', phase: 'unload', tile: -1, refinery: ref.id };
+  let y = full;
+  for (let i = 0; i < 4; i++) y = processAction(y, { type: 'tick', n: 1 });
+  const yh = y.units.find(u => u.id === h.id)!;
+  ok(yh.cargo === 100 && y.buildings.find(b => b.id === ref.id)!.held === REFINERY_HOLD, 'with the site full, the hauler keeps its cargo');
+  ok(yh.order.type === 'harvest' && yh.order.refinery !== ref.id, 'and takes it to another refinery (the supplied one by the yard)');
+  // Linked again: it comes home at the flow rate, then the field is gone from the save.
+  const d = at(SUPPLY_LINK_RANGE - 2);
+  const back = copy(x);
+  addBuilding(back, 0, 'depot', d.x, d.y);
+  const bref = back.buildings.find(b => b.id === ref.id)!;
+  ok(supplied(back, bref), 'a Depot links it again');
+  const cr1 = back.players[0].credits;
+  let beats = 0;
+  while (bref.held && beats < 20) {
+    back.tick++;
+    if (back.tick % SUPPLY_TICKS === 0) beats++;
+    supplyStep(back);
+  }
+  ok(beats === 200 / SUPPLY_FLOW_CREDITS && back.players[0].credits === cr1 + 200 && !('held' in bref), `it comes home at ${SUPPLY_FLOW_CREDITS} a beat (${beats} beats) and leaves nothing behind`);
+  // Fuel Well and Foundry, cut off.
+  const ws = spotFor(back, 'fuelwell', true)!;
+  const w = addBuilding(back, 0, 'fuelwell', ws.x, ws.y);
+  const fuel0 = back.players[0].fuel!;
+  const wellCut = new Set([w.id]);
+  for (let t = 0; t < FUEL_WELL_TICKS * (WELL_HOLD + 10); t++) {
+    back.tick++;
+    industryStep(back, NO_LOW, wellCut);
+  }
+  ok(w.held === WELL_HOLD && back.players[0].fuel === fuel0, `a cut-off well fills its own tank to ${WELL_HOLD} and stops; the store never moves`);
+  const fo = addBuilding(back, 0, 'foundry', 0, 0);
+  back.players[0].fuel = 100;
+  back.players[0].credits = 5000;
+  const al0 = back.players[0].alloys;
+  for (let t = 0; t < FOUNDRY_TICKS * 3; t++) {
+    back.tick++;
+    industryStep(back, NO_LOW, new Set([fo.id]));
+  }
+  ok(back.players[0].alloys === al0 && back.players[0].credits === 5000, 'a cut-off Foundry smelts nothing');
+  ok(SUPPLY_FLOW_GOODS > 0, 'fuel flows home too');
+});
+
+const depotAi = quiet((ok: Ok): void => {
+  const { s, at } = supplyArena('depot-ai');
+  ok(depotSpot(s, 0) === null, 'nothing cut off: the computer wants no Depot');
+  const f = at(SUPPLY_LINK_RANGE + SUPPLY_SERVE_RANGE - 3);
+  const well = addBuilding(s, 0, 'fuelwell', f.x, f.y);
+  // Something of side 0's near the line, so the build radius lets a Depot stand out there.
+  const p1 = at(6);
+  addBuilding(s, 0, 'power', p1.x, p1.y + 3);
+  const p2 = at(10);
+  addBuilding(s, 0, 'power', p2.x, p2.y + 3);
+  const spot = depotSpot(s, 0);
+  ok(!!spot && placementProblem(s, 0, 'depot', spot!.x, spot!.y) === null, 'a cut-off well: the computer finds a legal Depot spot');
+  if (spot) {
+    addBuilding(s, 0, 'depot', spot.x, spot.y);
+    ok(supplied(s, well) || cutOff(s, 0).length === 1, 'the Depot there links toward the well');
+  }
+});
+
+/** Whole computer battles with supply lines on: Depots get built, held goods stay sane, battles end. */
+function supplyBattles(ok: Ok): void {
+  const seeds = ['sup-a', 'sup-b', 'sup-c', 'sup-d'];
+  let ended = 0;
+  let cutSamples = 0;
+  let samples = 0;
+  let sane = true;
+  for (const [i, seed] of seeds.entries()) {
+    let s = createInitialState(seed, seed, { seed, createdAt: 0, autopilot: true, difficulty: i % 2 ? 'hard' : 'normal', setup: { tech: 'advanced', industry: true, supply: true, map: i < 2 ? 'classic' : 'plains' } });
+    s.autopilotDifficulty = 'normal';
+    while (s.winner === null && s.tick < 30000) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      for (const o of [0, 1] as Owner[]) {
+        samples++;
+        if (cutOff(s, o).length) cutSamples++;
+      }
+      for (const b of s.buildings) {
+        if (b.held === undefined) continue;
+        if (!Number.isFinite(b.held) || b.held <= 0) sane = false;
+        if (b.kind === 'refinery' && b.held > REFINERY_HOLD + 50) sane = false;
+        if (b.kind === 'fuelwell' && b.held > WELL_HOLD) sane = false;
+        if (b.kind !== 'refinery' && b.kind !== 'fuelwell') sane = false;
+      }
+    }
+    // Decided, or the known mined-out stalemate (no ore left anywhere and no army on either side),
+    // which the ladder shows at 0 to 3 in 150 with or without industry.
+    if (s.winner !== null || (!s.ore.some(o => o > 0) && !s.units.some(u => u.kind !== 'hauler' && unitSpecOf(s, u).weapon))) ended++;
+  }
+  ok(sane, 'goods held on site: only on a Refinery or Fuel Well, positive, within its cap');
+  ok(cutSamples / samples < 0.05, `the commanders build where they are supplied: cut off ${((100 * cutSamples) / samples).toFixed(1)}% of the time, under 5%`);
+  ok(ended === seeds.length, `every battle is decided inside 50 minutes, or ends mined out with no army left (${ended} of ${seeds.length})`);
+}
+
+function supplySaves(ok: Ok): void {
+  const play = (saveAt = -1) => {
+    let s = createInitialState('sp', 'sp', { seed: 'sp', createdAt: 0, autopilot: true, setup: { tech: 'advanced', industry: true, supply: true, map: 'classic' } });
+    for (let i = 0; i < 120; i++) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      if (i === saveAt) s = migrateState(JSON.parse(JSON.stringify(s)))!;
+    }
+    return s;
+  };
+  const a = play();
+  ok(hash(a) === hash(play()) && hash(a) === hash(play(60)), 'a battle with supply lines replays byte-identically, and through a save mid-battle');
+  const junk = copy(a);
+  const ref = junk.buildings.find(b => b.kind === 'refinery')!;
+  (ref as unknown as { held: unknown }).held = 'lots';
+  const hq = junk.buildings.find(b => b.kind === 'hq')!;
+  hq.held = 40;
+  const m = migrateState(junk)!;
+  ok(!('held' in m.buildings.find(b => b.id === ref.id)!) && !('held' in m.buildings.find(b => b.id === hq.id)!), 'junk held goods, and goods on a structure that cannot hold them, are dropped');
+  const ind = createInitialState('ip', 'ip', { seed: 'ip', createdAt: 0, setup: { tech: 'advanced', industry: true } });
+  const dirty = copy(ind);
+  dirty.buildings[0].held = 30;
+  ok(!('held' in migrateState(dirty)!.buildings[0]), 'without supply lines, held goods are dropped');
+}
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Industry: the setup, and where it never applies', setup],
   ['Industry: prices in credits, alloys and fuel', prices],
@@ -315,4 +521,10 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Industry: the Foundry smelts, and stops short of its inputs or store', smelting],
   ['Industry: whole computer battles', battles],
   ['Industry: replays and saves', saves],
+  ['Supply lines: the setup', supplySetup],
+  ['Supply lines: the network, a chain and a cut', network],
+  ['Supply lines: goods held on site, and coming home', holding],
+  ['Supply lines: the computer finds a Depot spot', depotAi],
+  ['Supply lines: whole computer battles', supplyBattles],
+  ['Supply lines: replays and saves', supplySaves],
 ];

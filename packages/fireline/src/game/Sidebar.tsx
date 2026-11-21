@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
 import { goodsFor } from '../sim/commands';
 import { alloyStore, fuelStore, hasGoods, industryOn } from '../sim/industry';
 import {
@@ -33,6 +34,7 @@ import {
   HERO_RECRUIT_TICKS,
   STANDARD_TECH,
   UNITS,
+  SUPPLY_SERVE_RANGE,
   TICKS_PER_SECOND,
   type Armor,
   type BuildingKind,
@@ -65,7 +67,7 @@ import { airCount, airRoom, padSpot } from '../sim/air';
 import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
 import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from '../sim/loadout';
-import type { GameAction, GameState, Unit } from '../sim/types';
+import type { Building, GameAction, GameState, Unit } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
 import { disbandQuestion, isSupport, selectionActions, type Selection } from './selectionActions';
@@ -1275,6 +1277,7 @@ export function SelectionPanel({
               {spec.blurb}
               {(building.kind === 'barracks' || building.kind === 'factory') && (touch ? ' Tap the map to set where new units gather.' : ' Right-click the map to set where new units gather.')}
             </p>
+            {supplyOn(state) && isProducer(building.kind) && <SupplyNote state={state} building={building} />}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="fl-d-sbtn"
@@ -1629,6 +1632,7 @@ function IndustryGauge({ state }: { state: GameState }) {
   const alloys = Math.floor(p.alloys ?? 0);
   const fCap = fuelStore(state, 0);
   const aCap = alloyStore(state, 0);
+  const cut = cutOff(state, 0).length;
   return (
     <div
       className="fl-d-gauge fl-d-industry"
@@ -1636,7 +1640,14 @@ function IndustryGauge({ state }: { state: GameState }) {
       data-testid="industry"
       title="Industry. Fuel Wells pump fuel from ore fields; Foundries smelt credits and fuel into alloys. Each stops when its store is full."
     >
-      <span className="fl-d-gauge-label">Industry</span>
+      <span className="fl-d-gauge-label">
+        Industry
+        {cut > 0 && (
+          <span className="fl-d-gauge-state" data-cut="1" data-testid="supply-cut">
+            {cut} cut off
+          </span>
+        )}
+      </span>
       <span className="fl-d-goods">
         <span data-full={fuel >= fCap ? '1' : '0'}>
           Fuel <span className="fl-d-goods-n" data-testid="fuel">{fuel}</span>/{fCap}
@@ -1646,5 +1657,24 @@ function IndustryGauge({ state }: { state: GameState }) {
         </span>
       </span>
     </div>
+  );
+}
+
+/** Supply lines: whether a producer of yours is supplied, and what it holds on site if not. */
+function SupplyNote({ state, building }: { state: GameState; building: Building }) {
+  const ok = supplied(state, building);
+  const held = Math.floor(building.held ?? 0);
+  const what = building.kind === 'refinery' ? 'credits' : building.kind === 'fuelwell' ? 'fuel' : '';
+  const text = ok
+    ? held > 0
+      ? `Supplied. Sending home the ${held} ${what} it held.`
+      : 'Supplied: linked to your yards.'
+    : building.kind === 'foundry'
+      ? 'Cut off: idle until a Depot links it to a yard.'
+      : `Cut off: holding ${held} ${what} on site. A Depot within ${SUPPLY_SERVE_RANGE} tiles, linked to a yard, brings it home; lose this structure and it is lost.`;
+  return (
+    <p data-testid="supply-note" data-cut={ok ? '0' : '1'} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.4, color: ok ? UI.textSoft : UI.warn }}>
+      {text}
+    </p>
   );
 }

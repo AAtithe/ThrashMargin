@@ -28,6 +28,13 @@ import {
   INDUSTRY_ALLOY_SHARE,
   INDUSTRY_START_ALLOYS,
   INDUSTRY_START_FUEL,
+  REFINERY_HOLD,
+  SUPPLY_FLOW_CREDITS,
+  SUPPLY_FLOW_GOODS,
+  SUPPLY_LINK_RANGE,
+  SUPPLY_SERVE_RANGE,
+  SUPPLY_TICKS,
+  WELL_HOLD,
 } from '../sim/rules';
 // round6:B. Heroes in free play: its panel's numbers.
 import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
@@ -311,6 +318,8 @@ export default function HowToPlay() {
         <GeneralsPanel />
         {/* Industry (2026-11-21): its panel goes on the line below. */}
         <IndustryPanel />
+        {/* Supply lines (2026-11-21): its panel goes on the line below. */}
+        <SupplyPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -543,6 +552,7 @@ const SECTIONS = [
   'Heroes in free play',
   'Generals',
   'Industry',
+  'Supply lines',
   'Formations and groups',
   'Campaign',
   'War for the Planet',
@@ -667,6 +677,37 @@ function IndustryPanel() {
           {INDUSTRY_START_FUEL} fuel.
         </li>
         <li>The computer builds the same chain right after its first War Factory: one Fuel Well and one Foundry, at every level.</li>
+      </ul>
+    </Section>
+  );
+}
+
+// Supply lines (2026-11-21): the panel, from the same numbers the battle reads.
+function SupplyPanel() {
+  return (
+    <Section title="Supply lines">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Supply lines</strong> in the lobby (it needs Industry) and what your Refineries, Fuel Wells and Foundries
+          make only reaches your stores while they are linked to a yard.
+        </li>
+        <li>
+          Your Command Yard and Field Yards are the roots. A <strong>{BUILDINGS.depot.name}</strong> links to a yard or another linked
+          Depot within {SUPPLY_LINK_RANGE} tiles, centre to centre, so a chain of Depots carries supply out across the map. A
+          Refinery, Fuel Well or Foundry is supplied within {SUPPLY_SERVE_RANGE} tiles of a linked yard or Depot. Your links show as
+          moving dashed lines; placing one of these structures shows the rings it must stand inside.
+        </li>
+        <li>
+          Cut off, a Refinery keeps what its haulers bring on site, up to {REFINERY_HOLD.toLocaleString('en-GB')} credits (then they
+          wait), a Fuel Well keeps up to {WELL_HOLD} fuel (then it stops), and a Foundry stops. A CUT badge shows over each one and the
+          Industry gauge counts them. Link it again and what it held comes home at {(SUPPLY_FLOW_CREDITS * 600) / SUPPLY_TICKS}{' '}
+          credits or {(SUPPLY_FLOW_GOODS * 600) / SUPPLY_TICKS} fuel a minute.
+        </li>
+        <li>
+          Lose a Depot and everything beyond it is cut. Lose a cut-off structure and what it held is gone. A hauler that finds its
+          Refinery cut off and full takes its ore to another. The computer plays by the same rules: it builds its Refineries, Fuel
+          Wells and Foundries only where they are supplied, and reconnects anything cut off before it builds anything else.
+        </li>
       </ul>
     </Section>
   );
