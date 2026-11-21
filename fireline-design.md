@@ -2562,3 +2562,60 @@ skirmish and a War for the Planet battle, light and dark, plus the desktop. `nod
 fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok. `npm run check:ui --
 fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All checks passed"
 (Fireline drive 401,690 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-21: The objectives' buttons are a finger wide
+
+**Why.** On a phone the objectives panel heads the dock (above), but its controls were still sized for
+a mouse: Hide was 57 by 17px, each objective's Show 44 by 18px, and the hidden pill 148 by 26px (26
+tall in "fireline", 28 in "The Quiet Man"), all under the 40px that `npm run check:ui` asks of a
+phone's tap targets. `check:ui` never saw them, because its game screen is a skirmish and never opens
+a mission.
+
+**Options weighed.** Growing the Show chip to 40px would have made it about 55 by 40px: it would take
+that width from every row's text (more wrapping, a taller panel) and still leave a finger aiming at a
+chip beside the words it acts on. Hiding the rows behind the header on a small phone would hide what
+the panel is for. Chosen, on a phone only (`.fl-dock[data-phone]`, and a `phone` prop that GameScreen
+passes to the panel it puts in the dock): a row whose target can be shown is one button, the whole
+row, at least 40px tall and the panel's width less its padding, labelled "Show on the map: ..." for
+screen readers, with "Show" kept as a chip inside it as the visible cue. The text keeps the width it
+had, and the target is the thing the player is reading. Rows meet with a hairline between them instead
+of a 4px gap, so the 40px rows pay for most of their height out of the spacing they already had. Hide
+fills the header's height at its right end, a flush segment with a rule on its left rather than a
+40px box inside a taller header, so the header grows from 29 to 41px and no more. The pill gets a 40px
+minimum height. To give the small phones' rows back what the header took, the panel drops its 8px
+padding under the rows and the 6px over the first one (the rows carry their own), and the dock's
+banners drop their 6px gap while no banner is showing (the panel's own margin still parts it from the
+feed). The sizing is in the stylesheet, as with the header's touch sizing. The kit's `Button` was not
+used: these are HUD controls styled from the console's tokens like the header's, and the kit would
+bring the lobby's look into the battle. No new colours: the row's pressed state is
+`--ui-panel-raised` and the rules are `--d-groove`, both already defined for light and dark. Desktops,
+tablets (`layout.phone` is false) and the desktop branch of the panel are untouched; the iPhone 13 on
+its side does change, because a touch screen under 520px tall is a phone.
+
+**Numbers.** After, on every phone: Hide 69 by 40px, each row that can be shown 248 by 40px, the pill 148 or 203 by 40px. Panel heights, before and after, in "The Quiet Man"
+(three objectives, two bonus, four of them showable once the map is explored): iPhone SE 320px 75 and
+81px; 375px SE 130 and 136; iPhone 13 upright 128 and 134; on its side 76 and 82; Pixel 7 225 and 232,
+where every row used to fit and the last one now scrolls by about 34px. On the 320px SE the rows had
+about 28px visible before (one line of the first row and the top of its second); now 36px of the first
+row's 40, both its lines and its Show cue in view. The battle feed's box is the same before and after
+on every phone in both missions (SE 148..219, 375px SE 203..274, iPhone 13 201..272, on its side
+149..220, Pixel 7 299..370), still three lines. Desktop (1440 by 900): every panel, button and row box
+unchanged in both missions, and the panel's pixels identical to before in light and dark in
+"fireline" (in "The Quiet Man" only the running clock's digits differ).
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in the mission case on all five phones, now fails if a
+button in the objectives panel or the pill is under 40px either way, open and hidden. A second
+mission, "The Quiet Man" with the whole map explored, runs every objectives check again (feed, strip,
+banners, header, command bar, targeting hint, hero drawer, every row tappable, the pill), requires at
+least one objective that can be shown so the check cannot pass on an empty panel, and taps each one,
+failing unless at least one tap moves the view (a grid of the battlefield's pixels, before and after).
+Before the fix: 40 failures, eight on each phone (Hide twice, the pill twice, four Shows); now none.
+With the row's handler emptied the view check fails, so it is not passing on luck.
+
+**Checks.** Screenshots at twice the pixel density on the five phones in both missions, panel open and
+hidden, light and dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch
+fireline` (full): ok. `npm run tours -- --quick`: all eight ok. `npm run check:ui -- fireline`: 32/32 (still
+a skirmish, so the panel is not in it; the touch guard is what covers it). `npm run check:loading --
+fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check
+7,699, drive:planet 35,255). Left open: a tablet keeps the desktop's small Hide and Show
+(`fireline-improvements.md`).

@@ -21,10 +21,12 @@
  * it. A three-panel row once wrapped over the feed and pushed it under the header. In the mission it
  * also opens the objectives panel and fails if it meets the feed, the strip, a banner (a targeting
  * hint included), the header or the command bar, if an objective row cannot be tapped, if it lies
- * over the hero drawer, or if the hidden pill meets any of them. In every case, running and paused,
- * and once more in the mission with the save warning showing, it fails if a header control leaves
- * the window, overlaps another, is under 40px or cuts off its label. TOUR_SKIP_TOUR=1 runs those
- * checks alone.
+ * over the hero drawer, if the hidden pill meets any of them, or if a button in the panel or the
+ * pill is under 40px either way. It repeats all of that in a second mission with five objectives,
+ * four of which can be shown on the map, where tapping one must also move the view. In every case,
+ * running and paused, and once more in the mission with the save warning showing, it fails if a
+ * header control leaves the window, overlaps another, is under 40px or cuts off its label.
+ * TOUR_SKIP_TOUR=1 runs those checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -222,6 +224,28 @@ const buildMission = page =>
     return id;
   });
 
+/**
+ * The busiest objectives panel: "The Quiet Man", three objectives, two bonus and the mission clock,
+ * with the whole map explored so that four of the five rows can show their target on the map. The
+ * "fireline" mission above starts with none to show.
+ */
+const buildLocatedMission = page =>
+  page.evaluate(async () => {
+    const cs = await import('/src/campaign/save.ts');
+    const pr = await import('/src/campaign/progression.ts');
+    const ms = await import('/src/campaign/missions.ts');
+    const mi = await import('/src/sim/mission.ts');
+    const id = 'bar-row-located';
+    const sv = cs.newCampaignSave(id, 'Objectives campaign', 'Me', 0);
+    const spec = ms.MISSIONS.find(m => m.id === 'quiet-man');
+    const battle = mi.createMissionState(pr.campaignMission(sv.campaign, spec), pr.missionContext(sv.campaign, spec, id, 0));
+    battle.explored = '1'.repeat(battle.explored.length);
+    for (let i = 1; i <= 5; i++) battle.log.push({ tick: battle.tick, text: `Objectives check ${i}: a line of the battle feed.` });
+    localStorage.setItem('fireline_save_' + id, JSON.stringify({ ...sv, campaign: { ...sv.campaign, lastMission: spec.id }, battle }));
+    localStorage.setItem('fireline_saves', JSON.stringify([{ id, name: 'Objectives campaign', turn: 0, status: 'active', savedAt: Date.now(), kind: 'campaign' }]));
+    return id;
+  });
+
 /** A War for the Planet battle: a short war played to its first attack, with the heroes it allows. */
 const buildPlanet = page =>
   page.evaluate(async () => {
@@ -382,7 +406,30 @@ const objectiveBoxes = page =>
  * hero drawer, when open, lies over it rather than under it; and hidden, the pill keeps clear too.
  * It used to sit top right at 46% of the map's width and run down over the feed and the strip.
  */
-async function objectivesClear(page, kind, fail) {
+/**
+ * Every button in the objectives panel (Hide, and each objective's way to show it on the map) and
+ * the hidden pill must be a 40px tap target both ways. Hide was 57 by 17px, each Show 44 by 18px and
+ * the pill 26 or 28px tall. `locate` asks for at least one objective that can be shown, so the check
+ * cannot pass by finding none.
+ */
+async function objectiveTapTargets(page, kind, fail, when, locate = false) {
+  const bs = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="objectives"]');
+    const pill = document.querySelector('[data-testid="objectives-show"]');
+    return [...(panel ? panel.querySelectorAll('button') : []), ...(pill ? [pill] : [])]
+      .filter(b => b.getClientRects().length)
+      .map(b => {
+        const r = b.getBoundingClientRect();
+        return { name: b.getAttribute('data-testid') || b.getAttribute('aria-label') || b.textContent.trim().slice(0, 30), hide: b.getAttribute('data-testid') === 'objectives-hide', w: r.width, h: r.height };
+      });
+  });
+  if (!bs.length) await fail(kind, `the objectives offer no button ${when}`);
+  if (locate && bs.filter(b => !b.hide).length === 0) await fail(kind, `no objective offers a way to show it on the map ${when}`);
+  for (const b of bs)
+    if (b.w < 39.5 || b.h < 39.5) await fail(kind, `the objectives' "${b.name}" is a ${Math.round(b.w)}x${Math.round(b.h)} tap target, under 40px, ${when}`);
+}
+
+async function objectivesClear(page, kind, fail, locate = false) {
   const check = async when => {
     const m = await objectiveBoxes(page);
     if (!m.panel) return await fail(kind, `no objectives panel or pill ${when}`);
@@ -397,6 +444,7 @@ async function objectivesClear(page, kind, fail) {
   await page.getByTestId('objectives').waitFor({ timeout: 3000 });
   await sleep(200);
   const m = await check('with the panel open');
+  await objectiveTapTargets(page, kind, fail, 'with the panel open', locate);
   if (m && m.panel && m.panel.bottom - m.panel.top < 40) await fail(kind, `the objectives panel is only ${Math.round(m.panel.bottom - m.panel.top)}px tall`);
   // Every row can be reached: scrolled into the panel's view, the row is what a tap at its centre hits.
   const rows = await page.locator('[data-testid="objectives"] .fl-objective').count();
@@ -409,6 +457,33 @@ async function objectivesClear(page, kind, fail) {
       return r.contains(document.elementFromPoint(b.left + Math.min(20, b.width / 2), b.top + Math.min(8, b.height / 2)));
     });
     if (!hit) await fail(kind, `objective row ${i + 1} cannot be tapped: something lies over it`);
+  }
+  // Tapping an objective that can be shown moves the view: a grid of the battlefield's pixels, before
+  // and after each tap, must change for at least one of them (one target may already be in view).
+  if (locate) {
+    const sample = () =>
+      page.evaluate(() => {
+        const c = document.getElementById('fl-battlefield');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const out = [];
+        for (let gy = 1; gy < 16; gy++)
+          for (let gx = 1; gx < 16; gx++) {
+            const i = (Math.floor((c.height * gy) / 16) * c.width + Math.floor((c.width * gx) / 16)) * 4;
+            out.push(d[i] + d[i + 1] + d[i + 2]);
+          }
+        return out;
+      });
+    const targets = page.locator('[data-testid="objectives"] .fl-objective button');
+    let moved = 0;
+    for (let i = 0; i < (await targets.count()); i++) {
+      const before = await sample();
+      await targets.nth(i).evaluate(b => b.scrollIntoView({ block: 'nearest' }));
+      await targets.nth(i).tap();
+      await sleep(250);
+      const after = await sample();
+      if (before.filter((v, k) => Math.abs(v - after[k]) > 30).length > before.length / 3) moved++;
+    }
+    if (!moved) await fail(kind, 'tapping an objective that can be shown never moved the view');
   }
   // A power that needs a target puts its hint in the banners: the panel keeps clear of that too.
   const power = page.locator('.fl-barstrip [data-testid^="power-"]:not([disabled])').first();
@@ -436,6 +511,7 @@ async function objectivesClear(page, kind, fail) {
   await page.getByTestId('objectives-hide').tap();
   await page.getByTestId('objectives-show').waitFor({ timeout: 3000 });
   await check('with the panel hidden');
+  await objectiveTapTargets(page, kind, fail, 'with the panel hidden');
   await page.getByTestId('objectives-show').tap();
 }
 
@@ -564,6 +640,12 @@ async function barRow(browser, name) {
       if (kind !== 'bare') await heroDrawer(page, kind, fail);
       if (kind === 'mission') await objectivesClear(page, kind, fail);
     }
+    // The busiest objectives panel, with targets to show: the same checks, and every row's target.
+    const located = await buildLocatedMission(page);
+    await page.goto(`${BASE}/game/${located}`);
+    await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
+    await sleep(600);
+    await objectivesClear(page, 'mission, objectives to show', fail, true);
     await headerWithSaveWarning(page, fail);
     if (problems.length === before) console.log(`  ${name}: every header control fits the window; the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header`);
   } catch (e) {
@@ -573,7 +655,7 @@ async function barRow(browser, name) {
   }
 }
 
-module.exports = { buildSkirmish, buildMission, buildPlanet, headerBoxes };
+module.exports = { buildSkirmish, buildMission, buildLocatedMission, buildPlanet, headerBoxes };
 
 if (require.main === module) (async () => {
   require('fs').mkdirSync(OUT, { recursive: true });
