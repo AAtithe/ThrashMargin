@@ -116,7 +116,11 @@ const BANK=[
  {id:'b-future',title:'The 2030 you',scene:'Picture yourself in 2030 sitting in on this week’s leadership meeting.',
   opts:[{t:'They would say keep pushing.',v:'trap',n:'Unlikely. People who got where they wanted rarely recommend more of what they did before.'},{t:'Ask what they would tell you to stop, write it down, and stop one thing this week.',v:'best',n:'You decided from the future, not from habit.'},{t:'Plan to think about it next quarter.',v:'ok',n:'The future arrives on schedule whether you plan for it or not.'}],
   coach:['Most decisions are made from habit. The best ones are made from the future you have chosen.','Your 2030 letter is a decision filter. Read it, then let it say no on your behalf.'],
-  todo:{text:'Read my 2030 letter and stop one thing that version of me would not do.',type:'Stop',h:'week',hours:1}}
+  todo:{text:'Read my 2030 letter and stop one thing that version of me would not do.',type:'Stop',h:'week',hours:1}},
+ {id:'b-input',title:'What you feed your head',scene:'The drive in. The news is on and your head is already rehearsing what could go wrong today.',
+  opts:[{t:'Leave it on. It is good to stay informed.',v:'trap',n:'Twenty minutes of other people’s alarm, carried into your first meeting.'},{t:'Put on a podcast or audiobook from someone who has built what you are building.',v:'best',n:'You arrive with one idea to test, not one worry to manage.'},{t:'Drive in silence and plan the day.',v:'ok',n:'Calm, and right on some days. It brings nothing new in.'}],
+  coach:['What you listen to sets the questions you ask that day. Choose the input on purpose, the way you choose what goes on a KPI board.','A positive mindset is not pretending the numbers are fine. It is reading the same facts and looking for the move. Listening earns its time when one idea a week gets used.'],
+  todo:{text:'Pick one podcast or audiobook for the week and write down one idea from it to use by Friday.',type:'Start',h:'week',hours:0}}
 ];
 
 const WILD=[
@@ -140,11 +144,11 @@ const WILD=[
 const RESET_CAP=6;
 /* Tom's rules: the directions he wrote for himself. Shown on every reset; he taps the one he is choosing.
    Reinforcement that points somewhere, not reassurance: each one is a direction he can act on. */
-const DEFAULT_SHIFTS=['Pilates or a walk outside','Two minutes of slow breathing','Write it out in Notes','Name the feeling out loud','Check the facts: firm pulse and deli numbers','Do one small thing I control','Three things I appreciate right now','Ask: what can I learn from this?','Call Sam or someone I trust','Phone off for an hour','Reread my 2030 letter','An early night'];
+const DEFAULT_SHIFTS=['Pilates or a walk outside','Two minutes of slow breathing','Write it out in Notes','Name the feeling out loud','Check the facts: firm pulse and deli numbers','Do one small thing I control','Three things I appreciate right now','Ask: what can I learn from this?','Call Sam or someone I trust','Phone off for an hour','Reread my 2030 letter','An early night','Put on a podcast or audiobook'];
 const DEFAULT_PEOPLE=['My operations lead','My finance manager','A client manager','The deli manager'];
 const DEFAULT_HABITS=[{id:'pilates',name:'Pilates class',target:1}];
 const DEFAULT_RULES=['Profit is a good thing.','Taking time off is vital.','My systems run on profit and space, not on working all the time.','I am enough, and I can trace it in this ledger.','I control the next move, not the outcome.'];
-const RULE_IDEAS=['The firm does not need me to check my email to be safe.','Quiet is space, not danger.','When I am away, the team decides.','A fear is not a fact until the numbers say so.','Rest is part of the job, not a reward for finishing it.'];
+const RULE_IDEAS=['The firm does not need me to check my email to be safe.','Quiet is space, not danger.','When I am away, the team decides.','A fear is not a fact until the numbers say so.','Rest is part of the job, not a reward for finishing it.','I read the facts for the next move, not for the threat.'];
 const rules=()=>(Array.isArray(S.rules)&&S.rules.length?S.rules:DEFAULT_RULES);
 /* What Tom says in "Talk it through" is matched to a pull when the coach is off. */
 const TALK_HINTS=[['inbox',/e-?mail|inbox|check/i],['quiet',/quiet|nothing to do|don.?t know what to do/i],['away',/away|holiday|off work|time off/i],['deli',/deli/i],['firm',/dead|failing|going under|the firm|\bws\b/i],['cash',/cash|money|bank|pay/i],['client',/client/i],['person',/team|staff|manager/i],['load',/too much|overwhelm/i]];
@@ -175,7 +179,7 @@ const MOVES={
   load:['Write everything down, then circle one','Hand one item over with an owner and a date','Cancel or shorten one meeting today','Close email for the next 60 minutes'],
   mistake:['Write what happened in three lines, facts only','Tell the person affected, today, plainly','Name the check that would have caught it','Name who owns the fix to the cause'],
   future:['Read my 2030 letter','Write the one decision that would move the firm most this quarter','Book a two-hour thinking block this week','Write down three things going well that nobody has noticed'],
-  heavy:['Ten-minute walk, no phone','Water, five slow breaths, then one small task','Tell someone I trust how today is going','Finish one small thing I have been putting off'],
+  heavy:['Ten-minute walk, no phone','Water, five slow breaths, then one small task','Tell someone I trust how today is going','Finish one small thing I have been putting off','Fifteen minutes of a podcast or audiobook that lifts me'],
   inbox:['Close email until my next set time, and write that time down','Set two email times for today and keep to them','Write the decision I am hoping to find in there','Turn notifications off for the next two hours'],
   quiet:['Use the quiet for one thinking question, written down','Walk for twenty minutes, no phone','Read my 2030 letter','Call a client who is doing well, just to listen'],
   away:['Name who decides while I am away, and tell them','Reply once with an owner and a date, then close the laptop','Write what can wait until I am back, and let it wait','Ask the team for one update at a set time, not all day'],
@@ -739,7 +743,7 @@ function offBrief(o){
 /* ---------- Non-negotiables: the few things each week that keep the founder working ----------
    Pilates first, because Tom said it is a massive help. A week counts when the target is met; points and
    receipts come from weeks met, never from logging more than the target. */
-const HABIT_IDEAS=[{name:'A full day off',target:1},{name:'Training session',target:2},{name:'Walk without my phone',target:3},{name:'Evening fully off',target:2},{name:'Read my 2030 letter',target:1}];
+const HABIT_IDEAS=[{name:'A full day off',target:1},{name:'Training session',target:2},{name:'Walk without my phone',target:3},{name:'Evening fully off',target:2},{name:'Read my 2030 letter',target:1},{name:'Podcast or audiobook',target:3}];
 const HABIT_PTS=10;
 const habits=()=>(Array.isArray(S.habits)?S.habits:[]);
 function habitCount(id,now=Date.now()){const w=weekNo(now);return (S.habitLog||[]).filter(l=>l.id===id&&weekNo(l.ts)===w).length;}
@@ -1876,6 +1880,7 @@ function vLine(){
    <p class="small muted">Built for your sessions with Sam: it goes into the coach agenda.</p></div>
   <div class="card"><details class="own"><summary>My shift moves (${mine.length})</summary>
    ${mine.map((x,i)=>`<div class="note"><span class="kd">Shift</span><span>${esc(x)} <button class="icon-btn" data-act="shiftDel" data-i="${i}">Remove</button></span></div>`).join('')}
+   ${DEFAULT_SHIFTS.filter(x=>!mine.includes(x)).length?`<div class="lbl small">Add one</div>${chipRow('shift-idea',DEFAULT_SHIFTS.filter(x=>!mine.includes(x)),{act:'shift-add'})}`:''}
    <div class="row" style="flex-wrap:nowrap"><input type="text" id="shift-own" placeholder="A habit that brings you back" aria-label="Add a shift move"><button class="btn small" data-act="shiftAdd">Add</button></div></details></div>
   </section>`;
 }
@@ -2226,6 +2231,7 @@ on('click',async e=>{
       case 'week-type':reviewWeek=v;render();break;
       case 'away-plan':planAway(v);save();render();setStatus('Away logged. Enjoy it: the ledger will not ask about hours.');break;
       case 'habit-add':{const x=HABIT_IDEAS.find(h=>h.name===v);if(!x)break;S.habits=habits().concat({id:'h'+uid(),name:x.name,target:x.target});save();render();setStatus('Added to your non-negotiables.');break;}
+      case 'shift-add':{if(!DEFAULT_SHIFTS.includes(v))break;const mine=S.shifts||DEFAULT_SHIFTS.slice();if(!mine.includes(v))S.shifts=mine.concat(v);save();render();setStatus('Added to your shift moves.');break;}
       case 'session-take':closeSession(v);break;
       case 'rule-add':{if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();if(!S.rules.includes(v))S.rules.push(v);save();render();setStatus('Added to your rules.');break;}
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}

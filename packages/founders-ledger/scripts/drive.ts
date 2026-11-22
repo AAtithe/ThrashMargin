@@ -631,6 +631,7 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
   {
     const l = createLedger(null);
     ok(l.state.shifts.length >= 10 && l.LINE_SIGNS.length >= 8, 'line: his shift moves and the signs to name');
+    ok(l.state.shifts.includes('Put on a podcast or audiobook') && l.HABIT_IDEAS.some((h: { name: string }) => h.name === 'Podcast or audiobook') && l.BANK.some((c: { id: string }) => c.id === 'b-input'), 'line: listening is a shift move, a habit idea and a weekly call');
     l.lineCheck('above');
     ok(l.lineOpen() === null, 'line: above the line needs nothing more');
     const at = (h: number) => { const d = new Date(NOW - DAY); d.setHours(h, 0, 0, 0); return d.getTime(); };

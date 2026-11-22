@@ -189,7 +189,7 @@ Set "concern" to true only if his words suggest crisis or a risk to his safety; 
       return `Write ONE new weekly coaching call for him, based on the week he has just closed. His week, as data:
 ${player(JSON.stringify(facts))}
 
-Target the lowest line, the game that actually ran his week, or the place he worked in the system. Rotate across themes: delegation, pricing and margin, the CFO hat, people, focus, noticing positives, creating space, the game he is playing, designing his ideal life.
+Target the lowest line, the game that actually ran his week, or the place he worked in the system. Rotate across themes: delegation, pricing and margin, the CFO hat, people, focus, noticing positives, what he feeds his mind (the podcasts and audiobooks he says help, and using one idea from them), creating space, the game he is playing, designing his ideal life.
 ${OPTION_RULES}
 "coach" is two short paragraphs explaining the thinking as a CEO would to a peer.
 "todo" is one concrete action he can do within its horizon ("h": week, month or quarter), written as he would write it on a list; "type" is Start, Stop or Keep; "hours" is an honest estimate of the hours a week it gives back once done (0 if none).
