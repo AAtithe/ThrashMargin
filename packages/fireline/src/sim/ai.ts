@@ -36,6 +36,9 @@ import { sitesPlan } from './aiSites';
 import { heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { generalLeads, generalPlan } from './aiGenerals';
+// round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
+import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
+// round7:adaptive end.
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -245,6 +248,9 @@ function commander(s: GameState, owner: Owner): void {
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
+  // round7:adaptive begin. A look round and the plan reconsidered, every few seconds (aiAdapt.ts).
+  adaptObserve(s, owner);
+  // round7:adaptive end.
   // Defend: build, repair and fight off attackers, but never send a wave or a raid. Pushed back at
   // every decision, so nothing can fall due in between.
   if (mode === 'defend') {
@@ -423,6 +429,9 @@ function commander(s: GameState, owner: Owner): void {
     if (iq.length < 2 || (iq.length < lineCount(s, owner, 'infantry') + 1 && extraLine(s, p.credits))) {
       let riflemen = 0.6;
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
+      // round7:adaptive begin. The share answers what it has seen (aiAdapt.ts).
+      riflemen = adaptShare(s, owner, 'rifleman', 'rocketeer', riflemen, 'infantry');
+      // round7:adaptive end.
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
       if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
     }
@@ -437,6 +446,12 @@ function commander(s: GameState, owner: Owner): void {
           buggy = 0.15;
         }
       }
+      // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts).
+      if (adaptiveOn(s, owner)) [tank, buggy] = ((m: [UnitKind, number][]) => {
+        const sum = m.reduce((a, [, w]) => a + w, 0);
+        return [m[0][1] / sum, m[1][1] / sum];
+      })(adaptMix(s, owner, [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]], 'vehicle').slice(0, 3));
+      // round7:adaptive end.
       let kind: UnitKind = roll < tank ? 'tank' : roll < tank + buggy ? 'buggy' : 'artillery';
       // Keep the raiding party up to strength once raids are due.
       if (t.raidSize && raidBuggies < t.raidSize && s.tick >= t.firstRaid - 900) kind = 'buggy';
@@ -474,6 +489,10 @@ function commander(s: GameState, owner: Owner): void {
   for (const b of standing) {
     if ((b.kind === 'barracks' || b.kind === 'factory') && !b.rally) doRally(s, b.id, stage.x, stage.y);
   }
+
+  // round7:adaptive begin. Where a wave gathers: the staging point, or on a flank a second one (aiAdapt.ts).
+  const waveStage = adaptStage(s, owner, stage, home, enemyHome);
+  // round7:adaptive end.
 
   // 4. The army.
   const alive = new Map(units.map(u => [u.id, u]));
@@ -622,7 +641,9 @@ function commander(s: GameState, owner: Owner): void {
 
   // Attack waves.
   const waveUnits = () => waveIds.map(id => alive.get(id)!);
-  const size = Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth);
+  // round7:adaptive begin. A siege waits for a larger wave (aiAdapt.ts); unchanged when off.
+  const size = adaptWaveSize(s, owner, Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), d.waveCap);
+  // round7:adaptive end.
   const recruits = (): Unit[] => {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
@@ -647,7 +668,8 @@ function commander(s: GameState, owner: Owner): void {
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
         // round6:D begin. Formations: the wave gathers (a shape may be passed to doMove here).
-        doMove(s, owner, waveIds, stage.x, stage.y, true);
+        // round7:adaptive: at waveStage (the staging point itself unless the plan is a flank).
+        doMove(s, owner, waveIds, waveStage.x, waveStage.y, true);
         // round6:D end.
         mem.wave++;
         mem.nextAttack = s.tick + d.attackInterval;
@@ -657,12 +679,15 @@ function commander(s: GameState, owner: Owner): void {
     mem.wavePhase = 0;
   } else if (mem.wavePhase === 1) {
     const members = waveUnits();
-    const gathered = members.filter(u => dist(u.x, u.y, stage.x, stage.y) < 6).length;
+    // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
+    const gathered = members.filter(u => dist(u.x, u.y, waveStage.x, waveStage.y) < 6).length;
     if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450)) {
       mem.wavePhase = 2;
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
-      const target = pickTarget(enemy, foes, stage, t.focus, home);
+      // round7:adaptive begin. From waveStage; a raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
+      const target = adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home), waveStage);
+      // round7:adaptive end.
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
       // Integration: a field General near the wave leads it (generalLeads; none with Generals off).
@@ -674,8 +699,9 @@ function commander(s: GameState, owner: Owner): void {
       // A recon sweep over where the wave is going, as it sets off.
       if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
     } else if (!threat) {
-      const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, stage.x, stage.y) >= 6).map(u => u.id);
-      if (lost.length) doMove(s, owner, lost, stage.x, stage.y, true);
+      // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
+      const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, waveStage.x, waveStage.y) >= 6).map(u => u.id);
+      if (lost.length) doMove(s, owner, lost, waveStage.x, waveStage.y, true);
     }
   } else {
     const members = waveUnits();
@@ -695,7 +721,9 @@ function commander(s: GameState, owner: Owner): void {
         core = near;
         centre = middle(near);
       }
-      const target = pickTarget(enemy, foes, centre, t.focus, home);
+      // round7:adaptive begin. A raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
+      const target = adaptTarget(s, owner, pickTarget(enemy, foes, centre, t.focus, home), centre);
+      // round7:adaptive end.
       let spread = 0;
       for (const u of core) spread = Math.max(spread, dist(u.x, u.y, centre.x, centre.y));
       const fighting = members.some(u => u.engage);
@@ -746,6 +774,9 @@ function commander(s: GameState, owner: Owner): void {
 
   mem.waveIds = waveIds;
   mem.raidIds = raidIds;
+  // round7:adaptive begin. Notice a broken wave and where (aiAdapt.ts).
+  adaptAfter(s, owner);
+  // round7:adaptive end.
 }
 
 /**
@@ -1186,7 +1217,9 @@ function advancedUnits(
     ];
     // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
     if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
-    let kind = weighted(s, owner, vehicles, roll) ?? 'tank';
+    // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
+    let kind = weighted(s, owner, adaptMix(s, owner, vehicles, 'vehicle'), roll) ?? 'tank';
+    // round7:adaptive end.
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
     if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
@@ -1215,7 +1248,9 @@ function advancedUnits(
       // Round 6, workstream A: Meridian's Sappers against defences and armour, in a battle with two
       // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.
       if (army === 'meridian' && twoArmies) infantry.push(['sapper', fortified ? 1.5 : armourHeavy ? 1 : 0.6]);
-      kind = weighted(s, owner, infantry);
+      // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
+      kind = weighted(s, owner, adaptMix(s, owner, infantry, 'infantry'));
+      // round7:adaptive end.
     }
     kind = kind ?? 'rifleman';
     if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);

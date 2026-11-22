@@ -137,7 +137,10 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
     const pick = isGeneral(rg[i]) || rg[i] === null ? rg[i] : isGeneral(base.generalPicks?.[i]) ? base.generalPicks![i] : null;
     return pick && GENERAL_FACTION[pick] === factions[i] ? pick : null;
   });
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks };
+  // round7:adaptive begin. The adaptive commander: on only when exactly true, else the base's (off for a base without it).
+  const adaptive = typeof r.adaptive === 'boolean' ? r.adaptive : (base.adaptive ?? false);
+  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks, adaptive };
+  // round7:adaptive end.
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */

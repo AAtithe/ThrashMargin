@@ -1486,6 +1486,14 @@ export interface SkirmishSetup {
    * older setups, which normaliseSetup reads as every seat null.
    */
   generalPicks?: (GeneralId | null)[];
+  // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md).
+  /**
+   * Round 7: the computer reads what it has seen of its enemies and changes its unit mix and its
+   * plan of attack to answer it (Normal and Hard; Easy keeps its simple play). Absent on older
+   * setups, which normaliseSetup reads as false; DEFAULT_SETUP turns it on for new skirmishes.
+   */
+  adaptive?: boolean;
+  // round7:adaptive end.
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1507,6 +1515,9 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   heroes: false,
   generals: false,
   generalPicks: [null, null],
+  // round7:adaptive begin
+  adaptive: true,
+  // round7:adaptive end
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1527,6 +1538,9 @@ export const LEGACY_SETUP: SkirmishSetup = {
   heroes: false,
   generals: false,
   generalPicks: [null, null],
+  // round7:adaptive begin
+  adaptive: false,
+  // round7:adaptive end
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };

@@ -99,6 +99,9 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       heroes: false,
       generals: false,
       generalPicks: setup.sides.map(() => null),
+      // round7:adaptive begin. Stated off: whether War for the Planet uses the adaptive commander is decided later.
+      adaptive: false,
+      // round7:adaptive end.
     },
     teams: setup.sides.map(x => x.team),
   });

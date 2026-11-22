@@ -80,6 +80,9 @@ import { sections as heroesSections } from './drive-heroes';
 import { sections as generalsSections } from './drive-generals';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
+// round7:adaptive begin. The adaptive commander: its sections (scripts/drive-adaptive.ts).
+import { sections as adaptiveSections } from './drive-adaptive';
+// round7:adaptive end.
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2798,6 +2801,9 @@ if (!CAMPAIGN_ONLY) {
     ...generalsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round6:D. Formations and squads: its sections, from scripts/drive-formations.ts, on the line below.
     ...formationsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:adaptive begin. The adaptive commander: its sections, from scripts/drive-adaptive.ts.
+    ...adaptiveSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:adaptive end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

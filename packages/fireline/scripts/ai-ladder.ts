@@ -34,6 +34,11 @@
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
  *   tsx scripts/ai-ladder.ts --match new:normal:ashen,new:normal:meridian   a side's army, by name
+ *   tsx scripts/ai-ladder.ts --map random --match new:hard:adaptive,new:hard:fixed
+ *     round 7: the adaptive commander (aiAdapt.ts). A side marked `adaptive` adapts and one marked
+ *     `fixed` does not, whatever the setup says (the marker goes after the difficulty, before or after
+ *     an army). Unmarked sides follow the setup, which is `--adaptive off` (the default, so the card
+ *     reads as before round 7) or `--adaptive on`. Needs a skirmish setup: give --map.
  *
  * A match is `side0,side1`, each side `commander:difficulty` or `commander:difficulty:army` (round 6:
  * `meridian`, the default, or `ashen`; an army needs a skirmish setup), where the commander is `new` (the
@@ -68,6 +73,8 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
+// round7:adaptive
+import { setAdaptiveOverride } from '../src/sim/aiAdapt';
 import { scaledFor } from '../src/sim/aiScale';
 import { DIFFICULTIES, FACTIONS, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type Faction, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
@@ -81,6 +88,10 @@ interface Side {
   difficulty: Difficulty;
   /** Round 6: this side's army; absent is Meridian. */
   army?: Faction;
+  // round7:adaptive begin
+  /** Round 7: forced adaptive (true) or fixed (false); absent follows the setup. */
+  adaptive?: boolean;
+  // round7:adaptive end
 }
 interface Match {
   sides: [Side, Side];
@@ -122,6 +133,10 @@ const CREDITS = Number(arg('--credits', String(GAME_PACES[PACE].preset.credits))
 const ORE = arg('--ore', GAME_PACES[PACE].preset.ore);
 /** Research mode for a skirmish setup (fireline-round5b-design.md): 'lines' (the default setup's) or 'classic'. */
 const RESEARCH = arg('--research', 'lines');
+// round7:adaptive begin. The setup's adaptive commander for unmarked sides: off unless asked for.
+const ADAPTIVE = arg('--adaptive', 'off');
+if (ADAPTIVE !== 'on' && ADAPTIVE !== 'off') throw new Error(`bad --adaptive "${ADAPTIVE}"`);
+// round7:adaptive end.
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
@@ -139,16 +154,25 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     research: RESEARCH as SkirmishSetup['research'],
     pace: PACE,
     ...(SIZE !== 'standard' ? { size: SIZE } : {}),
+    // round7:adaptive begin
+    adaptive: ADAPTIVE === 'on',
+    // round7:adaptive end
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
 function parseSide(text: string): Side {
-  const [ai, difficulty, army] = text.split(':');
+  // round7:adaptive begin. An `adaptive` or `fixed` marker anywhere after the difficulty.
+  const parts = text.split(':');
+  const marker = parts.slice(2).find(p => p === 'adaptive' || p === 'fixed');
+  const [ai, difficulty, army] = parts.filter(p => p !== marker);
+  if (marker && LEGACY) throw new Error('the adaptive commander needs a skirmish setup: give --map');
+  const adapt = marker ? { adaptive: marker === 'adaptive' } : {};
+  // round7:adaptive end.
   if (!COMMANDERS.includes(ai as Commander) || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
   if (army !== undefined && !FACTIONS.includes(army as Faction)) throw new Error(`bad army in "${text}"`);
   if (army && army !== 'meridian' && LEGACY) throw new Error('an army needs a skirmish setup: give --map');
-  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}) };
+  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}), ...adapt };
 }
 
 /**
@@ -207,6 +231,10 @@ function matchesFromArgs(): Match[] {
 function play(m: Match, seed: number): Result & { match: number } {
   setAutopilotAi(AIS[m.sides[0].ai], 0);
   setAutopilotAi(AIS[m.sides[1].ai], 1);
+  // round7:adaptive begin
+  setAdaptiveOverride(0, m.sides[0].adaptive ?? null);
+  setAdaptiveOverride(1, m.sides[1].adaptive ?? null);
+  // round7:adaptive end
   const name = `ladder-${seed}`;
   const base = setupFor(seed);
   const armies = m.sides.map(sd => sd.army ?? 'meridian');
@@ -228,12 +256,17 @@ function play(m: Match, seed: number): Result & { match: number } {
   }
   setAutopilotAi(null, 0);
   setAutopilotAi(null, 1);
+  // round7:adaptive begin
+  setAdaptiveOverride(0, null);
+  setAdaptiveOverride(1, null);
+  // round7:adaptive end
   return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}) };
 }
 
 /** Round 6: with an army named anywhere on the card, every side's label names its army. */
 const ARMIES_NAMED = FACTIONS_CARD || args.some((a, i) => args[i - 1] === '--match' && a.includes(':ashen'));
-const label = (sd: Side) => `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}`;
+// round7:adaptive: a forced side is labelled `adaptive` or `fixed`.
+const label = (sd: Side) => `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}${sd.adaptive === undefined ? '' : sd.adaptive ? ' adaptive' : ' fixed'}`;
 const minutes = (ticks: number) => (ticks / 600).toFixed(1);
 
 // Worker: plays every (match, seed) job whose index is k mod n, one JSON line per battle.
@@ -252,7 +285,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size, adaptive ${ADAPTIVE}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -267,6 +300,8 @@ if (workerAt >= 0) {
           script,
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
           ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH, '--size', SIZE],
+          // round7:adaptive
+          ...['--adaptive', ADAPTIVE],
           ...(LEGACY ? [] : ['--pace', PACE]),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },

@@ -178,7 +178,9 @@ function rulesAndPresets(ok: Ok): void {
   ok(DEFAULT_SETUP.size === 'standard' && LEGACY_SETUP.size === 'standard', 'both presets state the standard map size');
   const keys = Object.keys(normaliseSetup({}));
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace.
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks']), "pace is the last field of a normalised setup before round 6's four");
+  // round7:adaptive begin. Round 7 adds `adaptive` after round 6's four.
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'adaptive']), "pace is the last field of a normalised setup before round 6's four and round 7's adaptive");
+  // round7:adaptive end.
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
     ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
