@@ -262,7 +262,9 @@ function armyRule(x: Ctx): Finding[] {
     const cause = heavy
       ? heavy.n === heavy.total
         ? `: you lost ${heavy.n} ${plural(kindName(heavy.what), heavy.n ?? 0)} to ${to_(heavy.by)}`
-        : `: you lost ${lost} units, ${heavy.n} of them ${plural(kindName(heavy.what), heavy.n ?? 0)}, most to ${to_(heavy.by)}`
+        : (heavy.n ?? 0) >= 3
+          ? `: you lost ${lost} units, ${heavy.n} of them ${plural(kindName(heavy.what), heavy.n ?? 0)}, most to ${to_(heavy.by)}`
+          : `: you lost ${lost} units, most to ${to_(heavy.by)}`
       : lost
         ? `: you lost ${lost} units`
         : ': they built faster than you';

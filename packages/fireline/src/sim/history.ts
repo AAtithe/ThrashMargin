@@ -14,7 +14,8 @@
  * Compact: each series is a string of small integers, five bits a character with a continuation
  * bit (encodeInts). Income is stored in tens of credits and other money in fifties; credits held, army value, structure value,
  * power and ore control are stored as the change since the last sample (zigzag), which is mostly one
- * or two characters. An Epic battle (huge map, four sides) run to 85 minutes keeps it near 15 KB.
+ * or two characters. An Epic battle (huge map, four sides as teams) that ran 74 minutes kept 15.7 KB,
+ * about 18 KB projected to 85 minutes; an event budget (EVENTS_SOFT) bounds the rest.
  */
 import { BUILDINGS, DERRICK_INCOME, DERRICK_TICKS, SALVAGE_SHARE, TICKS_PER_SECOND, UNITS, type Category, type Owner } from './rules';
 import { salvageOf } from './research';

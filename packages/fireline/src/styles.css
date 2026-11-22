@@ -7020,6 +7020,15 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
   .fl-rv-charts {
     grid-template-columns: minmax(0, 1fr);
   }
+  .fl-rv .fl-d-btn {
+    min-height: 40px;
+  }
+  .fl-rv-scrim {
+    padding: 8px;
+  }
+  .fl-rv {
+    padding: 14px 16px 18px;
+  }
 }
 .fl-rv-chart {
   margin: 0;

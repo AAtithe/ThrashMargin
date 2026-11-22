@@ -348,6 +348,7 @@ function eventText(s: GameState, e: HistoryEvent): string {
       return `${your} General fell.`;
     case 'losses': {
       const by = e.by === 'defences' ? 'defences' : plural(kindName(e.by ?? ''), 2);
+      if (e.total && e.total !== e.n && (e.n ?? 0) < 3) return `${who} lost ${e.total} units in thirty seconds, most to ${by}.`;
       return e.total && e.total !== e.n
         ? `${who} lost ${e.total} units in thirty seconds, ${e.n} of them ${plural(name, e.n ?? 0)}, most to ${by}.`
         : `${who} lost ${e.n} ${plural(name, e.n ?? 0)} in thirty seconds, most to ${by}.`;
