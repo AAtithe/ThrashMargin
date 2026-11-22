@@ -20,6 +20,9 @@ import {
   type Owner,
   type UnitKind,
   type UnitSpec,
+  // round7:structures begin.
+  STRUCTURE_LEVELS,
+  // round7:structures end.
 } from './rules';
 import type { Building, GameState, Perks, Unit } from './types';
 
@@ -56,8 +59,53 @@ export const unitSpec = (s: GameState, owner: Owner, kind: UnitKind): UnitSpec =
 export const buildingSpec = (s: GameState, owner: Owner, kind: BuildingKind): BuildingSpec => buildingSpecFor(factionOf(s, owner), kind);
 /** A unit's own spec, by its owner's army. */
 export const unitSpecOf = (s: GameState, u: Unit): UnitSpec => unitSpecFor(factionOf(s, u.owner), u.kind);
-/** A structure's own spec, by its owner's army. */
-export const buildingSpecOf = (s: GameState, b: Building): BuildingSpec => buildingSpecFor(factionOf(s, b.owner), b.kind);
+/** A structure's own spec, by its owner's army (and, round 7, its level: levelledSpec). */
+export const buildingSpecOf = (s: GameState, b: Building): BuildingSpec =>
+  // round7:structures begin. A structure raised a level reads its levelled spec; level 1 exactly as before.
+  b.level !== undefined && b.level > 1 ? levelledSpec(factionOf(s, b.owner), b.kind, b.level) :
+  // round7:structures end.
+  buildingSpecFor(factionOf(s, b.owner), b.kind);
+
+// round7:structures begin. Structure upgrades (fireline-round7-structures.md): a level's spec, made once
+// per army, kind and level on first use from constant data, like the merged specs above.
+const levelCache: Record<string, BuildingSpec> = {};
+/**
+ * A structure kind's spec for an army at a level: the level-1 spec with STRUCTURE_LEVELS' totals for
+ * that level applied (health, weapon, power, sight), and its cost raised by every level's price so
+ * selling and repairs count what was paid. A level the kind does not have reads as level 1.
+ */
+export function levelledSpec(faction: Faction, kind: BuildingKind, level: number): BuildingSpec {
+  const base = buildingSpecFor(faction, kind);
+  const levels = STRUCTURE_LEVELS[kind];
+  const lv = levels?.[level - 2];
+  if (!levels || !lv) return base;
+  const key = `${faction}:${kind}:${level}`;
+  const hit = levelCache[key];
+  if (hit) return hit;
+  let paid = 0;
+  for (let i = 0; i <= level - 2; i++) paid += levels[i].cost;
+  const w = base.weapon;
+  const spec: BuildingSpec = {
+    ...base,
+    cost: base.cost + paid,
+    hp: Math.round(base.hp * (lv.hpMul ?? 1)),
+    power: base.power + (lv.power ?? 0),
+    sight: base.sight + (lv.sight ?? 0),
+    ...(w
+      ? {
+          weapon: {
+            ...w,
+            range: w.range + (lv.range ?? 0),
+            damage: lv.damageMul ? Math.round(w.damage * lv.damageMul) : w.damage,
+            cooldown: lv.reloadMul ? Math.max(1, Math.round(w.cooldown * lv.reloadMul)) : w.cooldown,
+          },
+        }
+      : {}),
+  };
+  levelCache[key] = spec;
+  return spec;
+}
+// round7:structures end.
 
 /** What any kind costs, takes to build and needs, for this side (structure or unit alike). */
 export function kindSpec(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): { cost: number; buildTicks: number; requires: BuildingKind[] } {

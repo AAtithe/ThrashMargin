@@ -32,6 +32,9 @@ import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedRe
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
+// round7:structures begin.
+import { apparentSpecOf, strategicOn } from './structures';
+// round7:structures end.
 
 /**
  * The computer commander's air power, anti-air and research (fireline-round4-design.md, workstream
@@ -611,6 +614,8 @@ function strikes(
       mem.nextAirStrike = s.tick + t.strikeInterval;
     }
   }
+  // round7:structures: strategic structures on (Decoys in play).
+  const strat = strategicOn(s);
   // Bombers: each full one at the thickest knot of structures the fewest guns cover.
   const bombers = craft.filter(u => airRoleOf(u) === 'bomb' && parked(u) && full(u) && !out.includes(u.id));
   if (due && bombers.length && enemy.length) {
@@ -619,7 +624,13 @@ function strikes(
     for (const b of enemy) {
       const c = buildingCentre(b);
       let near = 0;
-      for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += buildingSpecOf(s, o).weapon ? 1.5 : 1;
+      // round7:structures: with strategic structures on, a cluster counts by what it looks like it is
+      // worth too, so a Decoy passing for a Tech Centre draws the bombers (apparentSpecOf).
+      if (strat) {
+        for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += (apparentSpecOf(s, o, owner).weapon ? 1.5 : 1) * (0.6 + apparentSpecOf(s, o, owner).cost / 2500);
+      } else {
+        for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += buildingSpecOf(s, o).weapon ? 1.5 : 1;
+      }
       const score = near - danger(cover, c.x, c.y) - dist(home.x, home.y, c.x, c.y) * 0.02;
       if (score > bestScore) {
         bestScore = score;

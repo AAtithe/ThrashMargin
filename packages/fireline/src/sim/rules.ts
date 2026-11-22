@@ -185,6 +185,12 @@ export type BuildingKind =
   // Territory and workforce (2026-11-21, setup.territory): the Watchtower and the Quarters.
   | 'watchtower'
   | 'quarters'
+  // round7:structures begin. Strategic structures (fireline-round7-structures.md, setup.strategicBuildings).
+  | 'bunker'
+  | 'supplycache'
+  | 'intelcentre'
+  | 'decoy'
+  // round7:structures end.
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -1108,6 +1114,61 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     blurb:
       'Territory on only. Houses 8 workers. Refineries, Fuel Wells, Foundries, Barracks, War Factories, Helipads and Naval Yards each need a crew to work; without one they stop.',
   },
+  // round7:structures begin. Strategic structures: refused by techAllowed unless setup.strategicBuildings
+  // is on (structures.ts). Each is built round one dilemma (fireline-round7-structures.md).
+  bunker: {
+    name: 'Fortified Bunker',
+    w: 2,
+    h: 2,
+    cost: 700,
+    buildTicks: 110,
+    hp: 1600,
+    power: 0,
+    sight: 6,
+    requires: ['barracks'],
+    blurb:
+      'Strategic structures on only. Up to six infantry garrison it, safe from artillery, bombs and splash while it stands, and fire out at two thirds strength. Inside they cannot be sent anywhere until you unload them; if it falls they stagger out hurt.',
+  },
+  supplycache: {
+    name: 'Supply Cache',
+    w: 1,
+    h: 1,
+    cost: 250,
+    buildTicks: 45,
+    hp: 350,
+    power: 0,
+    sight: 5,
+    requires: ['barracks'],
+    blurb:
+      'Strategic structures on only. Mends your infantry and vehicles within five tiles, slowly. Can be set down beside any of your troops, far from your base, but enemy infantry standing beside it with none of yours there take it over.',
+  },
+  intelcentre: {
+    name: 'Intelligence Centre',
+    w: 2,
+    h: 2,
+    cost: 2200,
+    buildTicks: 200,
+    hp: 900,
+    power: -100,
+    sight: 5,
+    requires: ['uplink'],
+    blurb:
+      'Strategic structures on only. While powered, shows every enemy\'s research and production queues, reveals enemy structures within 28 tiles and sees through their decoys there.',
+  },
+  decoy: {
+    name: 'Decoy',
+    w: 2,
+    h: 2,
+    cost: 200,
+    buildTicks: 40,
+    hp: 250,
+    power: 0,
+    sight: 2,
+    requires: ['power'],
+    blurb:
+      'Strategic structures on only. An inflatable dummy that the enemy sees as the structure you choose, to draw barrages, missiles, bombers and artillery. Worth nothing, keeps nothing alive, and bursts easily.',
+  },
+  // round7:structures end.
 
 
 };
@@ -1148,6 +1209,12 @@ export const BUILD_MENU: BuildingKind[] = [
   // Territory and workforce (2026-11-21): likewise.
   'quarters',
   'watchtower',
+  // round7:structures begin. Strategic structures: last, so turning them on moves no item already listed.
+  'bunker',
+  'supplycache',
+  'decoy',
+  'intelcentre',
+  // round7:structures end.
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1591,6 +1658,19 @@ export interface SkirmishSetup {
    * without). Absent: off.
    */
   territory?: boolean;
+  // round7:structures begin.
+  /**
+   * Structure upgrades (round 7, fireline-round7-structures.md): turrets, Generators, Refineries,
+   * producers, sensors and the Command Yard may be raised a level (STRUCTURE_LEVELS). Advanced tech
+   * only (normaliseSetup turns it off on standard). Absent reads as off, whatever the base.
+   */
+  structureUpgrades?: boolean;
+  /**
+   * Strategic structures (round 7): the Fortified Bunker, Supply Cache, Intelligence Centre and
+   * Decoy. Advanced tech only. Absent reads as off, whatever the base.
+   */
+  strategicBuildings?: boolean;
+  // round7:structures end.
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1615,6 +1695,10 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   industry: false,
   supply: false,
   territory: false,
+  // round7:structures begin. On for a new skirmish (advanced tech); absent on an older setup reads as off.
+  structureUpgrades: true,
+  strategicBuildings: true,
+  // round7:structures end.
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1638,6 +1722,10 @@ export const LEGACY_SETUP: SkirmishSetup = {
   industry: false,
   supply: false,
   territory: false,
+  // round7:structures begin.
+  structureUpgrades: false,
+  strategicBuildings: false,
+  // round7:structures end.
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -2554,3 +2642,107 @@ export const HOUSING: Partial<Record<BuildingKind, number>> = { hq: 12, fieldyar
 /** Workers each kind needs to work, and the order crews are assigned in (economy first). */
 export const CREW: Partial<Record<BuildingKind, number>> = { refinery: 3, fuelwell: 2, foundry: 3, barracks: 2, factory: 4, helipad: 2, shipyard: 3 };
 export const CREW_ORDER: BuildingKind[] = ['refinery', 'fuelwell', 'foundry', 'factory', 'barracks', 'helipad', 'shipyard'];
+
+// round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
+// ---- Structure upgrades (setup.structureUpgrades) ------------------------------------------------
+
+/**
+ * One level above the first. Every multiple and bonus is the total at this level against the
+ * structure's level-1 spec (its army's), never stacked on the level below. The price is the work's
+ * alone: a structure's worth (selling, repairs) is its own cost plus every level paid for.
+ */
+export interface LevelSpec {
+  /** The level's name, e.g. 'Mk II'. */
+  name: string;
+  /** Credits for the work. With industry on, UPGRADE_ALLOY_SHARE of it is paid in alloys. */
+  cost: number;
+  /** Ticks of work: half speed while the side is short of power, as production is. */
+  ticks: number;
+  /** Full health, as a multiple of the level-1 spec's. */
+  hpMul?: number;
+  /** Weapon range added, in tiles. */
+  range?: number;
+  /** Weapon damage, as a multiple. */
+  damageMul?: number;
+  /** Weapon reload, as a multiple (below 1 fires faster). */
+  reloadMul?: number;
+  /** Power added: more made by a Generator, or (negative) more drawn. */
+  power?: number;
+  /** Sight added, in tiles. */
+  sight?: number;
+  /** Production speed of the queue this structure works, as a multiple. */
+  rate?: number;
+  /** Refinery: unloading speed and the credits each load is worth, as multiples. */
+  unload?: number;
+  income?: number;
+  /** What the level gives, in a few words, for the button and the card. */
+  blurb: string;
+}
+
+/**
+ * The levels each kind can rise through, level 2 first. A kind not listed has none. Each one was
+ * priced against building another copy (the table and the reasoning: fireline-round7-structures.md).
+ */
+export const STRUCTURE_LEVELS: Partial<Record<BuildingKind, LevelSpec[]>> = {
+  turret: [
+    { name: 'Mk II', cost: 350, ticks: 90, hpMul: 1.4, range: 0.75, blurb: '+0.75 range, +40% health' },
+    { name: 'Mk III', cost: 450, ticks: 120, hpMul: 1.8, range: 0.75, damageMul: 1.35, power: -10, blurb: '+35% damage, +80% health, draws 10 more power' },
+  ],
+  rocketturret: [{ name: 'Mk II', cost: 550, ticks: 110, hpMul: 1.4, reloadMul: 0.75, blurb: 'fires a third faster, +40% health' }],
+  flakcannon: [{ name: 'Mk II', cost: 400, ticks: 90, hpMul: 1.35, range: 1.5, blurb: '+1.5 range, +35% health' }],
+  power: [{ name: 'Advanced', cost: 300, ticks: 120, hpMul: 1.3, power: 70, blurb: '+70 power on the same ground' }],
+  refinery: [{ name: 'Expanded', cost: 700, ticks: 150, hpMul: 1.25, unload: 1.5, income: 1.1, blurb: 'unloads half as fast again, +10% from every load' }],
+  barracks: [
+    { name: 'Level 2', cost: 250, ticks: 80, hpMul: 1.25, rate: 1.3, blurb: 'trains 30% faster' },
+    { name: 'Level 3', cost: 350, ticks: 100, hpMul: 1.5, rate: 1.6, blurb: 'trains 60% faster' },
+  ],
+  factory: [
+    { name: 'Level 2', cost: 800, ticks: 150, hpMul: 1.2, rate: 1.3, blurb: 'builds 30% faster' },
+    { name: 'Level 3', cost: 1000, ticks: 180, hpMul: 1.4, rate: 1.6, blurb: 'builds 60% faster' },
+  ],
+  uplink: [{ name: 'Level 2', cost: 450, ticks: 100, hpMul: 1.25, sight: 6, blurb: '+6 sight' }],
+  watchtower: [{ name: 'Level 2', cost: 250, ticks: 60, hpMul: 1.4, sight: 4, damageMul: 1.5, blurb: '+4 sight, +50% damage' }],
+  hq: [
+    { name: 'Level 2', cost: 1000, ticks: 240, hpMul: 1.35, rate: 1.25, blurb: 'builds structures 25% faster, +35% health' },
+    { name: 'Level 3', cost: 1400, ticks: 300, hpMul: 1.7, rate: 1.5, blurb: 'builds structures 50% faster, +70% health' },
+  ],
+};
+/** The highest level a kind reaches: 1 for a kind without upgrades. */
+export const maxLevelOf = (kind: BuildingKind): number => 1 + (STRUCTURE_LEVELS[kind]?.length ?? 0);
+/** A structure takes this much more damage while an upgrade is under way: the risk of the work. */
+export const UPGRADE_DAMAGE_TAKEN = 1.25;
+/** Industry on: the share of an upgrade's price paid in alloys (at ALLOY_VALUE credits each). */
+export const UPGRADE_ALLOY_SHARE = 0.25;
+
+// ---- Strategic structures (setup.strategicBuildings) --------------------------------------------
+
+/** Infantry a Fortified Bunker holds. */
+export const BUNKER_SLOTS = 6;
+/** What each soldier inside fires at, as a share of its own damage. */
+export const BUNKER_DAMAGE = 2 / 3;
+/** Range added to a soldier's own from inside (the walls stand a tile out from the centre it fires from). */
+export const BUNKER_RANGE = 1;
+/** How close to the footprint an infantryman must come to go in. */
+export const BUNKER_ENTER_RANGE = 1.2;
+/** If the Bunker falls, those inside stagger out with this share of the health they had. */
+export const BUNKER_BAIL_HP = 0.5;
+/** A Supply Cache mends within this many tiles of its footprint, every CACHE_TICKS. */
+export const CACHE_RADIUS = 5;
+export const CACHE_TICKS = 20;
+/** Health each infantryman, and each vehicle, regains per pulse. */
+export const CACHE_HEAL = 4;
+export const CACHE_REPAIR = 6;
+/** Enemy infantry within this range of the footprint, with none of the holder's, take it over in CACHE_CAPTURE_TICKS. */
+export const CACHE_CAPTURE_RANGE = 1.5;
+export const CACHE_CAPTURE_TICKS = 80;
+/** A Supply Cache may also be set down within this many tiles of any of its side's ground units. */
+export const CACHE_PLACE_RANGE = 4;
+/** Supply Caches a side may hold at once. */
+export const CACHE_MAX = 4;
+/** An Intelligence Centre reveals enemy structures, and sees through decoys, within this radius of its centre. */
+export const INTEL_RADIUS = 28;
+/** What a new Decoy looks like until told otherwise. */
+export const DECOY_DEFAULT: BuildingKind = 'power';
+/** Structures that keep no side in the battle, extend no base and send out no crew when they fall. */
+export const OUTPOSTS: BuildingKind[] = ['supplycache', 'decoy'];
+// round7:structures end.
