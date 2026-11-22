@@ -1483,6 +1483,14 @@ export function Battle({
     </button>
   );
   // The portal's own toggles, fitted into the console: same height and face as its buttons.
+  const menuButton = (
+    <button type="button" className="fl-d-btn fl-d-menu" aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
+      Menu
+    </button>
+  );
+  // In the Menu a finger gets 40px display buttons: on a touch screen 1100px wide or more the Menu is
+  // the only place they are.
+  const sheetViewBtn: CSSProperties = layout.touch ? { padding: '6px 10px', minHeight: 40 } : { padding: '6px 10px' };
   const viewBtn: CSSProperties = { height: 26, padding: '0 7px', border: '1px solid transparent', background: 'transparent', color: UI.textSoft, fontSize: '0.72rem', borderRadius: 3 };
   const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
   const modal = !!(placing || targeting);
@@ -1603,9 +1611,7 @@ export function Battle({
           <>
             {saveError && <span className="fl-d-save" data-state="error">Not saving</span>}
             {pauseButton}
-            <button type="button" className="fl-d-btn fl-d-menu" aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
-              Menu
-            </button>
+            {menuButton}
           </>
         ) : (
           <>
@@ -1624,50 +1630,63 @@ export function Battle({
                 ?
               </button>
             </div>
-            <div className="fl-d-group fl-d-view" role="group" aria-label="Display">
-              <MotionToggle style={viewBtn} />
-              <ThemeToggle style={viewBtn} />
-              <FullscreenToggle style={viewBtn} />
-            </div>
+            {/* On a touch screen the display settings, set once and rarely touched, go in the Menu, so the
+                rest of the row can be a finger's size and still fit at 1100px. */}
+            {layout.touch ? (
+              menuButton
+            ) : (
+              <div className="fl-d-group fl-d-view" role="group" aria-label="Display">
+                <MotionToggle style={viewBtn} />
+                <ThemeToggle style={viewBtn} />
+                <FullscreenToggle style={viewBtn} />
+              </div>
+            )}
           </>
         )}
       </header>
 
-      {menu && layout.compact && (
+      {menu && (layout.compact || layout.touch) && (
         <div style={menuScrim} onClick={() => setMenu(false)}>
           <div role="dialog" aria-label="Battle menu" style={menuSheet} onClick={e => e.stopPropagation()} data-testid="menu">
             <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
               {s.name} · {DIFFICULTIES[s.difficulty].label}
             </div>
             <SideNames state={s} />
-            {saveStatus}
-            <div style={menuRow}>
-              <span style={menuLabel}>Speed</span>
-              {speedButtons}
-            </div>
-            <div style={menuRow}>
-              <span style={menuLabel}>Sound</span>
-              {soundControls}
-            </div>
+            {/* The full row (a touch screen 1100px wide or more) already holds these. */}
+            {layout.compact && (
+              <>
+                {saveStatus}
+                <div style={menuRow}>
+                  <span style={menuLabel}>Speed</span>
+                  {speedButtons}
+                </div>
+                <div style={menuRow}>
+                  <span style={menuLabel}>Sound</span>
+                  {soundControls}
+                </div>
+              </>
+            )}
             <div style={menuRow}>
               <span style={menuLabel}>Display</span>
-              <ThemeToggle style={{ padding: '6px 10px' }} />
-              <MotionToggle style={{ padding: '6px 10px' }} />
-              <FullscreenToggle style={{ padding: '6px 10px' }} />
+              <ThemeToggle style={sheetViewBtn} />
+              <MotionToggle style={sheetViewBtn} />
+              <FullscreenToggle style={sheetViewBtn} />
             </div>
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
-              {tourButton}
-              <button
-                type="button"
-                className="fl-d-btn"
-                style={touchBtn}
-                onClick={() => {
-                  setMenu(false);
-                  setHelp(true);
-                }}
-              >
-                Controls
-              </button>
+              {layout.compact && tourButton}
+              {layout.compact && (
+                <button
+                  type="button"
+                  className="fl-d-btn"
+                  style={touchBtn}
+                  onClick={() => {
+                    setMenu(false);
+                    setHelp(true);
+                  }}
+                >
+                  Controls
+                </button>
+              )}
               <button type="button" className="fl-d-btn fl-d-primary" style={touchBtn} onClick={() => setMenu(false)}>
                 Close
               </button>
