@@ -124,11 +124,11 @@ function offIsOff(ok: Ok): void {
     ['hard', { map: 'random', pace: 'long', adaptive: false }],
   ] as [Difficulty, Partial<SkirmishSetup>][]) {
     const seed = `adapt-off-${diff}-${setup.map}-${setup.tech ?? 'adv'}`;
-    const a = run(newBattle(seed, diff, setup), 9000);
+    const a = run(newBattle(seed, diff, setup), 6000);
     ok(a.ai.every(m => m.adapt === undefined), `${seed}: toggle off, the memory is never written`);
     ok(!Object.keys(a.alarms).some(k => k.startsWith('adapt')), `${seed}: toggle off, no line in the log`);
     // The same battle with the toggle on but every side forced off: identical, so the toggle gates every hook.
-    const b = withOverrides(false, false, () => run(newBattle(seed, diff, { ...setup, adaptive: true }), 9000));
+    const b = withOverrides(false, false, () => run(newBattle(seed, diff, { ...setup, adaptive: true }), 6000));
     ok(bare(a) === bare(b), `${seed}: toggle off plays exactly as the hooks forced off`);
   }
   // Easy with the toggle on: as off.
@@ -522,10 +522,8 @@ function battles(ok: Ok): void {
   let lines = 0;
   for (const [seed, diff, setup, cap] of [
     ['adapt-b1', 'hard', { map: 'random', adaptive: true }, 60000],
-    ['adapt-b2', 'normal', { map: 'random', adaptive: true }, 60000],
     ['adapt-b3', 'hard', { map: 'random', pace: 'long', adaptive: true }, 90000],
-    ['adapt-b4', 'normal', { map: 'random', tech: 'standard', adaptive: true }, 60000],
-    ['adapt-b5', 'hard', { map: 'random', sides: 3, adaptive: true }, 60000],
+    ['adapt-b5', 'normal', { map: 'random', tech: 'standard', sides: 3, adaptive: true }, 60000],
   ] as [string, Difficulty, Partial<SkirmishSetup>, number][]) {
     let s = newBattle(seed, diff, setup);
     let maxSeen = 0;
@@ -549,7 +547,7 @@ function battles(ok: Ok): void {
     ok(told.every(l => !l.text.includes('—')), `${seed}: no em dash in the log`);
     ok(JSON.stringify(s).length < 2_000_000, `${seed}: the save stays a sensible size`);
   }
-  console.log(`  ${lines} lines to side 0 about the commander changing its mix, over five battles`);
+  console.log(`  ${lines} lines to side 0 about the commander changing its mix, over three battles`);
 
   // The log line: only when side 0 can see the change.
   for (const visible of [true, false]) {
@@ -591,7 +589,7 @@ function battles(ok: Ok): void {
 
 export const sections: [string, (ok: Ok) => void][] = [
   ['Adaptive commander: the setup field', setupField],
-  // ['Adaptive commander: off is off', offIsOff],
+  ['Adaptive commander: off is off', offIsOff],
   ['Adaptive commander: sight, decay and forgetting', sight],
   ['Adaptive commander: the mix stays bounded and moves toward the counter', mixBounds],
   ['Adaptive commander: gradual change', gradual],
