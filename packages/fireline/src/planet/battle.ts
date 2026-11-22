@@ -95,6 +95,8 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       pace: 'quick',
       size: battleMapSizeOf(setup),
       sites: false,
+      // round7:fortification: stated off; War for the Planet may turn it on later.
+      fortification: false,
       factions: setup.sides.map(() => 'meridian' as const),
       heroes: false,
       generals: false,

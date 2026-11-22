@@ -99,7 +99,11 @@ const preRound6 = (s: GameState): GameState => {
  */
 const preSize = (s: GameState): unknown => {
   if (!s.setup) return s;
-  const { pace, size, sites, ...rest } = s.setup;
+  // round7:fortification: the Fortification line's toggle, after the hashes were recorded. Its value is
+  // the default's (on) wherever it can apply (advanced tech, development lines) and off elsewhere; no
+  // hashed battle is a Long or Epic one, so no commander researches it, and it is left out of the hash.
+  const { pace, size, sites, fortification, ...rest } = s.setup;
+  if (fortification !== (s.setup.tech === 'advanced' && s.setup.research === 'lines')) throw new Error(`skirmish recorded fortification ${fortification}`);
   if (pace !== 'quick') throw new Error(`skirmish recorded pace ${pace}, expected quick`);
   if (size !== 'standard') throw new Error(`skirmish recorded map size ${size}, expected standard`);
   if (sites !== false) throw new Error(`skirmish recorded sites ${sites}, expected false`);

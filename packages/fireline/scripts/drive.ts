@@ -80,6 +80,8 @@ import { sections as heroesSections } from './drive-heroes';
 import { sections as generalsSections } from './drive-generals';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
+// round7:fortification. The Fortification line, counter-battery and Point Defence (scripts/drive-fortification.ts).
+import { sections as fortificationSections } from './drive-fortification';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2798,6 +2800,9 @@ if (!CAMPAIGN_ONLY) {
     ...generalsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round6:D. Formations and squads: its sections, from scripts/drive-formations.ts, on the line below.
     ...formationsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:fortification begin. Its sections, from scripts/drive-fortification.ts.
+    ...fortificationSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:fortification end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

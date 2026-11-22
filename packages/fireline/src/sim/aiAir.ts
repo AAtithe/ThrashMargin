@@ -31,6 +31,8 @@ import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedRe
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
+// round7:fortification. The commander and the Fortification line (aiFortification.ts).
+import { fortificationNext, wantsPointDefence } from './aiFortification';
 
 /**
  * The computer commander's air power, anti-air and research (fireline-round4-design.md, workstream
@@ -280,12 +282,15 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // research starts without waiting for the army or the aircraft, while the map has ore to pay for
   // it. Short of the price, the commander notes what it is saving for (the hold in ai.ts reads it).
   const paced = pacedResearch(s);
+  // round7:fortification begin. Point Defence while being shelled, once the doctrine is researched.
+  if (!crisis && wantsPointDefence(s, owner, diff)) queueStructure(s, owner, 'pointdefence');
+  // round7:fortification end.
   if (paced) {
     delete mem.researchFor;
     if (!crisis && ore >= PACED_ORE_FLOOR && count('researchlab') < 1 && !p.queues.building.some(q => q.kind === 'researchlab'))
       if (count('factory') > 0 && count('refinery') >= d.refineries && count('turret') >= 1) queueStructure(s, owner, 'researchlab');
     if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR) {
-      const next = nextResearch(s, owner, t.research.paced, true);
+      const next = /* round7:fortification */ (!p.research && count('researchlab') > 0 ? fortificationNext(s, owner, diff) : null) ?? nextResearch(s, owner, t.research.paced, true);
       const pos = next && UPGRADE_LINE[next];
       if (next && pos && pos.mark === 3) {
         const line = pos.line;

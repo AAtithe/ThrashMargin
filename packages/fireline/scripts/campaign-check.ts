@@ -474,6 +474,8 @@ section('mission specs', () => {
     ok(hasBase || !m.tech.some(isBuilding), `${L}: building tech only with a Command Yard`);
     // Round 5 (fireline-round5b-design.md, section 7): missions never use development lines.
     ok(m.research === 'classic', `${L}: classic research, never development lines`);
+    // round7:fortification: every mission states the Fortification line off.
+    ok(m.fortification === false, `${L}: states the Fortification line off`);
 
     // Tech and powers, and the unlock arc.
     for (const t of m.tech) ok(isBuilding(t) || isUnit(t), `${L}: tech ${t} is a real, buildable kind`);

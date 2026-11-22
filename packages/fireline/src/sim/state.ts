@@ -67,6 +67,8 @@ import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
+// round7:fortification. The Fortification line (fireline-round7-fortification.md).
+import { fortificationOn, structureMaxHp } from './fortify';
 
 export { startOf };
 // Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
@@ -123,6 +125,10 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // base from before round 5 has none: 'standard'); sites are on only when exactly true.
   const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
   const sites = typeof r.sites === 'boolean' ? r.sites : (base.sites ?? false);
+  // round7:fortification begin. The Fortification line: advanced tech and development lines only;
+  // anything but a boolean takes the base's (a save's base, LEGACY_SETUP, has it off).
+  const fortification = tech === 'advanced' && research === 'lines' && (typeof r.fortification === 'boolean' ? r.fortification : (base.fortification ?? false));
+  // round7:fortification end.
   // Round 6: one army and one doctrine General per seat; heroes and field Generals on only when
   // exactly true. Anything else falls back to the base's (a base from before round 6 has none:
   // 'meridian', off, no General). A General from the other army reads as none.
@@ -137,7 +143,7 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
     const pick = isGeneral(rg[i]) || rg[i] === null ? rg[i] : isGeneral(base.generalPicks?.[i]) ? base.generalPicks![i] : null;
     return pick && GENERAL_FACTION[pick] === factions[i] ? pick : null;
   });
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks };
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -174,6 +180,10 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round6:C begin. Generals: the field General allowed only with setup.generals.
   if (kind === 'general' && !fieldGenerals(s)) return false;
   // round6:C end.
+  // round7:fortification begin. Point Defence: offered only in a battle that plays the Fortification
+  // line (built only once the side has the Point Defence doctrine: canQueue).
+  if (kind === 'pointdefence' && !fortificationOn(s)) return false;
+  // round7:fortification end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -355,6 +365,9 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
     tx: aim.x,
     ty: aim.y,
   };
+  // round7:fortification begin. Reinforced concrete: a new structure stands at its raised full health.
+  if (s.players[owner]?.upgrades?.includes('concrete')) b.hp = structureMaxHp(s, b);
+  // round7:fortification end.
   s.buildings.push(b);
   return b;
 }
@@ -454,6 +467,8 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    // round7:fortification: counter-battery reveals, tuples never edited in place.
+    ...(s.reveals ? { reveals: s.reveals.slice() } : {}),
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
     ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
@@ -484,7 +499,7 @@ export function powerOf(s: GameState, owner: Owner): { made: number; used: numbe
     if (b.owner !== owner) continue;
     const spec = buildingSpecOf(s, b);
     const p = spec.power;
-    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / spec.hp));
+    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / /* round7:fortification */ structureMaxHp(s, b)));
     else used -= p;
   }
   // A Spy on a Generator: the side's power has failed, whatever it has standing.
@@ -625,6 +640,8 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
   for (const u of s.units) if (u.owner === owner) mark(u.x, u.y, unitSpecOf(s, u).sight);
   // Recon sweeps are side 0's, and show their area until they run out.
   if (owner === 0 && s.recon) for (const r of s.recon) if (s.tick < r[3]) mark(r[0], r[1], r[2]);
+  // round7:fortification: counter-battery reveals belong to the side that traced the battery.
+  if (s.reveals) for (const r of s.reveals) if (r[4] === owner && s.tick < r[3]) mark(r[0], r[1], r[2]);
   for (const b of s.buildings)
     if (b.owner === owner) {
       const spec = buildingSpecOf(s, b);
@@ -761,6 +778,9 @@ export function migrateState(raw: unknown): GameState | null {
   // round5:D end.
   // Round 6: a side's army, its perks, and squads, repaired or dropped, never trusted blind.
   migrateRound6(s, out);
+  // round7:fortification begin. Counter-battery reveals and the commander's shelling counts.
+  migrateFortification(out);
+  // round7:fortification end.
   // Only two sides may fall back on the original start sites.
   if (n > 2 && !out.starts) return null;
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
@@ -784,6 +804,32 @@ export function migrateState(raw: unknown): GameState | null {
 }
 
 const AI_MODES: AiMode[] = ['normal', 'defend', 'raid', 'passive'];
+
+// round7:fortification begin.
+/**
+ * The Fortification line's fields on the copy migrateState builds: counter-battery reveals kept only
+ * when well formed (and only in a battle that plays the line), the commander's shelling counts only
+ * when finite. A state without them is left exactly as it was.
+ */
+function migrateFortification(out: GameState): void {
+  if (out.reveals !== undefined) {
+    const n = out.players.length;
+    const ok = (r: unknown): r is NonNullable<GameState['reveals']>[number] =>
+      Array.isArray(r) && r.length === 6 && r.every(v => Number.isFinite(v)) && Number.isInteger(r[4]) && r[4] >= 0 && r[4] < n && Number.isInteger(r[5]);
+    const kept = fortificationOn(out) && Array.isArray(out.reveals) ? out.reveals.filter(ok).map(r => r.slice() as typeof r) : [];
+    if (kept.length || (fortificationOn(out) && Array.isArray(out.reveals))) out.reveals = kept;
+    else delete out.reveals;
+  }
+  const keys = ['shellGround', 'shellAir', 'shellTick', 'shellX', 'shellY'] as const;
+  if (out.ai.some(m => m && typeof m === 'object' && keys.some(k => k in m)))
+    out.ai = out.ai.map(m => {
+      if (!m || typeof m !== 'object' || !keys.some(k => k in m)) return m;
+      const c = { ...m };
+      for (const k of keys) if (k in c && (!fortificationOn(out) || !Number.isFinite(c[k]))) delete c[k];
+      return c;
+    });
+}
+// round7:fortification end.
 
 /** A planet battle's runtime from a save, or null when it is not well formed for n sides. */
 function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {

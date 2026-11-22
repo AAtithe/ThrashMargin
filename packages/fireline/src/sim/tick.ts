@@ -118,6 +118,9 @@ import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './
 import { auraWeapon, generalsStep, inAura } from './generals';
 import { lostAboard, transportStep } from './transport';
 import { canReach, isShip, launchTile, navalStep } from './naval';
+// round7:fortification. The Fortification line (fireline-round7-fortification.md).
+import { fortificationStep, notePressure } from './fortification';
+import { shelterMul, structureMaxHp } from './fortify';
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
 function crossDomain(u: Unit, t: Target): boolean {
@@ -221,6 +224,10 @@ export function step(s: GameState): void {
   sitesStep(s);
   // round5:D end.
   charges(s);
+  // round7:fortification begin. Counter-battery and Point Defence, after every shot of the tick and
+  // before any lands. A no-op in a battle without the Fortification line.
+  fortificationStep(s);
+  // round7:fortification end.
   landProjectiles(s, ctx);
   separate(s, ctx);
   removeDead(s);
@@ -706,7 +713,9 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
       if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
       const d = distToTarget(p.toX, p.toY, { building: b });
       if (d > p.splash) continue;
-      hurt(s, { building: b }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
+      // round7:fortification: Hardened shelters (1 without them, and the product is not taken).
+      const shelter = shelterMul(s, b, p.weapon);
+      hurt(s, { building: b }, shelter === 1 ? p.damage * (1 - (0.5 * d) / p.splash) : p.damage * (1 - (0.5 * d) / p.splash) * shelter, p, shooter);
     }
   } else {
     const u = s.units.find(v => v.id === p.target && v.hp > 0);
@@ -746,6 +755,8 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
     mem.hurtX = t.building.x + 1;
     mem.hurtY = t.building.y + 1;
     if (victim.owner === 0) alarm(s, 'base', 'Our base is under attack.', 300);
+    // round7:fortification: the commander's count of indirect fire on its structures.
+    if (s.setup?.fortification) notePressure(s, t.building, p);
   } else if (victim.owner === 0 && t.unit!.kind === 'hauler') {
     alarm(s, 'hauler', 'A hauler is under attack.', 300);
   } else {
@@ -1134,14 +1145,16 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
 function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   const spec = buildingSpecOf(s, b);
   if (b.repairing) {
-    if (b.hp >= spec.hp) b.repairing = false;
+    // round7:fortification: full health is Reinforced concrete's where the side has it (spec.hp otherwise).
+    const full = structureMaxHp(s, b);
+    if (b.hp >= full) b.repairing = false;
     else {
       const amount = Math.max(1, Math.round(spec.hp / 200));
       const cost = (amount * spec.cost * REPAIR_COST_SHARE) / spec.hp;
       const p = s.players[b.owner];
       if (p.credits >= cost) {
         p.credits = Math.round((p.credits - cost) * 100) / 100;
-        b.hp = Math.min(spec.hp, b.hp + amount);
+        b.hp = Math.min(full, b.hp + amount);
       } else b.repairing = false;
     }
   }

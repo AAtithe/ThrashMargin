@@ -212,7 +212,8 @@ function rulesAndPresets(ok: Ok): void {
   const seen = new Map<UpgradeId, number>();
   for (const line of LINE_ORDER) for (const id of [...LINES[line].marks, ...LINES[line].fork]) seen.set(id, (seen.get(id) ?? 0) + 1);
   ok(LINE_ORDER.length === 5 && new Set(LINE_ORDER).size === 5 && LINE_ORDER.every(l => l in LINES), 'five lines, each listed once');
-  ok(ALL_UPGRADES.length === 21, `twenty-one upgrades (${ALL_UPGRADES.length})`);
+  // round7:fortification: the Fortification line's four (drive-fortification.ts) on top of round 5's twenty-one.
+  ok(ALL_UPGRADES.length === 25, `twenty-five upgrades (${ALL_UPGRADES.length})`);
   // Countermeasures (the air war, merged 2026-11-11) is classic only and belongs to no line:
   // Armoured cockpits, the air line's Mk III, is its lines counterpart.
   ok(!seen.has('countermeasures') && !UPGRADE_LINE.countermeasures && isClassicUpgrade('countermeasures'), 'countermeasures: classic only, in no line');

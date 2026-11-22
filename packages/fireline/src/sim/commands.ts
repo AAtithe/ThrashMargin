@@ -44,6 +44,8 @@ import { heroesInPlay, heroRecruitProblem } from './heroes';
 import type { HeroKind } from './rules';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { generalQueueable } from './generals';
+// round7:fortification. The Fortification line (fireline-round7-fortification.md).
+import { structureMaxHp } from './fortify';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -72,6 +74,9 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   // round6:C begin. Generals: one field General per side (standing or queued), and its replacement cooldown.
   if (kind === 'general' && !generalQueueable(s, owner)) return false;
   // round6:C end.
+  // round7:fortification begin. Point Defence: built only once the side has the Point Defence doctrine researched.
+  if (kind === 'pointdefence' && !s.players[owner]?.upgrades?.includes('pointdef')) return false;
+  // round7:fortification end.
   if (categoryOf(kind) !== category) return false;
   // A mission limits what side 0 may build to what the campaign has unlocked; a skirmish on
   // standard tech, and a mission's enemy, to the original game's kinds.
@@ -222,7 +227,7 @@ export function canSell(s: GameState, owner: Owner, id: number): boolean {
 export function doSell(s: GameState, owner: Owner, id: number): void {
   const b = s.buildings.find(x => x.id === id)!;
   const spec = buildingSpecOf(s, b);
-  const refund = Math.floor((spec.cost * SELL_RETURN * (b.hp / spec.hp)) / 10) * 10;
+  const refund = Math.floor((spec.cost * SELL_RETURN * (b.hp / /* round7:fortification */ structureMaxHp(s, b))) / 10) * 10;
   s.players[owner].credits += refund;
   s.buildings = s.buildings.filter(x => x.id !== id);
   s.effects.push({ id: s.nextId++, kind: 'sold', x: b.x + spec.w / 2, y: b.y + spec.h / 2, at: s.tick, size: Math.max(spec.w, spec.h) });

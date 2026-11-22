@@ -39,6 +39,11 @@ import { drawSiteLayer } from './art';
 import { stealthSeen } from '../sim/sites';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { drawGeneralAuras } from './art';
+// round7:fortification. Point Defence intercepts, counter-battery marks, concrete's full health.
+import { drawBatteryMark, drawIntercept, INTERCEPT_LIFT } from './fx/fortification';
+import { structureMaxHp } from '../sim/fortify';
+import { isAlly } from '../sim/sides';
+import { POINT_DEFENCE_COOLDOWN, type Owner } from '../sim/rules';
 
 /**
  * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
@@ -415,13 +420,13 @@ export class Renderer {
       const py = b.y * TILE;
       if (!inView(px + (spec.w * TILE) / 2, py + (spec.h * TILE) / 2, 120)) continue;
       const w = spec.weapon;
-      const frac = b.hp / spec.hp;
+      const frac = b.hp / /* round7:fortification */ structureMaxHp(cur, b);
       const bpose: BuildingPoseX = {
         t,
         rise: Math.min(1, Math.max(0, (rt - b.placedAt) / 15)),
         lowPower: low[b.owner],
         turret: Math.atan2(b.ty, b.tx),
-        sinceShot: w && b.cooldown > 0 ? (w.cooldown - b.cooldown) / TICKS_PER_SECOND : 9,
+        sinceShot: w && b.cooldown > 0 ? (w.cooldown - b.cooldown) / TICKS_PER_SECOND : /* round7:fortification */ b.kind === 'pointdefence' && b.cooldown > 0 ? (POINT_DEFENCE_COOLDOWN - b.cooldown) / TICKS_PER_SECOND : 9,
         hp: frac,
         working: working.has(b.id),
       };
@@ -727,6 +732,8 @@ export class Renderer {
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
         if (e.kind === 'repair') for (let i = 0; i < 4; i++) this.fx.spark(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8);
         if (e.kind === 'muzzle' && e.weapon === 'flame') this.fx.flameSpray(x, y, (e.x2 ?? e.x) * TILE, (e.y2 ?? e.y) * TILE);
+        // round7:fortification: a projectile brought down scatters sparks in the air.
+        if (e.kind === 'intercept' && e.size) for (let i = 0; i < 6; i++) this.fx.spark(x, y - INTERCEPT_LIFT);
         startCampaignEffect(e, this.fx);
         if (age < 4) this.hear(e, cam, vis, cur);
       }
@@ -821,6 +828,9 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(x, y, e.size * 10 * (age / 6), 0, Math.PI * 2);
         ctx.stroke();
+      } else if (e.kind === 'intercept') {
+        // round7:fortification: a Point Defence shot.
+        drawIntercept(ctx, x, y, (e.x2 ?? e.x) * TILE, (e.y2 ?? e.y) * TILE, e.size > 0, age);
       } else if (e.kind !== 'muzzle' && e.kind !== 'sold') {
         drawCampaignEffect(ctx, e, age, cur, t);
       }
@@ -875,6 +885,12 @@ export class Renderer {
       for (const [cx, cy, r, until] of cur.recon) {
         if (until <= cur.tick) continue;
         drawReconArea(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
+      }
+    // round7:fortification: counter-battery marks on enemy batteries traced by side 0's team, above the fog.
+    if (cur.reveals)
+      for (const [cx, cy, r, until, side] of cur.reveals) {
+        if (until <= cur.tick || !isAlly(cur, side as Owner, 0)) continue;
+        drawBatteryMark(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
       }
     // Edges of the world.
     ctx.fillStyle = '#050707';
@@ -964,6 +980,11 @@ export class Renderer {
     } else if (e.kind === 'sold') kind = 'sold';
     else if (e.kind === 'boom' && e.weapon === 'missile') kind = 'missileImpact';
     else if (e.kind === 'boom' && e.weapon === 'flame') return;
+    // round7:fortification: a Point Defence shot sounds like a short burst.
+    else if (e.kind === 'intercept') {
+      kind = 'bullet';
+      gain = 0.6;
+    }
     else if (e.size >= 2) kind = 'boomBuilding';
     else if (e.size >= 1) kind = 'boomVehicle';
     else {

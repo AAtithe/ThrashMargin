@@ -28,6 +28,8 @@ import {
 } from './rules';
 import { migrateLoadouts } from './loadout';
 import { airDamageMulOf, airSpeedOf, damageMulOf, migrateResearch, rearmMulOf, researchTicksOf, splashMulOf } from './research';
+// round7:fortification: a save's research is checked against the lines its battle offers.
+import { linesFor } from './fortify';
 import { maxHpOf, researchModeOf } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
@@ -588,7 +590,7 @@ export function airRoom(s: GameState, owner: Owner): number {
 export function migrateAir(s: GameState): void {
   const mode = researchModeOf(s);
   s.players = s.players.map(p => {
-    const fixed = migrateResearch(p, mode, id => researchTicksOf(s, id));
+    const fixed = migrateResearch(p, mode, id => researchTicksOf(s, id), /* round7:fortification */ linesFor(s));
     const queues = p.queues && typeof p.queues === 'object' ? p.queues : ({} as GameState['players'][number]['queues']);
     const out = {
       ...p,

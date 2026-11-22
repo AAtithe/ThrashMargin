@@ -1696,6 +1696,11 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     // round6:B end.
     // round6:C begin. Generals: its structures' cases, if any, appended here.
     // round6:C end.
+    // round7:fortification begin. The Point Defence emplacement.
+    case 'pointdefence':
+      drawPointDefence(ctx, w, h, team, pose);
+      break;
+    // round7:fortification end.
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -5800,3 +5805,73 @@ function drawShipyard(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPos
   }
   lamp(ctx, w - 7, 7, on, '#7dff8a', p.t, 2);
 }
+
+// round7:fortification begin.
+/**
+ * The Point Defence emplacement (fireline-round7-fortification.md): a squat sloped concrete block, and
+ * on it a domed mount in team colours with a short rotary barrel that turns to the last shot, a
+ * search radar spinning behind it (slower while power is short) and a blue lamp. The barrel flashes
+ * for a moment as it fires.
+ */
+function drawPointDefence(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  const cx = w / 2;
+  const cy = h / 2;
+  // The block: a sloped concrete apron with a darker top.
+  ctx.fillStyle = '#8d918a';
+  rrect(ctx, 1.5, 2.5, w - 3, h - 3, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = '#6e726c';
+  rrect(ctx, 5, 5.5, w - 10, h - 10, 3);
+  ctx.fill();
+  // Hazard corners.
+  ctx.fillStyle = 'rgba(230,190,60,0.8)';
+  for (const [x, y] of [[3, 4], [w - 6, 4], [3, h - 4], [w - 6, h - 4]]) ctx.fillRect(x, y - 1, 3, 1.4);
+  // The radar, behind the mount.
+  const spin = p.t * (p.lowPower ? 0.8 : 3);
+  ctx.save();
+  ctx.translate(cx + 7, cy - 7);
+  ctx.fillStyle = '#2a2e2f';
+  ctx.fillRect(-0.7, -0.5, 1.4, 4);
+  ctx.rotate(spin);
+  ctx.fillStyle = '#d4d9db';
+  ctx.fillRect(-4.5, -1, 9, 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(-4.5, -1, 9, 2);
+  ctx.restore();
+  // The mount and barrel, turned to the last shot.
+  ctx.save();
+  ctx.translate(cx, cy + 1);
+  ctx.rotate(p.turret);
+  const firing = p.sinceShot < 0.25;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(3, -2, 11, 5);
+  ctx.fillStyle = '#25292b';
+  ctx.fillRect(3, -1.8, 10, 3.6);
+  ctx.fillStyle = '#141617';
+  for (const by of [-1.1, 0, 1.1]) ctx.fillRect(12, by - 0.35, 2.2, 0.7);
+  if (firing) {
+    ctx.fillStyle = `rgba(190,240,255,${1 - p.sinceShot * 4})`;
+    ctx.beginPath();
+    ctx.arc(15.5, 0, 2.6, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = litGrad(ctx, p.turret, 7, team.light, team.dark);
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.arc(-1.8, -1.8, 2.4, 0, TAU);
+  ctx.fill();
+  emblem(ctx, team, -1, 1, 1.3);
+  ctx.restore();
+  lamp(ctx, cx - 9, cy + 9, !p.lowPower, '#5ad0ff', p.t, 4, true);
+}
+// round7:fortification end.
