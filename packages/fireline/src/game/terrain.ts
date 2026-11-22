@@ -5,8 +5,9 @@ import { ART } from '../theme';
 import { TILE } from './art';
 
 /**
- * The ground, painted once per battle onto an offscreen canvas and copied to the screen a window
- * at a time. Terrain never changes, so none of this runs per frame.
+ * The ground, painted a region at a time (createTerrainPainter) into the chunks terrainStore.ts
+ * holds near the camera, and copied to the screen from them. Terrain never changes, so none of this
+ * runs per frame.
  *
  * Randomness here is decoration only, from a hash of the tile index, so the same map always
  * paints the same way. It never touches the simulation.
@@ -55,17 +56,6 @@ interface Look {
   ao: number;
   scrub: number;
 }
-
-/**
- * Maps up to this many tiles wide (or tall) paint their terrain at full resolution, TILE canvas
- * pixels to a tile. Wider ones (the Vast size) paint at half that, so the canvas is never more than
- * 5120 pixels a side, as on a Huge map: at full resolution a 320-tile map would be a 10240-pixel
- * square, about 420 MB, and the battle marks (fx/scars.ts) keep a second copy of it.
- */
-export const TERRAIN_FULL_RES_TILES = 160;
-
-/** Canvas pixels per world pixel for a map's terrain: 1, or 0.5 on a map wider than TERRAIN_FULL_RES_TILES. */
-export const terrainScale = (mapW: number, mapH: number): number => (Math.max(mapW, mapH) > TERRAIN_FULL_RES_TILES ? 0.5 : 1);
 
 function hash(n: number): number {
   let h = (n * 374761393) ^ 0x5bd1e995;
@@ -186,938 +176,995 @@ export function fordsOf(tiles: string, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_
   return out;
 }
 
-export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): HTMLCanvasElement {
+/** Paints any part of one map's ground; built once per map (createTerrainPainter). */
+export interface TerrainPainter {
+  paint(x: number, y: number, w: number, h: number): HTMLCanvasElement;
+  /** The map's size in world pixels (TILE to a tile). */
+  worldW: number;
+  worldH: number;
+}
+
+/**
+ * The ground of one map, ready to paint a region at a time (terrainStore.ts paints it in chunks,
+ * so only the ground near the camera is ever held). Everything that depends on the whole map, the
+ * shading fields, the noise, the patches of grass, the relief and the groups of ruins and bridges,
+ * is worked out once here; paint() then draws any region of it.
+ */
+export function createTerrainPainter(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): TerrainPainter {
   const MAP_W = mapW;
   const MAP_H = mapH;
   const L = (mapType && LOOKS[mapType]) || CLASSIC;
   const fords = fordsOf(tiles, MAP_W, MAP_H);
-  // Everything below is drawn in world pixels (TILE to a tile). On a map wider than
-  // TERRAIN_FULL_RES_TILES the canvas holds fewer pixels than that (terrainScale) and the context is
-  // scaled to match; the per-pixel pass works out one world pixel in every 1 / scale each way.
+  // Everything is drawn in world pixels, TILE to a tile, at full resolution.
   const WW = MAP_W * TILE;
   const HH = MAP_H * TILE;
-  const scale = terrainScale(MAP_W, MAP_H);
-  const c = newCanvas(Math.round(WW * scale), Math.round(HH * scale));
-  const ctx = c.getContext('2d')!;
-  if (scale !== 1) ctx.setTransform(scale, 0, 0, scale, 0, 0);
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H ? 'g' : tiles[y * MAP_W + x]);
   const TAU = Math.PI * 2;
 
-  // 1. Grass everywhere: one base tone, then large soft patches of the others, so there is no
-  // tile grid to see.
-  ctx.fillStyle = ART.grass[0];
-  ctx.fillRect(0, 0, WW, HH);
-  const patches = rnd(424242);
-  for (let i = 0; i < MAP_W * MAP_H * 0.7; i++) {
-    const px = patches() * WW;
-    const py = patches() * HH;
-    const rad = 18 + patches() * 46;
-    const col = ART.grass[1 + Math.floor(patches() * (ART.grass.length - 1))];
-    const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
-    g.addColorStop(0, col);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = g;
-    ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
-  }
-  // Broad zones of drier and lusher ground, a few hundred pixels across, so a large field reads
-  // as country rather than carpet.
-  const zones = rnd(90210);
-  for (let i = 0; i < 46; i++) {
-    const px = zones() * WW;
-    const py = zones() * HH;
-    const rad = 110 + zones() * 190;
-    const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
-    g.addColorStop(0, i % 2 ? DRY_GRASS : LUSH_GRASS);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = i % 2 ? L.dry : L.lush;
-    ctx.fillStyle = g;
-    ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
-  }
-  ctx.globalAlpha = 1;
-  // Blades: thin, leaning a little either way, wide at the root and pointed at the tip. Two
-  // blocks of BLADE_BLOCK pixels are painted (each batched into one path per shade and strength)
-  // and laid over the map, block by block, each picked and mirrored by a hash of where it lies.
-  // Filling a map's worth of slanted blades one by one took seconds on a large map.
-  const blocks = [bladeBlock(1), bladeBlock(2)];
-  for (let by = 0; by * BLADE_BLOCK < HH; by++)
-    for (let bx = 0; bx * BLADE_BLOCK < WW; bx++) {
-      const h = hash(by * 7919 + bx * 31 + 5);
-      ctx.save();
-      ctx.translate(bx * BLADE_BLOCK + (h < 0.5 ? 0 : BLADE_BLOCK), by * BLADE_BLOCK);
-      if (h >= 0.5) ctx.scale(-1, 1);
-      ctx.drawImage(blocks[hash(by * 31 + bx * 7919 + 9) < 0.5 ? 0 : 1], 0, 0);
-      ctx.restore();
-    }
-  // Tufts: a fan of blades, dark at the root and lit at the tips on the side toward the light.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'g') continue;
-      const r = rnd(y * MAP_W + x + 60606);
-      const n = r() < 0.45 ? 1 + Math.floor(r() * 2) : 0;
-      for (let k = 0; k < n; k++) {
-        const bx = x * TILE + 3 + r() * (TILE - 6);
-        const by = y * TILE + 6 + r() * (TILE - 8);
-        ctx.fillStyle = 'rgba(20,30,10,0.25)';
-        ctx.beginPath();
-        ctx.ellipse(bx + 1.5, by + 0.8, 3.5, 1.4, 0, 0, TAU);
-        ctx.fill();
-        ctx.lineWidth = 1;
-        for (let b = 0; b < 6; b++) {
-          const a = -Math.PI / 2 + (b - 2.5) * 0.28 + (r() - 0.5) * 0.2;
-          const len = 3.5 + r() * 3.5;
-          ctx.strokeStyle = b < 3 ? ART.grassLight : ART.grassDark;
-          ctx.beginPath();
-          ctx.moveTo(bx + (b - 2.5) * 0.5, by);
-          ctx.lineTo(bx + (b - 2.5) * 0.5 + Math.cos(a) * len, by + Math.sin(a) * len);
-          ctx.stroke();
-        }
-      }
-      // Now and then a small cluster of flowers.
-      if (r() < L.flowers) {
-        const fx = x * TILE + 6 + r() * (TILE - 12);
-        const fy = y * TILE + 6 + r() * (TILE - 12);
-        const col = L.flowerCols[Math.floor(r() * L.flowerCols.length)];
-        const m = 3 + Math.floor(r() * 5);
-        for (let k = 0; k < m; k++) {
-          const px = fx + (r() - 0.5) * 9;
-          const py = fy + (r() - 0.5) * 7;
-          ctx.fillStyle = 'rgba(30,45,20,0.5)';
-          ctx.fillRect(px - 0.2, py, 0.8, 2);
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.arc(px, py, 0.9 + r() * 0.5, 0, TAU);
-          ctx.fill();
-        }
-      }
-    }
-
-  // The type's wash over the grass, blades and flowers alike (the canyon's dust, the plains' gold).
-  if (L.tint) {
-    ctx.globalAlpha = L.tintAlpha;
-    ctx.fillStyle = `rgb(${L.tint[0]},${L.tint[1]},${L.tint[2]})`;
-    ctx.fillRect(0, 0, WW, HH);
-    ctx.globalAlpha = 1;
-  }
-
-  // 1b. Relief: a gentle rolling height field, lit from the top left, so open country reads as
-  // ground that rises and falls rather than a flat sheet. Worked out at one sample per RELIEF
-  // pixels and stretched with smoothing (it has no detail finer than that), and laid over the
-  // grass only: dirt, water and rock below carry their own shading.
-  relief(ctx, MAP_W * TILE, MAP_H * TILE);
-
-  // 2, 3 and 4. Dirt, water and rock, shaded per pixel in one pass over the painted ground. Each is a field
-  // sampled smoothly between tile centres and roughened with noise, so its outline follows the
-  // tiles without showing them. Dirt is mottled, speckled and soft-edged. Water bands outward from open water through shallows, a foam
-  // line, wet sand and a sandy bank fading into the grass. Rock is a raised plateau seen from a
-  // little south: its top is drawn lifted by CLIFF_H pixels and shaded by the slope of a height
-  // field (lit on the top-left rims, dark on the bottom-right), the strip it uncovers is the cliff
-  // face, and it casts a shadow down and to the right.
+  // 1. Grass: the soft patches and broad zones are drawn from fixed streams, so they are worked
+  // out once here, in order, and each paint draws those that reach its region (in the same order).
+  const patchList: { px: number; py: number; rad: number; col: string }[] = [];
   {
-    // W and H are world pixels; CW is the canvas's own width. `st` is the step between the world
-    // pixels worked out (1, or 2 at half resolution), and `cell` turns a world pixel into its index
-    // in the band's image (identical to before at full resolution).
-    const W = WW;
-    const H = HH;
-    const CW = c.width;
-    const st = 1 / scale;
-    const cell = (x: number, y: number) => (((y - y0) * scale) * CW + x * scale) * 4;
-    // Drawn into a transparent layer and composited over the grass, rather than read back from
-    // the canvas: a read-back of the whole map costs more than everything else here put together.
-    // Round 5: the layer is worked a band of BAND tile rows at a time (every pass for one band,
-    // then the next), so its pixels and the height cache are a band's worth rather than the whole
-    // map's (on a 160-tile map, 10 MB a band against 105 MB for the whole). Each pixel goes
-    // through the same passes in the same order, so the result is the same.
-    const BAND = 16;
-    let y0 = 0;
-    let img = ctx.createImageData(CW, Math.round(Math.min(H, BAND * TILE) * scale));
-    let px = img.data;
-    const fieldOf = (ch: string) => {
-      const f = new Float32Array(MAP_W * MAP_H);
-      for (let k = 0; k < MAP_W * MAP_H; k++) f[k] = tiles[k] === ch ? 1 : 0;
-      return f;
-    };
-    const blur = (f: Float32Array, rad: number) => {
-      const o = new Float32Array(f.length);
+    const patches = rnd(424242);
+    for (let i = 0; i < MAP_W * MAP_H * 0.7; i++) {
+      const px = patches() * WW;
+      const py = patches() * HH;
+      const rad = 18 + patches() * 46;
+      const col = ART.grass[1 + Math.floor(patches() * (ART.grass.length - 1))];
+      patchList.push({ px, py, rad, col });
+    }
+  }
+  const zoneList: { px: number; py: number; rad: number }[] = [];
+  {
+    const zones = rnd(90210);
+    for (let i = 0; i < 46; i++) {
+      const px = zones() * WW;
+      const py = zones() * HH;
+      const rad = 110 + zones() * 190;
+      zoneList.push({ px, py, rad });
+    }
+  }
+  const bladeBlocks = [bladeBlock(1), bladeBlock(2)];
+  const reliefLayer = reliefOf(WW, HH);
+  const ruinBlocks = boxed(groupsOf(at, 'x', MAP_W, MAP_H), MAP_W);
+  const spans = boxed(groupsOf(at, 'b', MAP_W, MAP_H), MAP_W);
+
+  // The per-pixel passes: fields and shading worked out once, applied to each region painted.
+  // W and H are world pixels. The passes work one band of the region being painted at a time:
+  // its pixels run from x = rx to rx + rw and y = y0 to y1, and `cell` turns a world pixel into
+  // its index in the band's image. A pass only works out pixels inside the band, so painting a
+  // chunk works out exactly the pixels a whole-map paint would there, by the same arithmetic.
+  const W = WW;
+  const H = HH;
+  let rx = 0;
+  let rw = W;
+  let y1 = 0;
+  const cell = (x: number, y: number) => ((y - y0) * rw + (x - rx)) * 4;
+  // Drawn into a transparent layer and composited over the grass, rather than read back from
+  // the canvas: a read-back of the whole map costs more than everything else here put together.
+  // Round 5: the layer is worked a band of BAND tile rows at a time (every pass for one band,
+  // then the next), so its pixels and the height cache are a band's worth rather than the whole
+  // map's (on a 160-tile map, 10 MB a band against 105 MB for the whole). Each pixel goes
+  // through the same passes in the same order, so the result is the same.
+  let y0 = 0;
+  let px = new Uint8ClampedArray(0);
+  const fieldOf = (ch: string) => {
+    const f = new Float32Array(MAP_W * MAP_H);
+    for (let k = 0; k < MAP_W * MAP_H; k++) f[k] = tiles[k] === ch ? 1 : 0;
+    return f;
+  };
+  const blur = (f: Float32Array, rad: number) => {
+    const o = new Float32Array(f.length);
+    for (let y = 0; y < MAP_H; y++)
+      for (let x = 0; x < MAP_W; x++) {
+        let s = 0;
+        let n = 0;
+        for (let j = -rad; j <= rad; j++)
+          for (let i = -rad; i <= rad; i++) {
+            const xx = Math.min(MAP_W - 1, Math.max(0, x + i));
+            const yy = Math.min(MAP_H - 1, Math.max(0, y + j));
+            s += f[yy * MAP_W + xx];
+            n++;
+          }
+        o[y * MAP_W + x] = s / n;
+      }
+    return o;
+  };
+  /** Smooth interpolation of a tile field at a pixel; outside the map it repeats the edge. */
+  const sample = (f: Float32Array, x: number, y: number) => {
+    let gx = x / TILE - 0.5;
+    let gy = y / TILE - 0.5;
+    gx = gx < 0 ? 0 : gx > MAP_W - 1.001 ? MAP_W - 1.001 : gx;
+    gy = gy < 0 ? 0 : gy > MAP_H - 1.001 ? MAP_H - 1.001 : gy;
+    const ix = gx | 0;
+    const iy = gy | 0;
+    let fx = gx - ix;
+    let fy = gy - iy;
+    fx = fx * fx * (3 - 2 * fx);
+    fy = fy * fy * (3 - 2 * fy);
+    const k = iy * MAP_W + ix;
+    const a = f[k] + (f[k + 1] - f[k]) * fx;
+    const b = f[k + MAP_W] + (f[k + MAP_W + 1] - f[k + MAP_W]) * fx;
+    return a + (b - a) * fy;
+  };
+  // Value noise on two lattices, precomputed.
+  const lattice = (step: number, seed: number) => {
+    const n = Math.ceil(W / step) + 2;
+    const g = new Float32Array(n * n);
+    for (let k = 0; k < g.length; k++) g[k] = hash(seed * 131071 + k);
+    return { g, n, step };
+  };
+  const noise = (l: { g: Float32Array; n: number; step: number }, x: number, y: number) => {
+    const gx = Math.max(0, x) / l.step;
+    const gy = Math.max(0, y) / l.step;
+    const m = l.n - 1;
+    let fx = gx - (gx | 0);
+    let fy = gy - (gy | 0);
+    const ix = (gx | 0) % m;
+    const iy = (gy | 0) % m;
+    fx = fx * fx * (3 - 2 * fx);
+    fy = fy * fy * (3 - 2 * fy);
+    const k = iy * l.n + ix;
+    const a = l.g[k] + (l.g[k + 1] - l.g[k]) * fx;
+    const b = l.g[k + l.n] + (l.g[k + l.n + 1] - l.g[k + l.n]) * fx;
+    return a + (b - a) * fy;
+  };
+  const n6 = lattice(6, 11);
+  const n14 = lattice(14, 23);
+  const n40 = lattice(40, 37);
+  /** Whether a tile has any of the field in it or around it (`up` more rows below, for the lifted rock). */
+  const near = (f: Float32Array, x: number, y: number, up: number, diagonals = true) => {
+    for (let j = -1; j <= 1 + up; j++)
+      for (let i = -1; i <= 1; i++) {
+        if (!diagonals && i !== 0 && j !== 0) continue;
+        const xx = x + i;
+        const yy = y + j;
+        if (xx >= 0 && yy >= 0 && xx < MAP_W && yy < MAP_H && f[yy * MAP_W + xx] > 0) return true;
+      }
+    return false;
+  };
+  /** Paint a colour at strength `a` over whatever the layer already holds there. */
+  const mix = (i: number, r: number, g: number, b: number, a: number) => {
+    if (a <= 0) return;
+    if (a > 1) a = 1;
+    const da = px[i + 3] / 255;
+    const k = da * (1 - a);
+    const oa = a + k;
+    px[i] = (r * a + px[i] * k) / oa;
+    px[i + 1] = (g * a + px[i + 1] * k) / oa;
+    px[i + 2] = (b * a + px[i + 2] * k) / oa;
+    px[i + 3] = oa * 255;
+  };
+  const ss = (e0: number, e1: number, v: number) => {
+    const t = v <= e0 ? 0 : v >= e1 ? 1 : (v - e0) / (e1 - e0);
+    return t * t * (3 - 2 * t);
+  };
+
+  const dirtBin = fieldOf('d');
+  const dirtBlur = blur(dirtBin, 1);
+  const dirt = dirtBin.map((v, k) => v * 0.5 + dirtBlur[k] * 0.5);
+  const DIRT = L.dirt;
+  const DIRT_DARK = L.dirtDark;
+  const DIRT_LIGHT: [number, number, number] = [150, 128, 92];
+  const dirtPass = (t0: number, t1: number) => {
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(dirtBin, tx, ty, 0, false)) continue;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const v = sample(dirt, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x + 900, y) - 0.5) * 0.2 + (noise(n40, x + 900, y) - 0.5) * 0.3;
+            if (v < 0.36) continue;
+            const i = cell(x, y);
+            const m = noise(n14, x + 200, y + 100);
+            const dk = ss(0.35, 0.75, noise(n40, x + 400, y + 700)) * 0.6;
+            const sh = 0.9 + m * 0.2;
+            let r = (DIRT[0] + (DIRT_DARK[0] - DIRT[0]) * dk) * sh;
+            let g = (DIRT[1] + (DIRT_DARK[1] - DIRT[1]) * dk) * sh;
+            let b = (DIRT[2] + (DIRT_DARK[2] - DIRT[2]) * dk) * sh;
+            const lt = ss(0.6, 0.9, noise(n40, x + 1300, y + 200)) * 0.5;
+            r += (DIRT_LIGHT[0] - r) * lt;
+            g += (DIRT_LIGHT[1] - g) * lt;
+            b += (DIRT_LIGHT[2] - b) * lt;
+            const speck = hash(y * W + x);
+            if (speck < 0.03) (r *= 0.75), (g *= 0.75), (b *= 0.75);
+            else if (speck > 0.975) (r = r * 1.2 + 10), (g = g * 1.2 + 10), (b = b * 1.2 + 8);
+            // A darker rim where the dirt meets the grass, like a trodden edge.
+            const rim = 1 - ss(0.4, 0.5, v) * 0.12 - (1 - ss(0.44, 0.56, v)) * 0.08;
+            mix(i, r * rim, g * rim, b * rim, ss(0.36, 0.46, v));
+          }
+      }
+  };
+
+  const water = fieldOf('w');
+  const deep = blur(water, 2);
+  const SAND: [number, number, number] = [185, 162, 119];
+  const WET: [number, number, number] = [150, 134, 96];
+  const SHALLOW: [number, number, number] = [64, 122, 138];
+  const OPEN: [number, number, number] = [43, 90, 115];
+  const DEEP: [number, number, number] = [28, 64, 85];
+  const waterPass = (t0: number, t1: number) => {
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(water, tx, ty, 0)) continue;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const v = sample(water, x, y) + (noise(n6, x, y) - 0.5) * 0.12 + (noise(n40, x, y) - 0.5) * 0.22;
+            if (v < L.beach) continue;
+            const i = cell(x, y);
+            if (v < 0.5) {
+              mix(i, SAND[0], SAND[1], SAND[2], ss(L.beach, L.beach + 0.16, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
+              mix(i, WET[0], WET[1], WET[2], ss(0.4, 0.47, v) * 0.9);
+              mix(i, 222, 236, 232, (1 - Math.abs(v - 0.485) / 0.02) * 0.7);
+            } else {
+              const t = ss(0.5, 0.64, v);
+              const sh = 0.94 + noise(n14, x, y) * 0.12;
+              let r = (SHALLOW[0] + (OPEN[0] - SHALLOW[0]) * t) * sh;
+              let g = (SHALLOW[1] + (OPEN[1] - SHALLOW[1]) * t) * sh;
+              let b = (SHALLOW[2] + (OPEN[2] - SHALLOW[2]) * t) * sh;
+              const dd = ss(0.6, 1, sample(deep, x, y)) * 0.85;
+              r += (DEEP[0] - r) * dd;
+              g += (DEEP[1] - g) * dd;
+              b += (DEEP[2] - b) * dd;
+              mix(i, r, g, b, ss(0.5, 0.52, v) * 0.6 + 0.4);
+            }
+          }
+      }
+  };
+
+  // Fords: shallow water over a stony bed, fading into the banks at each end and into the deep
+  // water on each side, with the current's streaks running the way the stream flows.
+  const fordBin = new Float32Array(MAP_W * MAP_H);
+  for (let k = 0; k < fordBin.length; k++) fordBin[k] = fords[k] ? 1 : 0;
+  const fordBlur = blur(fordBin, 1);
+  const fordF = fordBin.map((v, k) => v * 0.6 + fordBlur[k] * 0.4);
+  const BED: Rgb = [128, 116, 92];
+  const SHOAL: Rgb = [86, 140, 146];
+  const fordPass = (t0: number, t1: number) => {
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(fordBin, tx, ty, 0)) continue;
+        const along = fords[ty * MAP_W + tx] || fords[ty * MAP_W + Math.min(MAP_W - 1, tx + 1)] || 1;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const v = sample(fordF, x, y) + (noise(n6, x + 70, y) - 0.5) * 0.18 + (noise(n14, x, y + 40) - 0.5) * 0.24;
+            if (v < 0.24) continue;
+            // Fading out over the deep water's edge, so the shallows shelve into it.
+            const wv = sample(water, x, y) + (noise(n14, x + 50, y) - 0.5) * 0.2;
+            const a = ss(0.24, 0.5, v) * (1 - ss(0.45, 0.95, wv));
+            if (a <= 0) continue;
+            const i = cell(x, y);
+            const m = noise(n6, x * 1.3 + 11, y * 1.3);
+            const bed = 0.82 + m * 0.3;
+            mix(i, BED[0] * bed, BED[1] * bed, BED[2] * bed, a);
+            // The water over it, deeper toward the middle of the crossing.
+            const depth = 0.35 + 0.35 * ss(0.4, 0.9, v);
+            mix(i, SHOAL[0], SHOAL[1], SHOAL[2], a * depth);
+            // Streaks of the current.
+            const sx = along === 1 ? x * 0.25 : x * 2.4;
+            const sy = along === 1 ? y * 2.4 : y * 0.25;
+            const streak = noise(n14, sx + 333, sy + 777);
+            if (streak > 0.68) mix(i, 205, 230, 232, a * (streak - 0.68) * 2.2);
+          }
+      }
+  };
+
+  const rock = fieldOf('r');
+  const rockAo = blur(rock, 1);
+  const CLIFF_H = L.cliff;
+  // Heights are read several times per pixel (slope, cliff depth, shadow), so each is worked
+  // out once and kept.
+  // The cache covers the band and HMARGIN rows either side of it (every lookup reaches at most
+  // CLIFF_H + 2 rows down and half that up); a lookup outside it is worked out uncached.
+  // It covers the band's columns and HMARGIN either side of them too (lookups reach 6 pixels sideways).
+  const HMARGIN = 64;
+  let hcache = new Float32Array(0);
+  let hw = 0;
+  let hx0 = 0;
+  let hy0 = 0;
+  let hy1 = 0;
+  const height = (x: number, y: number) => {
+    const inside = x >= hx0 && y >= hy0 && x < hx0 + hw && y < hy1;
+    if (inside) {
+      const v = hcache[(y - hy0) * hw + x - hx0];
+      if (v >= 0) return v;
+    }
+    const v = ss(0.36, 0.64, sample(rock, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x, y) - 0.5) * 0.18);
+    if (inside) hcache[(y - hy0) * hw + x - hx0] = v;
+    return v;
+  };
+  const TOP = L.rockTop;
+  const FACE = L.rockFace;
+  const rockPass = (t0: number, t1: number) => {
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(rock, tx, ty, 1)) continue;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const i = cell(x, y);
+            const ht = height(x, y + CLIFF_H);
+            const hb = height(x, y);
+            if (ht > 0.45) {
+              // Top: slope shading toward a light in the top left, mottling, and fine cracks.
+              const gx = height(x + 2, y + CLIFF_H) - height(x - 2, y + CLIFF_H);
+              const gy = height(x, y + CLIFF_H + 2) - height(x, y + CLIFF_H - 2);
+              const lit = (gx + gy) * 1.6;
+              const m = noise(n14, x * 1.7, y * 1.7) * 0.6 + noise(n6, x, y) * 0.4;
+              const crack = Math.abs(noise(n14, x + 500, y + 500) - 0.5) < 0.012 ? 0.7 : 1;
+              const k = (0.8 + m * 0.4 + lit) * crack;
+              const a = ss(0.45, 0.55, ht);
+              if (a < 1 && hb > 0.5) mix(i, FACE[0], FACE[1], FACE[2], 1);
+              mix(i, TOP[0] * k, TOP[1] * k, TOP[2] * k, a);
+              if (L.moss > 0) {
+                // Moss and turf in the hollows of the tops.
+                const ms = ss(0.55, 0.8, noise(n40, x + 2100, y + 900)) * ss(0.4, 0.7, noise(n6, x * 1.5, y * 1.5 + 300));
+                if (ms > 0) mix(i, 82 * k, 104 * k, 52 * k, a * ms * L.moss * 1.6);
+              }
+              if (L.strata > 0) {
+                // Sandstone bedding, faint across the tops.
+                const band = Math.sin((y + noise(n40, x, y + 500) * 30) * 0.42);
+                if (band > 0.6) mix(i, TOP[0] * 1.12, TOP[1] * 1.08, TOP[2] * 1.02, a * (band - 0.6) * 0.5 * L.strata);
+              }
+            } else if (hb > 0.4) {
+              // Cliff face: vertical strata, darker toward its foot.
+              const streak = noise(n6, x * 2.2, y * 0.25);
+              const foot = ss(0.4, 1, hb) * 0.25 + 0.75;
+              let depth = 0;
+              for (let d = 1; d <= CLIFF_H; d += 2) if (height(x, y + CLIFF_H - d) > 0.45) depth = d;
+              let k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * (0.27 / CLIFF_H));
+              if (L.strata > 0) {
+                // Banded sandstone: alternating light and dark layers, wavering a little.
+                const band = Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9);
+                k *= 1 + band * 0.13 * L.strata;
+              }
+              mix(i, FACE[0] * k, FACE[1] * k, FACE[2] * k, ss(0.4, 0.5, hb));
+            } else {
+              // Cast shadow, down and to the right of the plateau, longer under taller cliffs; and
+              // the gloom at the foot of the walls, on every side, where they stand tall.
+              const sl = CLIFF_H / 9;
+              const hs = height(Math.round(x - 5 * sl), Math.round(y - 4 * sl));
+              let dark = hs > 0.2 ? ss(0.2, 0.7, hs) * 0.5 : 0;
+              if (L.ao > 0) dark = Math.max(dark, ss(0.04, 0.5, sample(rockAo, x, y)) * L.ao);
+              if (dark > 0) mix(i, 0, 0, 0, dark);
+            }
+          }
+      }
+  };
+  // Ruined cities (Vast maps): streets ('p') and the ground the ruins ('x') stand on are cracked
+  // paving, soft-edged into the country round them like the dirt; the ruins' foundations are
+  // sooty concrete. The shells themselves are drawn over this (city, below the passes).
+  const streetBin = new Float32Array(MAP_W * MAP_H);
+  const ruinBin = new Float32Array(MAP_W * MAP_H);
+  let anyCity = false;
+  for (let k = 0; k < streetBin.length; k++) {
+    const ch = tiles[k];
+    if (ch === 'p' || ch === 'x') (streetBin[k] = 1), (anyCity = true);
+    if (ch === 'x') ruinBin[k] = 1;
+  }
+  const cityBlur = anyCity ? blur(streetBin, 1) : streetBin;
+  const cityF = streetBin.map((v, k) => v * 0.55 + cityBlur[k] * 0.45);
+  const ASPHALT: Rgb = [76, 76, 72];
+  const WORN: Rgb = [104, 100, 92];
+  const SLAB: Rgb = [116, 110, 101];
+  const cityPass = (t0: number, t1: number) => {
+    if (!anyCity) return;
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(streetBin, tx, ty, 0)) continue;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const v = sample(cityF, x, y) + (noise(n6, x + 40, y + 90) - 0.5) * 0.14 + (noise(n14, x + 610, y) - 0.5) * 0.2;
+            if (v < 0.38) continue;
+            const i = cell(x, y);
+            const m = noise(n14, x * 1.4 + 70, y * 1.4);
+            const sh = 0.88 + m * 0.24;
+            let r = ASPHALT[0] * sh;
+            let g = ASPHALT[1] * sh;
+            let b = ASPHALT[2] * sh;
+            // Worn and patched paving, lighter, in broad patches.
+            const wn = ss(0.55, 0.85, noise(n40, x + 1700, y + 300)) * 0.7;
+            r += (WORN[0] - r) * wn;
+            g += (WORN[1] - g) * wn;
+            b += (WORN[2] - b) * wn;
+            // Foundations under the ruins: pale concrete, stained with soot.
+            const rf = ss(0.4, 0.6, sample(ruinBin, x, y) + (noise(n6, x, y + 300) - 0.5) * 0.25);
+            if (rf > 0) {
+              const soot = 1 - ss(0.5, 0.85, noise(n40, x + 3100, y + 1200)) * 0.55;
+              r += (SLAB[0] * soot * sh - r) * rf;
+              g += (SLAB[1] * soot * sh - g) * rf;
+              b += (SLAB[2] * soot * sh - b) * rf;
+            }
+            // Cracks: thin dark lines that wander, more of them than on the rock.
+            const ck = Math.abs(noise(n14, x * 1.8 + 900, y * 1.8 + 400) - 0.5);
+            const ck2 = Math.abs(noise(n40, x * 2.4 + 50, y * 2.4 + 2000) - 0.5);
+            if (ck < 0.014 || ck2 < 0.01) (r *= 0.62), (g *= 0.62), (b *= 0.62);
+            const speck = hash(y * W + x + 77);
+            if (speck < 0.04) (r *= 0.8), (g *= 0.8), (b *= 0.8);
+            else if (speck > 0.97) (r += 18), (g += 17), (b += 15);
+            // Dust drifted in from the country, toward the edges.
+            const dust = (1 - ss(0.42, 0.7, v)) * 0.55;
+            r += (L.dirt[0] - r) * dust;
+            g += (L.dirt[1] - g) * dust;
+            b += (L.dirt[2] - b) * dust;
+            mix(i, r, g, b, ss(0.38, 0.47, v));
+          }
+      }
+  };
+
+  // Ravines ('v', and the bridges over them, 'b', which the gorge runs on beneath): a chasm cut
+  // into the ground. Depth is the distance to the nearest ground outside it (up to three tiles),
+  // sampled smoothly and roughened, so the edge wanders. Seen from a little south, as the rock
+  // is: the far (north) wall shows as a face GORGE_WALL pixels tall, the near wall is hidden
+  // under its lip, the lip itself catches the light on the south rim and is dark on the north,
+  // and the floor is deep, cold and shadowed under its western wall, with scree along the foot.
+  const gorgeBin = new Float32Array(MAP_W * MAP_H);
+  let anyGorge = false;
+  for (let k = 0; k < gorgeBin.length; k++) if (tiles[k] === 'v' || tiles[k] === 'b') (gorgeBin[k] = 1), (anyGorge = true);
+  const gorgeDist = new Float32Array(MAP_W * MAP_H);
+  if (anyGorge) {
+    for (let k = 0; k < gorgeDist.length; k++) gorgeDist[k] = gorgeBin[k] ? 3 : 0;
+    for (let pass = 0; pass < 3; pass++)
       for (let y = 0; y < MAP_H; y++)
         for (let x = 0; x < MAP_W; x++) {
-          let s = 0;
-          let n = 0;
-          for (let j = -rad; j <= rad; j++)
-            for (let i = -rad; i <= rad; i++) {
-              const xx = Math.min(MAP_W - 1, Math.max(0, x + i));
-              const yy = Math.min(MAP_H - 1, Math.max(0, y + j));
-              s += f[yy * MAP_W + xx];
-              n++;
+          const k = y * MAP_W + x;
+          if (!gorgeBin[k]) continue;
+          let m = gorgeDist[k];
+          for (let j = -1; j <= 1; j++)
+            for (let i = -1; i <= 1; i++) {
+              const xx = x + i;
+              const yy = y + j;
+              if (xx < 0 || yy < 0 || xx >= MAP_W || yy >= MAP_H) continue;
+              m = Math.min(m, gorgeDist[yy * MAP_W + xx] + 1);
             }
-          o[y * MAP_W + x] = s / n;
+          gorgeDist[k] = m;
         }
-      return o;
-    };
-    /** Smooth interpolation of a tile field at a pixel; outside the map it repeats the edge. */
-    const sample = (f: Float32Array, x: number, y: number) => {
-      let gx = x / TILE - 0.5;
-      let gy = y / TILE - 0.5;
-      gx = gx < 0 ? 0 : gx > MAP_W - 1.001 ? MAP_W - 1.001 : gx;
-      gy = gy < 0 ? 0 : gy > MAP_H - 1.001 ? MAP_H - 1.001 : gy;
-      const ix = gx | 0;
-      const iy = gy | 0;
-      let fx = gx - ix;
-      let fy = gy - iy;
-      fx = fx * fx * (3 - 2 * fx);
-      fy = fy * fy * (3 - 2 * fy);
-      const k = iy * MAP_W + ix;
-      const a = f[k] + (f[k + 1] - f[k]) * fx;
-      const b = f[k + MAP_W] + (f[k + MAP_W + 1] - f[k + MAP_W]) * fx;
-      return a + (b - a) * fy;
-    };
-    // Value noise on two lattices, precomputed.
-    const lattice = (step: number, seed: number) => {
-      const n = Math.ceil(W / step) + 2;
-      const g = new Float32Array(n * n);
-      for (let k = 0; k < g.length; k++) g[k] = hash(seed * 131071 + k);
-      return { g, n, step };
-    };
-    const noise = (l: { g: Float32Array; n: number; step: number }, x: number, y: number) => {
-      const gx = Math.max(0, x) / l.step;
-      const gy = Math.max(0, y) / l.step;
-      const m = l.n - 1;
-      let fx = gx - (gx | 0);
-      let fy = gy - (gy | 0);
-      const ix = (gx | 0) % m;
-      const iy = (gy | 0) % m;
-      fx = fx * fx * (3 - 2 * fx);
-      fy = fy * fy * (3 - 2 * fy);
-      const k = iy * l.n + ix;
-      const a = l.g[k] + (l.g[k + 1] - l.g[k]) * fx;
-      const b = l.g[k + l.n] + (l.g[k + l.n + 1] - l.g[k + l.n]) * fx;
-      return a + (b - a) * fy;
-    };
-    const n6 = lattice(6, 11);
-    const n14 = lattice(14, 23);
-    const n40 = lattice(40, 37);
-    /** Whether a tile has any of the field in it or around it (`up` more rows below, for the lifted rock). */
-    const near = (f: Float32Array, x: number, y: number, up: number, diagonals = true) => {
-      for (let j = -1; j <= 1 + up; j++)
-        for (let i = -1; i <= 1; i++) {
-          if (!diagonals && i !== 0 && j !== 0) continue;
-          const xx = x + i;
-          const yy = y + j;
-          if (xx >= 0 && yy >= 0 && xx < MAP_W && yy < MAP_H && f[yy * MAP_W + xx] > 0) return true;
-        }
-      return false;
-    };
-    /** Paint a colour at strength `a` over whatever the layer already holds there. */
-    const mix = (i: number, r: number, g: number, b: number, a: number) => {
-      if (a <= 0) return;
-      if (a > 1) a = 1;
-      const da = px[i + 3] / 255;
-      const k = da * (1 - a);
-      const oa = a + k;
-      px[i] = (r * a + px[i] * k) / oa;
-      px[i + 1] = (g * a + px[i + 1] * k) / oa;
-      px[i + 2] = (b * a + px[i + 2] * k) / oa;
-      px[i + 3] = oa * 255;
-    };
-    const ss = (e0: number, e1: number, v: number) => {
-      const t = v <= e0 ? 0 : v >= e1 ? 1 : (v - e0) / (e1 - e0);
-      return t * t * (3 - 2 * t);
-    };
-
-    const dirtBin = fieldOf('d');
-    const dirtBlur = blur(dirtBin, 1);
-    const dirt = dirtBin.map((v, k) => v * 0.5 + dirtBlur[k] * 0.5);
-    const DIRT = L.dirt;
-    const DIRT_DARK = L.dirtDark;
-    const DIRT_LIGHT: [number, number, number] = [150, 128, 92];
-    const dirtPass = (t0: number, t1: number) => {
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(dirtBin, tx, ty, 0, false)) continue;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const v = sample(dirt, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x + 900, y) - 0.5) * 0.2 + (noise(n40, x + 900, y) - 0.5) * 0.3;
-              if (v < 0.36) continue;
-              const i = cell(x, y);
-              const m = noise(n14, x + 200, y + 100);
-              const dk = ss(0.35, 0.75, noise(n40, x + 400, y + 700)) * 0.6;
-              const sh = 0.9 + m * 0.2;
-              let r = (DIRT[0] + (DIRT_DARK[0] - DIRT[0]) * dk) * sh;
-              let g = (DIRT[1] + (DIRT_DARK[1] - DIRT[1]) * dk) * sh;
-              let b = (DIRT[2] + (DIRT_DARK[2] - DIRT[2]) * dk) * sh;
-              const lt = ss(0.6, 0.9, noise(n40, x + 1300, y + 200)) * 0.5;
-              r += (DIRT_LIGHT[0] - r) * lt;
-              g += (DIRT_LIGHT[1] - g) * lt;
-              b += (DIRT_LIGHT[2] - b) * lt;
-              const speck = hash(y * W + x);
-              if (speck < 0.03) (r *= 0.75), (g *= 0.75), (b *= 0.75);
-              else if (speck > 0.975) (r = r * 1.2 + 10), (g = g * 1.2 + 10), (b = b * 1.2 + 8);
-              // A darker rim where the dirt meets the grass, like a trodden edge.
-              const rim = 1 - ss(0.4, 0.5, v) * 0.12 - (1 - ss(0.44, 0.56, v)) * 0.08;
-              mix(i, r * rim, g * rim, b * rim, ss(0.36, 0.46, v));
-            }
-        }
-    };
-
-    const water = fieldOf('w');
-    const deep = blur(water, 2);
-    const SAND: [number, number, number] = [185, 162, 119];
-    const WET: [number, number, number] = [150, 134, 96];
-    const SHALLOW: [number, number, number] = [64, 122, 138];
-    const OPEN: [number, number, number] = [43, 90, 115];
-    const DEEP: [number, number, number] = [28, 64, 85];
-    const waterPass = (t0: number, t1: number) => {
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(water, tx, ty, 0)) continue;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const v = sample(water, x, y) + (noise(n6, x, y) - 0.5) * 0.12 + (noise(n40, x, y) - 0.5) * 0.22;
-              if (v < L.beach) continue;
-              const i = cell(x, y);
-              if (v < 0.5) {
-                mix(i, SAND[0], SAND[1], SAND[2], ss(L.beach, L.beach + 0.16, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
-                mix(i, WET[0], WET[1], WET[2], ss(0.4, 0.47, v) * 0.9);
-                mix(i, 222, 236, 232, (1 - Math.abs(v - 0.485) / 0.02) * 0.7);
-              } else {
-                const t = ss(0.5, 0.64, v);
-                const sh = 0.94 + noise(n14, x, y) * 0.12;
-                let r = (SHALLOW[0] + (OPEN[0] - SHALLOW[0]) * t) * sh;
-                let g = (SHALLOW[1] + (OPEN[1] - SHALLOW[1]) * t) * sh;
-                let b = (SHALLOW[2] + (OPEN[2] - SHALLOW[2]) * t) * sh;
-                const dd = ss(0.6, 1, sample(deep, x, y)) * 0.85;
-                r += (DEEP[0] - r) * dd;
-                g += (DEEP[1] - g) * dd;
-                b += (DEEP[2] - b) * dd;
-                mix(i, r, g, b, ss(0.5, 0.52, v) * 0.6 + 0.4);
+    // Softened a little, so the gorge's corners round off rather than following the tiles.
+    const soft = blur(gorgeDist, 1);
+    for (let k = 0; k < gorgeDist.length; k++) gorgeDist[k] = gorgeDist[k] * 0.55 + soft[k] * 0.45;
+  }
+  const GORGE_WALL = 22;
+  /** How wide the side walls of a gorge running north to south show, in world pixels. */
+  const GORGE_SIDE = 8;
+  const depthAt = (x: number, y: number) => sample(gorgeDist, x, y) + (noise(n6, x + 1234, y) - 0.5) * 0.2 + (noise(n14, x, y + 4321) - 0.5) * 0.26;
+  const LIP = L.rockTop;
+  const WALLC = L.rockFace;
+  const FLOOR: Rgb = [40, 35, 31];
+  const ABYSS: Rgb = [18, 20, 24];
+  const gorgePass = (t0: number, t1: number) => {
+    if (!anyGorge) return;
+    for (let ty = t0; ty < t1; ty++)
+      for (let tx = Math.floor(rx / TILE); tx < Math.min(MAP_W, Math.ceil((rx + rw) / TILE)); tx++) {
+        if (!near(gorgeBin, tx, ty, 1)) continue;
+        for (let y = Math.max(ty * TILE, y0); y < Math.min((ty + 1) * TILE, y1); y++)
+          for (let x = Math.max(tx * TILE, rx); x < Math.min((tx + 1) * TILE, rx + rw); x++) {
+            const D = depthAt(x, y);
+            if (D < 0.2) continue;
+            const i = cell(x, y);
+            if (D < 0.5) {
+              if (D < 0.36) {
+                // The gloom and loose stone on the ground just short of the edge.
+                mix(i, 20, 16, 12, ((D - 0.2) / 0.16) * 0.22);
+                if (hash(y * W + x + 31) < 0.05) mix(i, LIP[0], LIP[1], LIP[2], 0.5);
+                continue;
               }
+              // The lip: bare rock, lit where it looks north over the chasm (the south rim),
+              // dark where it looks south (the north rim, its face below in shadow).
+              const m = noise(n14, x * 1.6, y * 1.6) * 0.6 + noise(n6, x, y) * 0.4;
+              const k = 0.82 + m * 0.3;
+              const a = ss(0.36, 0.43, D);
+              mix(i, LIP[0] * k, LIP[1] * k, LIP[2] * k, a);
+              const northward = depthAt(x, y - 6) - depthAt(x, y + 6);
+              if (northward > 0.05) mix(i, 214, 206, 186, a * ss(0.44, 0.5, D) * Math.min(1, northward * 2.2) * 0.75);
+              else if (northward < -0.05) mix(i, 22, 20, 18, a * ss(0.45, 0.5, D) * 0.5);
+              continue;
             }
-        }
-    };
-
-    // Fords: shallow water over a stony bed, fading into the banks at each end and into the deep
-    // water on each side, with the current's streaks running the way the stream flows.
-    const fordBin = new Float32Array(MAP_W * MAP_H);
-    for (let k = 0; k < fordBin.length; k++) fordBin[k] = fords[k] ? 1 : 0;
-    const fordBlur = blur(fordBin, 1);
-    const fordF = fordBin.map((v, k) => v * 0.6 + fordBlur[k] * 0.4);
-    const BED: Rgb = [128, 116, 92];
-    const SHOAL: Rgb = [86, 140, 146];
-    const fordPass = (t0: number, t1: number) => {
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(fordBin, tx, ty, 0)) continue;
-          const along = fords[ty * MAP_W + tx] || fords[ty * MAP_W + Math.min(MAP_W - 1, tx + 1)] || 1;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const v = sample(fordF, x, y) + (noise(n6, x + 70, y) - 0.5) * 0.18 + (noise(n14, x, y + 40) - 0.5) * 0.24;
-              if (v < 0.24) continue;
-              // Fading out over the deep water's edge, so the shallows shelve into it.
-              const wv = sample(water, x, y) + (noise(n14, x + 50, y) - 0.5) * 0.2;
-              const a = ss(0.24, 0.5, v) * (1 - ss(0.45, 0.95, wv));
-              if (a <= 0) continue;
-              const i = cell(x, y);
-              const m = noise(n6, x * 1.3 + 11, y * 1.3);
-              const bed = 0.82 + m * 0.3;
-              mix(i, BED[0] * bed, BED[1] * bed, BED[2] * bed, a);
-              // The water over it, deeper toward the middle of the crossing.
-              const depth = 0.35 + 0.35 * ss(0.4, 0.9, v);
-              mix(i, SHOAL[0], SHOAL[1], SHOAL[2], a * depth);
-              // Streaks of the current.
-              const sx = along === 1 ? x * 0.25 : x * 2.4;
-              const sy = along === 1 ? y * 2.4 : y * 0.25;
-              const streak = noise(n14, sx + 333, sy + 777);
-              if (streak > 0.68) mix(i, 205, 230, 232, a * (streak - 0.68) * 2.2);
-            }
-        }
-    };
-
-    const rock = fieldOf('r');
-    const rockAo = blur(rock, 1);
-    const CLIFF_H = L.cliff;
-    // Heights are read several times per pixel (slope, cliff depth, shadow), so each is worked
-    // out once and kept.
-    // The cache covers the band and HMARGIN rows either side of it (every lookup reaches at most
-    // CLIFF_H + 2 rows down and half that up); a lookup outside it is worked out uncached.
-    const HMARGIN = 64;
-    const hcache = new Float32Array(W * (BAND * TILE + 2 * HMARGIN));
-    let hy0 = 0;
-    let hy1 = 0;
-    const height = (x: number, y: number) => {
-      const inside = x >= 0 && y >= hy0 && x < W && y < hy1;
-      if (inside) {
-        const v = hcache[(y - hy0) * W + x];
-        if (v >= 0) return v;
-      }
-      const v = ss(0.36, 0.64, sample(rock, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x, y) - 0.5) * 0.18);
-      if (inside) hcache[(y - hy0) * W + x] = v;
-      return v;
-    };
-    const TOP = L.rockTop;
-    const FACE = L.rockFace;
-    const rockPass = (t0: number, t1: number) => {
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(rock, tx, ty, 1)) continue;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const i = cell(x, y);
-              const ht = height(x, y + CLIFF_H);
-              const hb = height(x, y);
-              if (ht > 0.45) {
-                // Top: slope shading toward a light in the top left, mottling, and fine cracks.
-                const gx = height(x + 2, y + CLIFF_H) - height(x - 2, y + CLIFF_H);
-                const gy = height(x, y + CLIFF_H + 2) - height(x, y + CLIFF_H - 2);
-                const lit = (gx + gy) * 1.6;
-                const m = noise(n14, x * 1.7, y * 1.7) * 0.6 + noise(n6, x, y) * 0.4;
-                const crack = Math.abs(noise(n14, x + 500, y + 500) - 0.5) < 0.012 * st ? 0.7 : 1;
-                const k = (0.8 + m * 0.4 + lit) * crack;
-                const a = ss(0.45, 0.55, ht);
-                if (a < 1 && hb > 0.5) mix(i, FACE[0], FACE[1], FACE[2], 1);
-                mix(i, TOP[0] * k, TOP[1] * k, TOP[2] * k, a);
-                if (L.moss > 0) {
-                  // Moss and turf in the hollows of the tops.
-                  const ms = ss(0.55, 0.8, noise(n40, x + 2100, y + 900)) * ss(0.4, 0.7, noise(n6, x * 1.5, y * 1.5 + 300));
-                  if (ms > 0) mix(i, 82 * k, 104 * k, 52 * k, a * ms * L.moss * 1.6);
-                }
-                if (L.strata > 0) {
-                  // Sandstone bedding, faint across the tops.
-                  const band = Math.sin((y + noise(n40, x, y + 500) * 30) * 0.42);
-                  if (band > 0.6) mix(i, TOP[0] * 1.12, TOP[1] * 1.08, TOP[2] * 1.02, a * (band - 0.6) * 0.5 * L.strata);
-                }
-              } else if (hb > 0.4) {
-                // Cliff face: vertical strata, darker toward its foot.
-                const streak = noise(n6, x * 2.2, y * 0.25);
-                const foot = ss(0.4, 1, hb) * 0.25 + 0.75;
-                let depth = 0;
-                for (let d = 1; d <= CLIFF_H; d += 2) if (height(x, y + CLIFF_H - d) > 0.45) depth = d;
-                let k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * (0.27 / CLIFF_H));
-                if (L.strata > 0) {
-                  // Banded sandstone: alternating light and dark layers, wavering a little.
-                  const band = Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9);
-                  k *= 1 + band * 0.13 * L.strata;
-                }
-                mix(i, FACE[0] * k, FACE[1] * k, FACE[2] * k, ss(0.4, 0.5, hb));
-              } else {
-                // Cast shadow, down and to the right of the plateau, longer under taller cliffs; and
-                // the gloom at the foot of the walls, on every side, where they stand tall.
-                const sl = CLIFF_H / 9;
-                const hs = height(Math.round(x - 5 * sl), Math.round(y - 4 * sl));
-                let dark = hs > 0.2 ? ss(0.2, 0.7, hs) * 0.5 : 0;
-                if (L.ao > 0) dark = Math.max(dark, ss(0.04, 0.5, sample(rockAo, x, y)) * L.ao);
-                if (dark > 0) mix(i, 0, 0, 0, dark);
+            // Inside: the far wall's face if the lip is within GORGE_WALL pixels to the north.
+            let face = 0;
+            for (let d = 2; d <= GORGE_WALL; d += 2)
+              if (depthAt(x, y - d) < 0.5) {
+                face = d;
+                break;
               }
+            if (face) {
+              const streak = noise(n6, x * 2.4 + 300, y * 0.22);
+              let k = (0.66 + streak * 0.5) * (1 - (face / GORGE_WALL) * 0.5);
+              if (L.strata > 0) k *= 1 + Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9) * 0.12 * L.strata;
+              // Ledges: now and then a lighter band across the face.
+              if (Math.abs(noise(n14, x * 0.5 + 77, y * 3) - 0.5) < 0.03) k *= 1.22;
+              mix(i, WALLC[0] * k, WALLC[1] * k, WALLC[2] * k, 1);
+              continue;
             }
-        }
-    };
-    // Ruined cities (Vast maps): streets ('p') and the ground the ruins ('x') stand on are cracked
-    // paving, soft-edged into the country round them like the dirt; the ruins' foundations are
-    // sooty concrete. The shells themselves are drawn over this (city, below the passes).
-    const streetBin = new Float32Array(MAP_W * MAP_H);
-    const ruinBin = new Float32Array(MAP_W * MAP_H);
-    let anyCity = false;
-    for (let k = 0; k < streetBin.length; k++) {
-      const ch = tiles[k];
-      if (ch === 'p' || ch === 'x') (streetBin[k] = 1), (anyCity = true);
-      if (ch === 'x') ruinBin[k] = 1;
-    }
-    const cityBlur = anyCity ? blur(streetBin, 1) : streetBin;
-    const cityF = streetBin.map((v, k) => v * 0.55 + cityBlur[k] * 0.45);
-    const ASPHALT: Rgb = [76, 76, 72];
-    const WORN: Rgb = [104, 100, 92];
-    const SLAB: Rgb = [116, 110, 101];
-    const cityPass = (t0: number, t1: number) => {
-      if (!anyCity) return;
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(streetBin, tx, ty, 0)) continue;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const v = sample(cityF, x, y) + (noise(n6, x + 40, y + 90) - 0.5) * 0.14 + (noise(n14, x + 610, y) - 0.5) * 0.2;
-              if (v < 0.38) continue;
-              const i = cell(x, y);
-              const m = noise(n14, x * 1.4 + 70, y * 1.4);
-              const sh = 0.88 + m * 0.24;
-              let r = ASPHALT[0] * sh;
-              let g = ASPHALT[1] * sh;
-              let b = ASPHALT[2] * sh;
-              // Worn and patched paving, lighter, in broad patches.
-              const wn = ss(0.55, 0.85, noise(n40, x + 1700, y + 300)) * 0.7;
-              r += (WORN[0] - r) * wn;
-              g += (WORN[1] - g) * wn;
-              b += (WORN[2] - b) * wn;
-              // Foundations under the ruins: pale concrete, stained with soot.
-              const rf = ss(0.4, 0.6, sample(ruinBin, x, y) + (noise(n6, x, y + 300) - 0.5) * 0.25);
-              if (rf > 0) {
-                const soot = 1 - ss(0.5, 0.85, noise(n40, x + 3100, y + 1200)) * 0.55;
-                r += (SLAB[0] * soot * sh - r) * rf;
-                g += (SLAB[1] * soot * sh - g) * rf;
-                b += (SLAB[2] * soot * sh - b) * rf;
-              }
-              // Cracks: thin dark lines that wander, more of them than on the rock.
-              const ck = Math.abs(noise(n14, x * 1.8 + 900, y * 1.8 + 400) - 0.5);
-              const ck2 = Math.abs(noise(n40, x * 2.4 + 50, y * 2.4 + 2000) - 0.5);
-              // (Widened at half resolution, so a crack stays a line rather than a row of dots.)
-              if (ck < 0.014 * st || ck2 < 0.01 * st) (r *= 0.62), (g *= 0.62), (b *= 0.62);
-              const speck = hash(y * W + x + 77);
-              if (speck < 0.04) (r *= 0.8), (g *= 0.8), (b *= 0.8);
-              else if (speck > 0.97) (r += 18), (g += 17), (b += 15);
-              // Dust drifted in from the country, toward the edges.
-              const dust = (1 - ss(0.42, 0.7, v)) * 0.55;
-              r += (L.dirt[0] - r) * dust;
-              g += (L.dirt[1] - g) * dust;
-              b += (L.dirt[2] - b) * dust;
-              mix(i, r, g, b, ss(0.38, 0.47, v));
+            // The side walls, steep, seen almost edge-on: the east wall faces the light and is
+            // lit, the west wall is in its own shadow.
+            let side = 0;
+            for (let d = 2; d <= GORGE_SIDE && !side; d += 2) {
+              if (depthAt(x + d, y) < 0.5) side = d;
+              else if (depthAt(x - d, y) < 0.5) side = -d;
             }
-        }
-    };
-
-    // Ravines ('v', and the bridges over them, 'b', which the gorge runs on beneath): a chasm cut
-    // into the ground. Depth is the distance to the nearest ground outside it (up to three tiles),
-    // sampled smoothly and roughened, so the edge wanders. Seen from a little south, as the rock
-    // is: the far (north) wall shows as a face GORGE_WALL pixels tall, the near wall is hidden
-    // under its lip, the lip itself catches the light on the south rim and is dark on the north,
-    // and the floor is deep, cold and shadowed under its western wall, with scree along the foot.
-    const gorgeBin = new Float32Array(MAP_W * MAP_H);
-    let anyGorge = false;
-    for (let k = 0; k < gorgeBin.length; k++) if (tiles[k] === 'v' || tiles[k] === 'b') (gorgeBin[k] = 1), (anyGorge = true);
-    const gorgeDist = new Float32Array(MAP_W * MAP_H);
-    if (anyGorge) {
-      for (let k = 0; k < gorgeDist.length; k++) gorgeDist[k] = gorgeBin[k] ? 3 : 0;
-      for (let pass = 0; pass < 3; pass++)
-        for (let y = 0; y < MAP_H; y++)
-          for (let x = 0; x < MAP_W; x++) {
-            const k = y * MAP_W + x;
-            if (!gorgeBin[k]) continue;
-            let m = gorgeDist[k];
-            for (let j = -1; j <= 1; j++)
-              for (let i = -1; i <= 1; i++) {
-                const xx = x + i;
-                const yy = y + j;
-                if (xx < 0 || yy < 0 || xx >= MAP_W || yy >= MAP_H) continue;
-                m = Math.min(m, gorgeDist[yy * MAP_W + xx] + 1);
-              }
-            gorgeDist[k] = m;
+            if (side) {
+              const streak = noise(n6, x * 0.25 + 900, y * 2.2);
+              const lit = side > 0 ? 1.15 : 0.55;
+              const k = (0.7 + streak * 0.4) * lit * (1 - (Math.abs(side) / GORGE_SIDE) * 0.3);
+              mix(i, WALLC[0] * k, WALLC[1] * k, WALLC[2] * k, 1);
+              continue;
+            }
+            // The floor: darker and colder the deeper the chasm.
+            const deepness = ss(0.9, 2.4, D);
+            const mm = 0.85 + noise(n14, x * 1.3 + 500, y * 1.3) * 0.3;
+            let r = (FLOOR[0] + (ABYSS[0] - FLOOR[0]) * deepness) * mm;
+            let g = (FLOOR[1] + (ABYSS[1] - FLOOR[1]) * deepness) * mm;
+            let b = (FLOOR[2] + (ABYSS[2] - FLOOR[2]) * deepness) * mm;
+            // Shadow of the western wall and the lip above.
+            const shade = depthAt(x - 12, y - 4) < 0.5 || depthAt(x - 6, y - GORGE_WALL - 4) < 0.5 ? 0.62 : 1;
+            r *= shade;
+            g *= shade;
+            b *= shade;
+            // Gloom along the foot of every wall, deepest in the narrowest places.
+            const foot = 1 - ss(0.5, 1.1, D) * 0.35;
+            mix(i, r * foot, g * foot, b * foot, 1);
           }
-      // Softened a little, so the gorge's corners round off rather than following the tiles.
-      const soft = blur(gorgeDist, 1);
-      for (let k = 0; k < gorgeDist.length; k++) gorgeDist[k] = gorgeDist[k] * 0.55 + soft[k] * 0.45;
-    }
-    const GORGE_WALL = 22;
-    /** How wide the side walls of a gorge running north to south show, in world pixels. */
-    const GORGE_SIDE = 8;
-    const depthAt = (x: number, y: number) => sample(gorgeDist, x, y) + (noise(n6, x + 1234, y) - 0.5) * 0.2 + (noise(n14, x, y + 4321) - 0.5) * 0.26;
-    const LIP = L.rockTop;
-    const WALLC = L.rockFace;
-    const FLOOR: Rgb = [40, 35, 31];
-    const ABYSS: Rgb = [18, 20, 24];
-    const gorgePass = (t0: number, t1: number) => {
-      if (!anyGorge) return;
-      for (let ty = t0; ty < t1; ty++)
-        for (let tx = 0; tx < MAP_W; tx++) {
-          if (!near(gorgeBin, tx, ty, 1)) continue;
-          for (let y = ty * TILE; y < (ty + 1) * TILE; y += st)
-            for (let x = tx * TILE; x < (tx + 1) * TILE; x += st) {
-              const D = depthAt(x, y);
-              if (D < 0.2) continue;
-              const i = cell(x, y);
-              if (D < 0.5) {
-                if (D < 0.36) {
-                  // The gloom and loose stone on the ground just short of the edge.
-                  mix(i, 20, 16, 12, ((D - 0.2) / 0.16) * 0.22);
-                  if (hash(y * W + x + 31) < 0.05) mix(i, LIP[0], LIP[1], LIP[2], 0.5);
-                  continue;
-                }
-                // The lip: bare rock, lit where it looks north over the chasm (the south rim),
-                // dark where it looks south (the north rim, its face below in shadow).
-                const m = noise(n14, x * 1.6, y * 1.6) * 0.6 + noise(n6, x, y) * 0.4;
-                const k = 0.82 + m * 0.3;
-                const a = ss(0.36, 0.43, D);
-                mix(i, LIP[0] * k, LIP[1] * k, LIP[2] * k, a);
-                const northward = depthAt(x, y - 6) - depthAt(x, y + 6);
-                if (northward > 0.05) mix(i, 214, 206, 186, a * ss(0.44, 0.5, D) * Math.min(1, northward * 2.2) * 0.75);
-                else if (northward < -0.05) mix(i, 22, 20, 18, a * ss(0.45, 0.5, D) * 0.5);
-                continue;
-              }
-              // Inside: the far wall's face if the lip is within GORGE_WALL pixels to the north.
-              let face = 0;
-              for (let d = 2; d <= GORGE_WALL; d += 2)
-                if (depthAt(x, y - d) < 0.5) {
-                  face = d;
-                  break;
-                }
-              if (face) {
-                const streak = noise(n6, x * 2.4 + 300, y * 0.22);
-                let k = (0.66 + streak * 0.5) * (1 - (face / GORGE_WALL) * 0.5);
-                if (L.strata > 0) k *= 1 + Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9) * 0.12 * L.strata;
-                // Ledges: now and then a lighter band across the face.
-                if (Math.abs(noise(n14, x * 0.5 + 77, y * 3) - 0.5) < 0.03) k *= 1.22;
-                mix(i, WALLC[0] * k, WALLC[1] * k, WALLC[2] * k, 1);
-                continue;
-              }
-              // The side walls, steep, seen almost edge-on: the east wall faces the light and is
-              // lit, the west wall is in its own shadow.
-              let side = 0;
-              for (let d = 2; d <= GORGE_SIDE && !side; d += 2) {
-                if (depthAt(x + d, y) < 0.5) side = d;
-                else if (depthAt(x - d, y) < 0.5) side = -d;
-              }
-              if (side) {
-                const streak = noise(n6, x * 0.25 + 900, y * 2.2);
-                const lit = side > 0 ? 1.15 : 0.55;
-                const k = (0.7 + streak * 0.4) * lit * (1 - (Math.abs(side) / GORGE_SIDE) * 0.3);
-                mix(i, WALLC[0] * k, WALLC[1] * k, WALLC[2] * k, 1);
-                continue;
-              }
-              // The floor: darker and colder the deeper the chasm.
-              const deepness = ss(0.9, 2.4, D);
-              const mm = 0.85 + noise(n14, x * 1.3 + 500, y * 1.3) * 0.3;
-              let r = (FLOOR[0] + (ABYSS[0] - FLOOR[0]) * deepness) * mm;
-              let g = (FLOOR[1] + (ABYSS[1] - FLOOR[1]) * deepness) * mm;
-              let b = (FLOOR[2] + (ABYSS[2] - FLOOR[2]) * deepness) * mm;
-              // Shadow of the western wall and the lip above.
-              const shade = depthAt(x - 12, y - 4) < 0.5 || depthAt(x - 6, y - GORGE_WALL - 4) < 0.5 ? 0.62 : 1;
-              r *= shade;
-              g *= shade;
-              b *= shade;
-              // Gloom along the foot of every wall, deepest in the narrowest places.
-              const foot = 1 - ss(0.5, 1.1, D) * 0.35;
-              mix(i, r * foot, g * foot, b * foot, 1);
-            }
-        }
-    };
+      }
+  };
 
-    let layer = newCanvas(CW, img.height);
-    for (let t0 = 0; t0 < MAP_H; t0 += BAND) {
+  /**
+   * Paints the region (qx, qy) to (qx + qw, qy + qh), in world pixels, onto a canvas that size.
+   * Everything that can reach into the region is drawn, in the order a whole-map paint draws it,
+   * so a region's pixels are the whole map's pixels there: tile by tile decoration comes from
+   * the tiles within MARGIN tiles of it (nothing drawn for a tile reaches further), and the rest is
+   * worked out per pixel or from the lists above.
+   */
+  function paint(qx: number, qy: number, qw: number, qh: number): HTMLCanvasElement {
+    const c = newCanvas(qw, qh);
+    const ctx = c.getContext('2d')!;
+    ctx.translate(-qx, -qy);
+    const reaches = (x: number, y: number, w: number, h: number) => x < qx + qw && y < qy + qh && x + w > qx && y + h > qy;
+    const MARGIN = 3;
+    const tx0 = Math.max(0, Math.floor(qx / TILE) - MARGIN);
+    const ty0 = Math.max(0, Math.floor(qy / TILE) - MARGIN);
+    const tx1 = Math.min(MAP_W, Math.ceil((qx + qw) / TILE) + MARGIN);
+    const ty1 = Math.min(MAP_H, Math.ceil((qy + qh) / TILE) + MARGIN);
+
+    // 1. Grass everywhere: one base tone, then large soft patches of the others, so there is no
+    // tile grid to see.
+    ctx.fillStyle = ART.grass[0];
+    ctx.fillRect(0, 0, WW, HH);
+    for (const { px, py, rad, col } of patchList) {
+      if (!reaches(px - rad, py - rad, rad * 2, rad * 2)) continue;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
+      g.addColorStop(0, col);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = g;
+      ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+    }
+    // Broad zones of drier and lusher ground, a few hundred pixels across, so a large field reads
+    // as country rather than carpet.
+    zoneList.forEach(({ px, py, rad }, i) => {
+      if (!reaches(px - rad, py - rad, rad * 2, rad * 2)) return;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
+      g.addColorStop(0, i % 2 ? DRY_GRASS : LUSH_GRASS);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = i % 2 ? L.dry : L.lush;
+      ctx.fillStyle = g;
+      ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+    });
+    ctx.globalAlpha = 1;
+    // Blades: thin, leaning a little either way, wide at the root and pointed at the tip. Two
+    // blocks of BLADE_BLOCK pixels are painted (each batched into one path per shade and strength)
+    // and laid over the map, block by block, each picked and mirrored by a hash of where it lies.
+    // Filling a map's worth of slanted blades one by one took seconds on a large map.
+    for (let by = 0; by * BLADE_BLOCK < HH; by++)
+      for (let bx = 0; bx * BLADE_BLOCK < WW; bx++) {
+        if (!reaches(bx * BLADE_BLOCK, by * BLADE_BLOCK, BLADE_BLOCK, BLADE_BLOCK)) continue;
+        const h = hash(by * 7919 + bx * 31 + 5);
+        ctx.save();
+        ctx.translate(bx * BLADE_BLOCK + (h < 0.5 ? 0 : BLADE_BLOCK), by * BLADE_BLOCK);
+        if (h >= 0.5) ctx.scale(-1, 1);
+        ctx.drawImage(bladeBlocks[hash(by * 31 + bx * 7919 + 9) < 0.5 ? 0 : 1], 0, 0);
+        ctx.restore();
+      }
+    // Tufts: a fan of blades, dark at the root and lit at the tips on the side toward the light.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        if (at(x, y) !== 'g') continue;
+        const r = rnd(y * MAP_W + x + 60606);
+        const n = r() < 0.45 ? 1 + Math.floor(r() * 2) : 0;
+        for (let k = 0; k < n; k++) {
+          const bx = x * TILE + 3 + r() * (TILE - 6);
+          const by = y * TILE + 6 + r() * (TILE - 8);
+          ctx.fillStyle = 'rgba(20,30,10,0.25)';
+          ctx.beginPath();
+          ctx.ellipse(bx + 1.5, by + 0.8, 3.5, 1.4, 0, 0, TAU);
+          ctx.fill();
+          ctx.lineWidth = 1;
+          for (let b = 0; b < 6; b++) {
+            const a = -Math.PI / 2 + (b - 2.5) * 0.28 + (r() - 0.5) * 0.2;
+            const len = 3.5 + r() * 3.5;
+            ctx.strokeStyle = b < 3 ? ART.grassLight : ART.grassDark;
+            ctx.beginPath();
+            ctx.moveTo(bx + (b - 2.5) * 0.5, by);
+            ctx.lineTo(bx + (b - 2.5) * 0.5 + Math.cos(a) * len, by + Math.sin(a) * len);
+            ctx.stroke();
+          }
+        }
+        // Now and then a small cluster of flowers.
+        if (r() < L.flowers) {
+          const fx = x * TILE + 6 + r() * (TILE - 12);
+          const fy = y * TILE + 6 + r() * (TILE - 12);
+          const col = L.flowerCols[Math.floor(r() * L.flowerCols.length)];
+          const m = 3 + Math.floor(r() * 5);
+          for (let k = 0; k < m; k++) {
+            const px = fx + (r() - 0.5) * 9;
+            const py = fy + (r() - 0.5) * 7;
+            ctx.fillStyle = 'rgba(30,45,20,0.5)';
+            ctx.fillRect(px - 0.2, py, 0.8, 2);
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.arc(px, py, 0.9 + r() * 0.5, 0, TAU);
+            ctx.fill();
+          }
+        }
+      }
+
+    // The type's wash over the grass, blades and flowers alike (the canyon's dust, the plains' gold).
+    if (L.tint) {
+      ctx.globalAlpha = L.tintAlpha;
+      ctx.fillStyle = `rgb(${L.tint[0]},${L.tint[1]},${L.tint[2]})`;
+      ctx.fillRect(0, 0, WW, HH);
+      ctx.globalAlpha = 1;
+    }
+
+    // 1b. Relief: a gentle rolling height field, lit from the top left, so open country reads as
+    // ground that rises and falls rather than a flat sheet. Worked out once at one sample per
+    // RELIEF pixels (reliefOf) and stretched with smoothing, over the grass only: dirt, water and
+    // rock below carry their own shading.
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(reliefLayer, 0, 0, reliefLayer.width * RELIEF, reliefLayer.height * RELIEF);
+    ctx.restore();
+
+    // 2, 3 and 4. Dirt, water and rock, shaded per pixel (the passes above).
+    // The layer for the region, a band of BAND tile rows at a time (every pass for one band, then
+    // the next), so its pixels and the height cache are a band's worth (on a 160-tile map painted
+    // whole, 10 MB a band against 105 MB). Each pixel goes through the same passes in the same
+    // order whatever the band or the region, so the result is the same.
+    const BAND = 16;
+    rx = qx;
+    rw = qw;
+    hx0 = qx - HMARGIN;
+    hw = qw + 2 * HMARGIN;
+    for (let t0 = Math.floor(qy / TILE); t0 * TILE < qy + qh; t0 += BAND) {
       const t1 = Math.min(MAP_H, t0 + BAND);
-      y0 = t0 * TILE;
+      y0 = Math.max(qy, t0 * TILE);
+      y1 = Math.min(qy + qh, t1 * TILE);
+      if (y1 <= y0) continue;
       hy0 = y0 - HMARGIN;
-      hy1 = t1 * TILE + HMARGIN;
+      hy1 = y1 + HMARGIN;
+      if (hcache.length !== hw * (hy1 - hy0)) hcache = new Float32Array(hw * (hy1 - hy0));
       hcache.fill(-1);
-      const rows = Math.round((t1 - t0) * TILE * scale);
-      if (img.height !== rows) {
-        img = ctx.createImageData(CW, rows);
-        px = img.data;
-        layer = newCanvas(CW, rows);
-      } else px.fill(0);
+      const img = new ImageData(qw, y1 - y0);
+      px = img.data;
       dirtPass(t0, t1);
       waterPass(t0, t1);
       fordPass(t0, t1);
       rockPass(t0, t1);
       cityPass(t0, t1);
       gorgePass(t0, t1);
-      const lctx = layer.getContext('2d')!;
-      lctx.clearRect(0, 0, CW, rows);
-      lctx.putImageData(img, 0, 0);
-      // The layer is in canvas pixels already: copied without the world-to-canvas scale.
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(layer, 0, Math.round(y0 * scale));
-      ctx.restore();
+      const layer = newCanvas(qw, y1 - y0);
+      layer.getContext('2d')!.putImageData(img, 0, 0);
+      ctx.drawImage(layer, qx, y0);
     }
-  }
 
-  // Ripples on open water.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'w') continue;
-      const r = rnd(y * MAP_W + x + 4242);
-      ctx.strokeStyle = ART.waterLight;
-      ctx.globalAlpha = 0.3;
-      ctx.lineWidth = 1;
+    // Ripples on open water.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        if (at(x, y) !== 'w') continue;
+        const r = rnd(y * MAP_W + x + 4242);
+        ctx.strokeStyle = ART.waterLight;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const wx = x * TILE + r() * 20 + 4;
+        const wy = y * TILE + r() * 24 + 4;
+        ctx.moveTo(wx, wy);
+        ctx.quadraticCurveTo(wx + 4, wy - 2, wx + 8, wy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+    // Boulders sitting on the outcrops, and scree at the foot of the cliffs.
+    const boulder = (bx: number, by: number, rad: number, seed: number) => {
+      const r = rnd(seed);
+      const pts: [number, number][] = [];
+      const sides = 6 + Math.floor(r() * 3);
+      for (let k = 0; k < sides; k++) {
+        const a = (k / sides) * TAU + r() * 0.4;
+        const d = rad * (0.75 + r() * 0.35);
+        pts.push([bx + Math.cos(a) * d, by + Math.sin(a) * d * 0.85]);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
       ctx.beginPath();
-      const wx = x * TILE + r() * 20 + 4;
-      const wy = y * TILE + r() * 24 + 4;
-      ctx.moveTo(wx, wy);
-      ctx.quadraticCurveTo(wx + 4, wy - 2, wx + 8, wy);
+      pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx + 2, qy + 2.5) : ctx.moveTo(qx + 2, qy + 2.5)));
+      ctx.fill();
+      const g = ctx.createLinearGradient(bx - rad, by - rad, bx + rad * 0.6, by + rad);
+      g.addColorStop(0, L.stone[0]);
+      g.addColorStop(0.55, L.stone[1]);
+      g.addColorStop(1, L.stone[2]);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy)));
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 0.8;
       ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    };
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        const here = at(x, y);
+        const r = rnd(y * MAP_W + x + 4444);
+        if (here === 'r') {
+          if (r() < 0.35) boulder(x * TILE + 8 + r() * 16, y * TILE + 2 + r() * 14, 3 + r() * 3, y * MAP_W + x + 13);
+          // Scrub on the tops, away from the edges (the tops are drawn lifted by the cliff height).
+          if (L.scrub > 0 && at(x, y - 1) === 'r' && at(x - 1, y) === 'r' && at(x + 1, y) === 'r' && r() < L.scrub) {
+            const sx = x * TILE + 6 + r() * 20;
+            const sy = y * TILE - L.cliff + 6 + r() * 20;
+            const n = 3 + Math.floor(r() * 3);
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(sx + 2, sy + 2, 5, 3, 0, 0, TAU);
+            ctx.fill();
+            for (let k = 0; k < n; k++) {
+              const bx = sx + (r() - 0.5) * 7;
+              const by = sy + (r() - 0.5) * 5;
+              const br = 1.6 + r() * 1.6;
+              ctx.fillStyle = mapType === 'canyon' ? '#5f5a30' : '#46552a';
+              ctx.beginPath();
+              ctx.arc(bx, by, br, 0, TAU);
+              ctx.fill();
+              ctx.fillStyle = mapType === 'canyon' ? '#86804a' : '#677a3a';
+              ctx.beginPath();
+              ctx.arc(bx - br * 0.3, by - br * 0.3, br * 0.5, 0, TAU);
+              ctx.fill();
+            }
+          }
+          continue;
+        }
+        if (here === 'w' || here === 'v' || here === 'x' || here === 'b' || (at(x, y - 1) !== 'r' && at(x - 1, y) !== 'r')) continue;
+        const n = 2 + Math.floor(r() * 4);
+        for (let i = 0; i < n; i++) {
+          const sx = x * TILE + 2 + r() * (at(x - 1, y) === 'r' ? 12 : 28);
+          const sy = y * TILE + 3 + r() * (at(x, y - 1) === 'r' ? 10 : 26);
+          const sr = 1.1 + r() * 1.8;
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.beginPath();
+          ctx.ellipse(sx + 1, sy + 1.3, sr, sr * 0.75, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
+          ctx.fill();
+        }
+      }
 
-  // Boulders sitting on the outcrops, and scree at the foot of the cliffs.
-  const boulder = (bx: number, by: number, rad: number, seed: number) => {
-    const r = rnd(seed);
-    const pts: [number, number][] = [];
-    const sides = 6 + Math.floor(r() * 3);
-    for (let k = 0; k < sides; k++) {
-      const a = (k / sides) * TAU + r() * 0.4;
-      const d = rad * (0.75 + r() * 0.35);
-      pts.push([bx + Math.cos(a) * d, by + Math.sin(a) * d * 0.85]);
-    }
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.beginPath();
-    pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx + 2, qy + 2.5) : ctx.moveTo(qx + 2, qy + 2.5)));
-    ctx.fill();
-    const g = ctx.createLinearGradient(bx - rad, by - rad, bx + rad * 0.6, by + rad);
-    g.addColorStop(0, L.stone[0]);
-    g.addColorStop(0.55, L.stone[1]);
-    g.addColorStop(1, L.stone[2]);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy)));
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  };
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      const here = at(x, y);
-      const r = rnd(y * MAP_W + x + 4444);
-      if (here === 'r') {
-        if (r() < 0.35) boulder(x * TILE + 8 + r() * 16, y * TILE + 2 + r() * 14, 3 + r() * 3, y * MAP_W + x + 13);
-        // Scrub on the tops, away from the edges (the tops are drawn lifted by the cliff height).
-        if (L.scrub > 0 && at(x, y - 1) === 'r' && at(x - 1, y) === 'r' && at(x + 1, y) === 'r' && r() < L.scrub) {
-          const sx = x * TILE + 6 + r() * 20;
-          const sy = y * TILE - L.cliff + 6 + r() * 20;
-          const n = 3 + Math.floor(r() * 3);
+    // Pebbles on the dirt, each with a lit top.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        if (at(x, y) !== 'd' || at(x, y + 1) === 'r' || fords[y * MAP_W + x]) continue;
+        const r = rnd(y * MAP_W + x + 777);
+        if (r() < 0.5) continue;
+        const qx = x * TILE + 4 + r() * 24;
+        const qy = y * TILE + 4 + r() * 24;
+        ctx.fillStyle = ART.dirtDark;
+        ctx.beginPath();
+        ctx.ellipse(qx + 0.6, qy + 0.8, 2, 1.4, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = ART.dirtLight;
+        ctx.beginPath();
+        ctx.ellipse(qx, qy, 1.6, 1.1, 0, 0, TAU);
+        ctx.fill();
+      }
+
+    // Stepping stones and ripples on the fords.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        const along = fords[y * MAP_W + x];
+        if (!along) continue;
+        const r = rnd(y * MAP_W + x + 5150);
+        const n = 2 + Math.floor(r() * 3);
+        for (let i = 0; i < n; i++) {
+          const sx = x * TILE + 4 + r() * 24;
+          const sy = y * TILE + 4 + r() * 24;
+          const sr = 1.6 + r() * 2.4;
+          // A ripple trailing downstream of the stone, then the stone with its wet highlight.
+          ctx.strokeStyle = 'rgba(225,240,240,0.45)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          if (along === 1) {
+            ctx.moveTo(sx - sr - 1, sy - sr * 0.6);
+            ctx.quadraticCurveTo(sx - sr - 4, sy, sx - sr - 1, sy + sr * 0.6);
+          } else {
+            ctx.moveTo(sx - sr * 0.6, sy + sr + 1);
+            ctx.quadraticCurveTo(sx, sy + sr + 4, sx + sr * 0.6, sy + sr + 1);
+          }
+          ctx.stroke();
           ctx.fillStyle = 'rgba(0,0,0,0.25)';
           ctx.beginPath();
-          ctx.ellipse(sx + 2, sy + 2, 5, 3, 0, 0, TAU);
+          ctx.ellipse(sx + 0.8, sy + 1, sr, sr * 0.75, 0, 0, TAU);
           ctx.fill();
-          for (let k = 0; k < n; k++) {
-            const bx = sx + (r() - 0.5) * 7;
-            const by = sy + (r() - 0.5) * 5;
-            const br = 1.6 + r() * 1.6;
-            ctx.fillStyle = mapType === 'canyon' ? '#5f5a30' : '#46552a';
+          ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.beginPath();
+          ctx.ellipse(sx - sr * 0.3, sy - sr * 0.3, sr * 0.35, sr * 0.22, 0, 0, TAU);
+          ctx.fill();
+        }
+      }
+
+    // Reeds along the shore, on the land side, and lily pads on the water just off it.
+    const water4 = (x: number, y: number) => at(x - 1, y) === 'w' || at(x + 1, y) === 'w' || at(x, y - 1) === 'w' || at(x, y + 1) === 'w';
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        const here = at(x, y);
+        const r = rnd(y * MAP_W + x + 6262);
+        if (here === 'w') {
+          const shore = at(x - 1, y) !== 'w' || at(x + 1, y) !== 'w' || at(x, y - 1) !== 'w' || at(x, y + 1) !== 'w';
+          if (L.lilies <= 0 || !shore || r() > L.lilies) continue;
+          const m = 1 + Math.floor(r() * 3);
+          for (let i = 0; i < m; i++) {
+            const lx = x * TILE + 6 + r() * 20;
+            const ly = y * TILE + 6 + r() * 20;
+            const lr = 2.2 + r() * 1.8;
+            const a0 = r() * TAU;
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
             ctx.beginPath();
-            ctx.arc(bx, by, br, 0, TAU);
+            ctx.arc(lx + 0.8, ly + 1, lr, 0, TAU);
             ctx.fill();
-            ctx.fillStyle = mapType === 'canyon' ? '#86804a' : '#677a3a';
+            ctx.fillStyle = r() < 0.5 ? '#4f7f3a' : '#5d8c42';
             ctx.beginPath();
-            ctx.arc(bx - br * 0.3, by - br * 0.3, br * 0.5, 0, TAU);
+            ctx.moveTo(lx, ly);
+            ctx.arc(lx, ly, lr, a0 + 0.35, a0 + TAU - 0.05);
+            ctx.closePath();
             ctx.fill();
+            if (r() < 0.25) {
+              ctx.fillStyle = r() < 0.5 ? '#f3eef0' : '#e8b4c6';
+              ctx.beginPath();
+              ctx.arc(lx + lr * 0.2, ly - lr * 0.2, 1.1, 0, TAU);
+              ctx.fill();
+            }
           }
+          continue;
         }
-        continue;
-      }
-      if (here === 'w' || here === 'v' || here === 'x' || here === 'b' || (at(x, y - 1) !== 'r' && at(x - 1, y) !== 'r')) continue;
-      const n = 2 + Math.floor(r() * 4);
-      for (let i = 0; i < n; i++) {
-        const sx = x * TILE + 2 + r() * (at(x - 1, y) === 'r' ? 12 : 28);
-        const sy = y * TILE + 3 + r() * (at(x, y - 1) === 'r' ? 10 : 26);
-        const sr = 1.1 + r() * 1.8;
-        ctx.fillStyle = 'rgba(0,0,0,0.3)';
-        ctx.beginPath();
-        ctx.ellipse(sx + 1, sy + 1.3, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-      }
-    }
-
-  // Pebbles on the dirt, each with a lit top.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'd' || at(x, y + 1) === 'r' || fords[y * MAP_W + x]) continue;
-      const r = rnd(y * MAP_W + x + 777);
-      if (r() < 0.5) continue;
-      const qx = x * TILE + 4 + r() * 24;
-      const qy = y * TILE + 4 + r() * 24;
-      ctx.fillStyle = ART.dirtDark;
-      ctx.beginPath();
-      ctx.ellipse(qx + 0.6, qy + 0.8, 2, 1.4, 0, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = ART.dirtLight;
-      ctx.beginPath();
-      ctx.ellipse(qx, qy, 1.6, 1.1, 0, 0, TAU);
-      ctx.fill();
-    }
-
-  // Stepping stones and ripples on the fords.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      const along = fords[y * MAP_W + x];
-      if (!along) continue;
-      const r = rnd(y * MAP_W + x + 5150);
-      const n = 2 + Math.floor(r() * 3);
-      for (let i = 0; i < n; i++) {
-        const sx = x * TILE + 4 + r() * 24;
-        const sy = y * TILE + 4 + r() * 24;
-        const sr = 1.6 + r() * 2.4;
-        // A ripple trailing downstream of the stone, then the stone with its wet highlight.
-        ctx.strokeStyle = 'rgba(225,240,240,0.45)';
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        if (along === 1) {
-          ctx.moveTo(sx - sr - 1, sy - sr * 0.6);
-          ctx.quadraticCurveTo(sx - sr - 4, sy, sx - sr - 1, sy + sr * 0.6);
-        } else {
-          ctx.moveTo(sx - sr * 0.6, sy + sr + 1);
-          ctx.quadraticCurveTo(sx, sy + sr + 4, sx + sr * 0.6, sy + sr + 1);
-        }
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.beginPath();
-        ctx.ellipse(sx + 0.8, sy + 1, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.beginPath();
-        ctx.ellipse(sx - sr * 0.3, sy - sr * 0.3, sr * 0.35, sr * 0.22, 0, 0, TAU);
-        ctx.fill();
-      }
-    }
-
-  // Reeds along the shore, on the land side, and lily pads on the water just off it.
-  const water4 = (x: number, y: number) => at(x - 1, y) === 'w' || at(x + 1, y) === 'w' || at(x, y - 1) === 'w' || at(x, y + 1) === 'w';
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      const here = at(x, y);
-      const r = rnd(y * MAP_W + x + 6262);
-      if (here === 'w') {
-        const shore = at(x - 1, y) !== 'w' || at(x + 1, y) !== 'w' || at(x, y - 1) !== 'w' || at(x, y + 1) !== 'w';
-        if (L.lilies <= 0 || !shore || r() > L.lilies) continue;
-        const m = 1 + Math.floor(r() * 3);
-        for (let i = 0; i < m; i++) {
-          const lx = x * TILE + 6 + r() * 20;
-          const ly = y * TILE + 6 + r() * 20;
-          const lr = 2.2 + r() * 1.8;
-          const a0 = r() * TAU;
-          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        if (here === 'r' || here === 't' || here === 'v' || here === 'x' || here === 'b' || here === 'p' || fords[y * MAP_W + x] || !water4(x, y)) continue;
+        let n = 0;
+        for (let k = 0; k < 4; k++) if (r() < L.reeds) n++;
+        for (let k = 0; k < n; k++) {
+          // Clumps sit toward the water side of the tile.
+          const bx = x * TILE + 4 + r() * 24 + (at(x + 1, y) === 'w' ? 6 : at(x - 1, y) === 'w' ? -6 : 0);
+          const by = y * TILE + 6 + r() * 22 + (at(x, y + 1) === 'w' ? 5 : at(x, y - 1) === 'w' ? -5 : 0);
+          ctx.fillStyle = 'rgba(20,30,10,0.25)';
           ctx.beginPath();
-          ctx.arc(lx + 0.8, ly + 1, lr, 0, TAU);
+          ctx.ellipse(bx + 2, by + 1, 4, 1.6, 0, 0, TAU);
           ctx.fill();
-          ctx.fillStyle = r() < 0.5 ? '#4f7f3a' : '#5d8c42';
-          ctx.beginPath();
-          ctx.moveTo(lx, ly);
-          ctx.arc(lx, ly, lr, a0 + 0.35, a0 + TAU - 0.05);
-          ctx.closePath();
-          ctx.fill();
-          if (r() < 0.25) {
-            ctx.fillStyle = r() < 0.5 ? '#f3eef0' : '#e8b4c6';
+          ctx.lineWidth = 0.9;
+          for (let b = 0; b < 7; b++) {
+            const a = -Math.PI / 2 + (b - 3) * 0.16 + (r() - 0.5) * 0.15;
+            const len = 6 + r() * 6;
+            const ex = bx + (b - 3) * 0.6 + Math.cos(a) * len;
+            const ey = by + Math.sin(a) * len;
+            ctx.strokeStyle = b % 2 ? '#3f5a2a' : '#5f7d3a';
             ctx.beginPath();
-            ctx.arc(lx + lr * 0.2, ly - lr * 0.2, 1.1, 0, TAU);
-            ctx.fill();
-          }
-        }
-        continue;
-      }
-      if (here === 'r' || here === 't' || here === 'v' || here === 'x' || here === 'b' || here === 'p' || fords[y * MAP_W + x] || !water4(x, y)) continue;
-      let n = 0;
-      for (let k = 0; k < 4; k++) if (r() < L.reeds) n++;
-      for (let k = 0; k < n; k++) {
-        // Clumps sit toward the water side of the tile.
-        const bx = x * TILE + 4 + r() * 24 + (at(x + 1, y) === 'w' ? 6 : at(x - 1, y) === 'w' ? -6 : 0);
-        const by = y * TILE + 6 + r() * 22 + (at(x, y + 1) === 'w' ? 5 : at(x, y - 1) === 'w' ? -5 : 0);
-        ctx.fillStyle = 'rgba(20,30,10,0.25)';
-        ctx.beginPath();
-        ctx.ellipse(bx + 2, by + 1, 4, 1.6, 0, 0, TAU);
-        ctx.fill();
-        ctx.lineWidth = 0.9;
-        for (let b = 0; b < 7; b++) {
-          const a = -Math.PI / 2 + (b - 3) * 0.16 + (r() - 0.5) * 0.15;
-          const len = 6 + r() * 6;
-          const ex = bx + (b - 3) * 0.6 + Math.cos(a) * len;
-          const ey = by + Math.sin(a) * len;
-          ctx.strokeStyle = b % 2 ? '#3f5a2a' : '#5f7d3a';
-          ctx.beginPath();
-          ctx.moveTo(bx + (b - 3) * 0.6, by);
-          ctx.lineTo(ex, ey);
-          ctx.stroke();
-          if (b % 3 === 0) {
-            ctx.fillStyle = '#6b4a2c';
-            ctx.beginPath();
-            ctx.ellipse(ex, ey + 1.6, 0.9, 2, a + Math.PI / 2, 0, TAU);
-            ctx.fill();
+            ctx.moveTo(bx + (b - 3) * 0.6, by);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            if (b % 3 === 0) {
+              ctx.fillStyle = '#6b4a2c';
+              ctx.beginPath();
+              ctx.ellipse(ex, ey + 1.6, 0.9, 2, a + Math.PI / 2, 0, TAU);
+              ctx.fill();
+            }
           }
         }
       }
-    }
 
-  // 4b. Ruined cities and ravines (Vast maps): the street furniture, the ruins, and the bridges.
-  paintCity(ctx, at, MAP_W, MAP_H);
-  // Scree on the ravines' floors: stones fallen from the walls, at the foot of the far (north)
-  // wall's face and along the side walls; the near wall's foot is hidden under its lip.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'v') continue;
-      const open = (dx: number, dy: number) => {
-        const ch = at(x + dx, y + dy);
-        return ch !== 'v' && ch !== 'b';
-      };
-      const north = open(0, -1);
-      const west = open(-1, 0);
-      const east = open(1, 0);
-      if (!north && !west && !east) continue;
-      const r = rnd(y * MAP_W + x + 9191);
-      const n = 3 + Math.floor(r() * 5);
-      for (let i = 0; i < n; i++) {
-        const side = r();
-        let sx = x * TILE + 3 + r() * (TILE - 6);
-        let sy = y * TILE + 3 + r() * (TILE - 6);
-        if (north && (side < 0.6 || (!west && !east))) sy = y * TILE + 19 + r() * 9;
-        else if (west && (side < 0.8 || !east)) sx = x * TILE + 3 + r() * 7;
-        else sx = (x + 1) * TILE - 3 - r() * 7;
-        const sr = 0.9 + r() * 2;
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.beginPath();
-        ctx.ellipse(sx + 0.9, sy + 1.1, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[2];
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.beginPath();
-        ctx.ellipse(sx - sr * 0.3, sy - sr * 0.3, sr * 0.4, sr * 0.25, 0, 0, TAU);
-        ctx.fill();
-      }
-    }
-  paintBridges(ctx, at, MAP_W, MAP_H);
-
-  // 5. Trees: clustered canopies, each with its shadow, drawn top to bottom so they overlap well.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 't') continue;
-      const r = rnd(y * MAP_W + x + 8080);
-      const n = 2 + Math.floor(r() * 2);
-      for (let i = 0; i < n; i++) {
-        const cx = x * TILE + 7 + r() * 18;
-        const cy = y * TILE + 7 + r() * 18;
-        const rad = 7 + r() * 5;
-        ctx.fillStyle = 'rgba(0,0,0,0.18)';
-        ctx.beginPath();
-        ctx.arc(cx + 6, cy + 7, rad + 1.5, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.beginPath();
-        ctx.arc(cx + 5, cy + 6, rad, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = ART.treeDark;
-        ctx.beginPath();
-        ctx.arc(cx, cy, rad, 0, TAU);
-        ctx.fill();
-        // Leaf clumps round the rim break up the circle.
-        for (let k = 0; k < 5; k++) {
-          const a = (k / 5) * TAU + r();
+    // 4b. Ruined cities and ravines (Vast maps): the street furniture, the ruins, and the bridges.
+    paintCity(ctx, at, MAP_W, MAP_H, ruinBlocks, tx0, ty0, tx1, ty1);
+    // Scree on the ravines' floors: stones fallen from the walls, at the foot of the far (north)
+    // wall's face and along the side walls; the near wall's foot is hidden under its lip.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        if (at(x, y) !== 'v') continue;
+        const open = (dx: number, dy: number) => {
+          const ch = at(x + dx, y + dy);
+          return ch !== 'v' && ch !== 'b';
+        };
+        const north = open(0, -1);
+        const west = open(-1, 0);
+        const east = open(1, 0);
+        if (!north && !west && !east) continue;
+        const r = rnd(y * MAP_W + x + 9191);
+        const n = 3 + Math.floor(r() * 5);
+        for (let i = 0; i < n; i++) {
+          const side = r();
+          let sx = x * TILE + 3 + r() * (TILE - 6);
+          let sy = y * TILE + 3 + r() * (TILE - 6);
+          if (north && (side < 0.6 || (!west && !east))) sy = y * TILE + 19 + r() * 9;
+          else if (west && (side < 0.8 || !east)) sx = x * TILE + 3 + r() * 7;
+          else sx = (x + 1) * TILE - 3 - r() * 7;
+          const sr = 0.9 + r() * 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(a) * rad * 0.7, cy + Math.sin(a) * rad * 0.7, rad * 0.42, 0, TAU);
+          ctx.ellipse(sx + 0.9, sy + 1.1, sr, sr * 0.75, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[2];
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.18)';
+          ctx.beginPath();
+          ctx.ellipse(sx - sr * 0.3, sy - sr * 0.3, sr * 0.4, sr * 0.25, 0, 0, TAU);
           ctx.fill();
         }
-        ctx.fillStyle = ART.tree;
-        ctx.beginPath();
-        ctx.arc(cx - rad * 0.2, cy - rad * 0.2, rad * 0.75, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = ART.treeLight;
-        ctx.beginPath();
-        ctx.arc(cx - rad * 0.35, cy - rad * 0.4, rad * 0.35, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(190,220,140,0.25)';
-        ctx.beginPath();
-        ctx.arc(cx - rad * 0.45, cy - rad * 0.5, rad * 0.15, 0, TAU);
-        ctx.fill();
       }
-    }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  return c;
+    paintBridges(ctx, at, MAP_W, spans, tx0, ty0, tx1, ty1);
+
+    // 5. Trees: clustered canopies, each with its shadow, drawn top to bottom so they overlap well.
+    for (let y = ty0; y < ty1; y++)
+      for (let x = tx0; x < tx1; x++) {
+        if (at(x, y) !== 't') continue;
+        const r = rnd(y * MAP_W + x + 8080);
+        const n = 2 + Math.floor(r() * 2);
+        for (let i = 0; i < n; i++) {
+          const cx = x * TILE + 7 + r() * 18;
+          const cy = y * TILE + 7 + r() * 18;
+          const rad = 7 + r() * 5;
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.beginPath();
+          ctx.arc(cx + 6, cy + 7, rad + 1.5, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.beginPath();
+          ctx.arc(cx + 5, cy + 6, rad, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = ART.treeDark;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rad, 0, TAU);
+          ctx.fill();
+          // Leaf clumps round the rim break up the circle.
+          for (let k = 0; k < 5; k++) {
+            const a = (k / 5) * TAU + r();
+            ctx.beginPath();
+            ctx.arc(cx + Math.cos(a) * rad * 0.7, cy + Math.sin(a) * rad * 0.7, rad * 0.42, 0, TAU);
+            ctx.fill();
+          }
+          ctx.fillStyle = ART.tree;
+          ctx.beginPath();
+          ctx.arc(cx - rad * 0.2, cy - rad * 0.2, rad * 0.75, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = ART.treeLight;
+          ctx.beginPath();
+          ctx.arc(cx - rad * 0.35, cy - rad * 0.4, rad * 0.35, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(190,220,140,0.25)';
+          ctx.beginPath();
+          ctx.arc(cx - rad * 0.45, cy - rad * 0.5, rad * 0.15, 0, TAU);
+          ctx.fill();
+        }
+      }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    return c;
+  }
+
+  return { paint, worldW: WW, worldH: HH };
 }
+
+/** The whole map's ground on one canvas (createTerrainPainter's paint of everything). */
+export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): HTMLCanvasElement {
+  return createTerrainPainter(tiles, mapType, mapW, mapH).paint(0, 0, mapW * TILE, mapH * TILE);
+}
+
 
 type TileAt = (x: number, y: number) => string;
 
@@ -1151,6 +1198,34 @@ function groupsOf(at: TileAt, ch: string, MAP_W: number, MAP_H: number): number[
   return out;
 }
 
+/** A group of tiles (groupsOf) with its bounding box, in tiles. */
+interface Boxed {
+  tiles: number[];
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+function boxed(groups: number[][], MAP_W: number): Boxed[] {
+  return groups.map(tiles => {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -1;
+    let y1 = -1;
+    for (const k of tiles) {
+      x0 = Math.min(x0, k % MAP_W);
+      y0 = Math.min(y0, (k / MAP_W) | 0);
+      x1 = Math.max(x1, k % MAP_W);
+      y1 = Math.max(y1, (k / MAP_W) | 0);
+    }
+    return { tiles, x0, y0, x1, y1 };
+  });
+}
+
+/** Whether a group's box, grown by `m` tiles, meets the tile window [tx0, tx1) by [ty0, ty1). */
+const boxMeets = (b: Boxed, m: number, tx0: number, ty0: number, tx1: number, ty1: number) => b.x1 + m >= tx0 && b.x0 - m < tx1 && b.y1 + m >= ty0 && b.y0 - m < ty1;
+
 /** An irregular polygon round (x, y): a chunk of rubble or a boulder's outline. */
 function shard(r: () => number, x: number, y: number, rad: number, flat = 0.8): [number, number][] {
   const pts: [number, number][] = [];
@@ -1183,7 +1258,7 @@ const RUIN_STYLES = [
  * roof, scorched, with now and then a taller shell still standing, windows gaping, throwing its
  * shadow over the rubble. Decoration only: the pattern comes from a hash of the tiles.
  */
-function paintCity(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP_H: number) {
+function paintCity(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP_H: number, ruins: Boxed[], tx0: number, ty0: number, tx1: number, ty1: number) {
   const TAU = Math.PI * 2;
   const T = TILE;
   const street = (x: number, y: number) => at(x, y) === 'p';
@@ -1193,9 +1268,9 @@ function paintCity(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP
     return n;
   };
   let any = false;
-  // Streets.
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
+  // Streets (those in the window being painted).
+  for (let y = ty0; y < ty1; y++)
+    for (let x = tx0; x < tx1; x++) {
       if (!street(x, y)) continue;
       any = true;
       const k = y * MAP_W + x;
@@ -1309,10 +1384,11 @@ function paintCity(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP
       }
     }
 
-  // Ruins.
-  const blocks = groupsOf(at, 'x', MAP_W, MAP_H);
-  if (!blocks.length && !any) return;
-  for (const block of blocks) {
+  // Ruins: every block near the window (a block's walls, shells and shadows reach two tiles past it).
+  if (!ruins.length && !any) return;
+  for (const box of ruins) {
+    if (!boxMeets(box, 2, tx0, ty0, tx1, ty1)) continue;
+    const block = box.tiles;
     const inBlock = new Set(block);
     const has = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && inBlock.has(y * MAP_W + x);
     const r = rnd(block[0] * 13 + 977);
@@ -1586,21 +1662,13 @@ function paintCity(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP
  * with posts, and the whole span's shadow cast down and to the right into the chasm. A span
  * seen side-on (running east to west) shows its truss below the deck.
  */
-function paintBridges(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, MAP_H: number) {
+function paintBridges(ctx: CanvasRenderingContext2D, at: TileAt, MAP_W: number, spans: Boxed[], tx0: number, ty0: number, tx1: number, ty1: number) {
   const T = TILE;
-  for (const span of groupsOf(at, 'b', MAP_W, MAP_H)) {
-    let x0 = MAP_W;
-    let y0 = MAP_H;
-    let x1 = -1;
-    let y1 = -1;
-    for (const k of span) {
-      const x = k % MAP_W;
-      const y = (k / MAP_W) | 0;
-      x0 = Math.min(x0, x);
-      y0 = Math.min(y0, y);
-      x1 = Math.max(x1, x);
-      y1 = Math.max(y1, y);
-    }
+  // Every span near the window (its abutments, shadow and clip reach two tiles past it).
+  for (const box of spans) {
+    if (!boxMeets(box, 2, tx0, ty0, tx1, ty1)) continue;
+    const span = box.tiles;
+    const { x0, y0, x1, y1 } = box;
     let sides = 0;
     let ends = 0;
     for (let y = y0; y <= y1; y++) sides += (at(x0 - 1, y) === 'v' ? 1 : 0) + (at(x1 + 1, y) === 'v' ? 1 : 0);
@@ -1742,11 +1810,11 @@ function bladeBlock(seed: number): HTMLCanvasElement {
 const RELIEF = 8;
 
 /**
- * Hill shading for the grass (see paintTerrain, step 1b). Three octaves of value noise make the
+ * Hill shading for the grass (see createTerrainPainter, step 1b), one sample per RELIEF world pixels. Three octaves of value noise make the
  * height; the light is the same top-left light as everything else; lit slopes get a little pale
  * gold, slopes turned away a little blue-green shade, and hollows are a touch darker and lusher.
  */
-function relief(ctx: CanvasRenderingContext2D, W: number, H: number) {
+function reliefOf(W: number, H: number): HTMLCanvasElement {
   const w = Math.ceil(W / RELIEF) + 1;
   const h = Math.ceil(H / RELIEF) + 1;
   const octave = (cell: number, seed: number) => {
@@ -1805,15 +1873,12 @@ function relief(ctx: CanvasRenderingContext2D, W: number, H: number) {
       }
     }
   g.putImageData(img, 0, 0);
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(c, 0, 0, w * RELIEF, h * RELIEF);
-  ctx.restore();
+  // Drawn stretched by RELIEF, with smoothing, by each paint.
+  return c;
 }
 
 /**
- * A canvas to paint on: a page's, or an OffscreenCanvas in the worker that paints the terrain off
+ * A canvas to paint on: a page's, or an OffscreenCanvas in the worker that paints the ground off
  * the main thread (terrainWorker.ts). Both take the same 2D drawing calls.
  */
 function newCanvas(w: number, h: number): HTMLCanvasElement {
@@ -1824,39 +1889,6 @@ function newCanvas(w: number, h: number): HTMLCanvasElement {
     return c;
   }
   return new OffscreenCanvas(w, h) as unknown as HTMLCanvasElement;
-}
-
-/**
- * Paints the terrain in a worker, so a large map opens without the page stalling while it paints
- * (fireline-round5-design.md, workstream B: a 160-tile map takes seconds). Resolves to a page
- * canvas holding the painted ground, the same pixels paintTerrain would give. Null where workers
- * or OffscreenCanvas are missing; the promise rejects if the worker fails. Either way the caller
- * paints on the main thread instead.
- */
-export function paintTerrainOffThread(tiles: string, mapType: MapType | undefined, mapW: number, mapH: number): Promise<HTMLCanvasElement> | null {
-  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
-  let worker: Worker;
-  try {
-    worker = new Worker(new URL('./terrainWorker.ts', import.meta.url), { type: 'module' });
-  } catch {
-    return null;
-  }
-  return new Promise((resolve, reject) => {
-    worker.onmessage = (e: MessageEvent<ImageBitmap | { error: string }>) => {
-      worker.terminate();
-      const bmp = e.data;
-      if (!(bmp instanceof ImageBitmap)) return reject(new Error((bmp as { error: string }).error));
-      const c = newCanvas(bmp.width, bmp.height);
-      c.getContext('2d')!.drawImage(bmp, 0, 0);
-      bmp.close();
-      resolve(c);
-    };
-    worker.onerror = e => {
-      worker.terminate();
-      reject(new Error(e.message || 'terrain worker failed'));
-    };
-    worker.postMessage({ tiles, mapType, mapW, mapH });
-  });
 }
 
 /** One pixel per tile, for the minimap. */

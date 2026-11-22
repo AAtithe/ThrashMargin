@@ -1,4 +1,5 @@
 import { TILE } from '../art';
+import type { TerrainStore } from '../terrainStore';
 
 /**
  * Water that moves: glints of light that drift and twinkle over the water, and foam lapping along
@@ -6,9 +7,9 @@ import { TILE } from '../art';
  *
  * Everything is painted once, when the battle opens, into a small atlas: for each of the sixteen
  * ways a water tile can border land, sixteen frames of a four-second loop, each exactly one tile in
- * size. The animation then lives in the terrain canvas itself: when a tile in view is due its next
- * frame (about four times a second, each tile at its own point in the loop), the tile's untouched
- * ground is copied back from a saved copy and the new frame drawn over it. That is a few dozen
+ * size. The animation then lives in the ground's chunks themselves (terrainStore.ts): when a tile in
+ * view is due its next frame (about four times a second, each tile at its own point in the loop),
+ * the tile's clean ground is copied back from its chunk's clean copy and the new frame drawn over it. That is a few dozen
  * one-tile copies a frame, offscreen, and nothing at all added to the frame's fill: the water
  * arrives with the terrain blit the renderer does anyway. Drawing it per frame instead (paths, or
  * a sprite per tile) cost three to five milliseconds a frame on a machine without a GPU.
@@ -102,33 +103,23 @@ export class Water {
   /** Per tile: -1 not animated, else the land mask (which sides face land). */
   private mask: Int8Array;
   private phase: Float32Array;
-  /** Per tile: the frame now painted into the terrain, or -1. */
+  /** Per tile: the frame now painted into the ground, or -1. */
   private shown: Int8Array;
-  /** Per tile: where its untouched ground sits in `base`, or -1. */
-  private slot: Int32Array;
   /** The map's size in tiles. */
   private mapW: number;
   private mapH: number;
-  /** Canvas pixels per world pixel in the terrain (terrainScale in terrain.ts). */
-  private scale: number;
-  private base: HTMLCanvasElement | null = null;
   private atlas: HTMLCanvasElement | null = null;
-  private terrain: HTMLCanvasElement;
-  private tctx: CanvasRenderingContext2D;
+  /** The ground, held a chunk at a time; a chunk with animated water keeps a clean copy to redraw its tiles from. */
+  private store: TerrainStore;
   private count = 0;
 
-  constructor(tiles: string, terrain: HTMLCanvasElement, mapW = Math.round(terrain.width / TILE), mapH = Math.round(terrain.height / TILE)) {
-    this.terrain = terrain;
-    this.tctx = terrain.getContext('2d')!;
+  constructor(store: TerrainStore, tiles: string, mapW: number, mapH: number) {
+    this.store = store;
     const MAP_W = (this.mapW = mapW);
     const MAP_H = (this.mapH = mapH);
-    // Drawn in world pixels whatever the terrain's resolution (as fx/scars.ts sets it too).
-    this.scale = terrain.width / (mapW * TILE);
-    this.tctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     this.mask = new Int8Array(MAP_W * MAP_H).fill(-1);
     this.phase = new Float32Array(MAP_W * MAP_H);
     this.shown = new Int8Array(MAP_W * MAP_H).fill(-1);
-    this.slot = new Int32Array(MAP_W * MAP_H).fill(-1);
     const at = (x: number, y: number) => (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H ? 'w' : tiles[y * MAP_W + x]);
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
@@ -139,13 +130,24 @@ export class Water {
         // Open water away from the shore twinkles on only some tiles, so it does not look tiled.
         if (m === 0 && hash(k * 7 + 3) < 0.4) continue;
         this.mask[k] = m;
-        this.slot[k] = this.count++;
+        this.count++;
         // Neighbours along a shore start close together in the loop, so the foam seems to travel.
         this.phase[k] = (((x * 0.07 + y * 0.05) % 1) + hash(k) * 0.25) % 1;
       }
   }
 
-  /** Something repainted this region of the terrain: its water tiles must redraw. */
+  /** Whether any animated tile lies in a region (world pixels): its chunk keeps a clean copy from the start. */
+  animatedIn(x: number, y: number, w: number, h: number): boolean {
+    if (!this.count) return false;
+    const x0 = Math.max(0, Math.floor(x / TILE));
+    const y0 = Math.max(0, Math.floor(y / TILE));
+    const x1 = Math.min(this.mapW - 1, Math.floor((x + w - 1) / TILE));
+    const y1 = Math.min(this.mapH - 1, Math.floor((y + h - 1) / TILE));
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (this.mask[ty * this.mapW + tx] >= 0) return true;
+    return false;
+  }
+
+  /** Something repainted this region of the ground (a fade, a chunk arriving): its water tiles must redraw. */
   invalidate(x: number, y: number, w: number, h: number): void {
     const MAP_W = this.mapW;
     const MAP_H = this.mapH;
@@ -156,44 +158,30 @@ export class Water {
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) this.shown[ty * MAP_W + tx] = -1;
   }
 
-  /** Brings the water tiles in the given window up to date, in the terrain canvas. */
+  /**
+   * Brings the water tiles in the given window up to date in the ground: each due its next frame
+   * has its clean ground copied back and the frame drawn over it. Tiles whose chunk is not painted
+   * yet wait (the chunk's arrival invalidates them).
+   */
   update(t: number, tx0: number, ty0: number, tx1: number, ty1: number): void {
     if (!this.count) return;
     const MAP_W = this.mapW;
-    const MAP_H = this.mapH;
-    if (!this.atlas) {
-      this.atlas = paintAtlas();
-      // Save every animated tile's ground before the first frame is drawn over it.
-      const cols = 32;
-      const b = document.createElement('canvas');
-      b.width = cols * TILE;
-      b.height = Math.ceil(this.count / cols) * TILE;
-      const bctx = b.getContext('2d')!;
-      for (let k = 0; k < MAP_W * MAP_H; k++) {
-        const s = this.slot[k];
-        if (s < 0) continue;
-        const sc = this.scale;
-        bctx.drawImage(this.terrain, (k % MAP_W) * TILE * sc, Math.floor(k / MAP_W) * TILE * sc, TILE * sc, TILE * sc, (s % cols) * TILE, Math.floor(s / cols) * TILE, TILE, TILE);
-      }
-      this.base = b;
-    }
+    if (!this.atlas) this.atlas = paintAtlas();
     const atlas = this.atlas;
-    const base = this.base!;
-    const c = this.tctx;
     const loop = t / LOOP_SECONDS;
     for (let y = ty0; y <= ty1; y++)
       for (let x = tx0; x <= tx1; x++) {
         const k = y * MAP_W + x;
         const m = this.mask[k];
         if (m < 0) continue;
+        const px = x * TILE;
+        const py = y * TILE;
+        if (!this.store.loadedAt(px, py)) continue;
         const f = Math.floor((((loop + this.phase[k]) % 1) + 1) % 1 * FRAMES) % FRAMES;
         if (this.shown[k] === f) continue;
         this.shown[k] = f;
-        const s = this.slot[k];
-        const px = x * TILE;
-        const py = y * TILE;
-        c.drawImage(base, (s % 32) * TILE, Math.floor(s / 32) * TILE, TILE, TILE, px, py, TILE, TILE);
-        c.drawImage(atlas, f * TILE, m * TILE, TILE, TILE, px, py, TILE, TILE);
+        this.store.restore(px, py, TILE, TILE, 1);
+        this.store.paintLive(px, py, TILE, TILE, c => c.drawImage(atlas, f * TILE, m * TILE, TILE, TILE, px, py, TILE, TILE));
       }
   }
 }

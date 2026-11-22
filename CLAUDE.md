@@ -134,10 +134,18 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Fireline's vast maps** (256 to 320 tiles, `'vast'` in `MAP_SIZES`) are the only size with ravines
   (`'v'`, bridged by `'b'`) and ruined cities (`'x'` ruins, `'p'` streets), laid by `src/sim/hazards.ts`
   through each generator's symmetric brush; standard, large and huge stay exactly as balanced. A new
-  walkable tile goes in both `isWalkable` (`map.ts`) and `walkCode` (`grid.ts`). Their terrain paints at
-  half resolution (`terrainScale` in `src/game/terrain.ts`) and their saves pack the per-tile fields
-  (`src/sim/pack.ts`; `migrateState` unpacks first), or a four-sided vast save would pass the portal's
-  512 KB limit. Tested in `scripts/drive-vast.ts`, inside `npm run drive:fire`.
+  walkable tile goes in both `isWalkable` (`map.ts`) and `walkCode` (`grid.ts`). Their saves pack the
+  per-tile fields (`src/sim/pack.ts`; `migrateState` unpacks first), or a four-sided vast save would pass
+  the portal's 512 KB limit. Tested in `scripts/drive-vast.ts`, inside `npm run drive:fire`.
+- **Fireline's ground is held in chunks** (`src/game/terrainStore.ts`), on every map size: 512-pixel
+  squares painted near the camera by a worker, the furthest dropped past a 96 MB budget, so memory
+  follows the screen, not the map. `createTerrainPainter` (`terrain.ts`) paints any region; anything it
+  draws per tile must stay within its MARGIN of the tile, and anything drawn from a stream or a group
+  must be filtered by where it reaches, never by loop position, or chunks stop matching. Marks draw
+  through the store (`paintLive`, `restore`, `permanent`); a permanent mark draws with the seeded
+  `rand` it is given, never `Math.random`, because a dropped chunk replays it. Run
+  `node packages/fireline/scripts/terrain-check.cjs` after touching the painter, the store, the marks
+  or the water (Playwright; not in `npm run check`).
 - **Fireline's War for the Planet has its own harness: `npm run drive:planet`** (`packages/fireline/scripts/drive-planet.ts`,
   in `npm run check`; about 35,000 assertions in about 70 seconds, most of it W2's battle sections from
   `drive-planet-battle.ts`). 200 maps per preset, a refusal and a legal case for every action type on

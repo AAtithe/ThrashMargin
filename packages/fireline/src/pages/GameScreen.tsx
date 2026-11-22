@@ -190,6 +190,8 @@ export function Battle({
   const acc = useRef(0);
   const renderer = useRef<Renderer | null>(null);
   if (!renderer.current) renderer.current = new Renderer(initial.tiles, undefined, initial.mapW, initial.mapH);
+  // The ground's painter is a worker that lives as long as the battle screen: let it go on leaving.
+  useEffect(() => () => renderer.current?.dispose(), []);
   // Open on the Command Yard; in a mission with no base, on the middle of our units.
   const hq = initial.buildings.find(b => b.owner === 0 && b.kind === 'hq');
   const ours = initial.units.filter(u => u.owner === 0);

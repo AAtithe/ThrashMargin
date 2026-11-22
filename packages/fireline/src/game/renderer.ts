@@ -41,7 +41,8 @@ import { contactShadow, footprint, SKIRT } from './fx/ground';
 import { currentPace } from '../lib/motion';
 import { sound, type SoundKind } from './sound';
 import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
-import { paintMiniTerrain, paintTerrain, paintTerrainOffThread } from './terrain';
+import { paintMiniTerrain } from './terrain';
+import { TerrainStore } from './terrainStore';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { drawSiteLayer } from './art';
 import { stealthSeen } from '../sim/sites';
@@ -189,14 +190,12 @@ export interface Overlay {
 
 export class Renderer {
   /**
-   * Painted on the first frame, when the state says which kind of map this is: in a worker where
-   * the browser has one (paintTerrainOffThread), so the page never stalls on a large map. Until it
-   * arrives the ground is `placeholder`, the minimap's one pixel per tile stretched over the map,
-   * and there are no marks or water animation (scars and water are null).
+   * The ground, held a chunk at a time near the camera (terrainStore.ts), set up on the first frame
+   * when the state says which kind of map this is and painted in a worker where the browser has
+   * one, so the page never stalls on a large map. A chunk not painted yet shows `placeholder`, the
+   * minimap's one pixel per tile stretched over it.
    */
-  private terrain: HTMLCanvasElement | null = null;
-  /** Canvas pixels per world pixel in `terrain` (terrainScale: 1, or 0.5 on a Vast map). */
-  private terrainScale = 1;
+  private terrain: TerrainStore | null = null;
   private placeholder: HTMLCanvasElement | null = null;
   private fog: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
@@ -252,27 +251,34 @@ export class Renderer {
 
   private paint(mapType: MapType | undefined) {
     this.painted = true;
-    const job = paintTerrainOffThread(this.tiles, mapType, this.mapW, this.mapH);
-    if (!job) {
-      this.install(paintTerrain(this.tiles, mapType, this.mapW, this.mapH));
-      return;
-    }
     this.placeholder = paintMiniTerrain(this.tiles, this.mapW, this.mapH);
-    job.then(
-      c => this.install(c),
-      () => this.install(paintTerrain(this.tiles, mapType, this.mapW, this.mapH)),
-    );
-  }
-
-  private install(terrain: HTMLCanvasElement) {
-    this.terrain = terrain;
-    this.terrainScale = terrain.width / (this.mapW * TILE);
-    this.placeholder = null;
-    const scars = new Scars(terrain, this.tiles, this.mapW, this.mapH);
-    const water = new Water(this.tiles, terrain, this.mapW, this.mapH);
+    const store = new TerrainStore(this.tiles, mapType, this.mapW, this.mapH);
+    const scars = new Scars(store, this.tiles, this.mapW, this.mapH);
+    const water = new Water(store, this.tiles, this.mapW, this.mapH);
+    store.needsPristine = (x, y, w, h) => water.animatedIn(x, y, w, h);
+    store.onChunkReady = (x, y, w, h) => water.invalidate(x, y, w, h);
     scars.onRepaint = (x, y, w, h) => water.invalidate(x, y, w, h);
+    this.terrain = store;
     this.scars = scars;
     this.water = water;
+    // Development builds only: lets the measurement scripts read the ground's memory (terrainStats).
+    if (import.meta.env.DEV) (globalThis as { __flRenderer?: Renderer }).__flRenderer = this;
+  }
+
+  /** The ground's memory now and at its most, and chunks painted (for the measurements; see terrainStore.ts). */
+  terrainStats(): { held: number; peak: number; painted: number } | null {
+    const t = this.terrain;
+    return t ? { held: t.heldBytes, peak: t.peakBytes, painted: t.painted } : null;
+  }
+
+  /** Lets the ground's worker and canvases go (the battle screen is closing). */
+  dispose(): void {
+    this.terrain?.dispose();
+    this.terrain = null;
+    this.scars = null;
+    this.water = null;
+    // Drawn again (React's development mode mounts twice), the ground is simply set up afresh.
+    this.painted = false;
   }
 
 
@@ -363,17 +369,14 @@ export class Renderer {
     const sy = ty0 * TILE;
     const sw = (tx1 - tx0 + 1) * TILE;
     const sh = (ty1 - ty0 + 1) * TILE;
-    // The terrain canvas carries the battle's marks (tread marks, scorches, fallen soldiers,
+    // The ground's chunks carry the battle's marks (tread marks, scorches, fallen soldiers,
     // rubble; see fx/scars.ts) and the water's animation (fx/water.ts), so one copy draws them all.
     if (this.terrain && this.scars && this.water) {
+      this.terrain.view(cam.x, cam.y, cam.x + vw, cam.y + vh);
       this.scars.update(cur, vis, now);
       this.scars.step(dt, now, this.fx);
       this.water.update(t, tx0, ty0, tx1, ty1);
-      const k = this.terrainScale;
-      ctx.drawImage(this.terrain, sx * k, sy * k, sw * k, sh * k, sx, sy, sw, sh);
-    } else if (this.placeholder) {
-      // Still painting: the minimap's colours, one tile to a pixel, stretched and smoothed.
-      ctx.drawImage(this.placeholder, tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1, sx, sy, sw, sh);
+      this.terrain.draw(ctx, sx, sy, sw, sh, this.placeholder);
     }
 
     // 2. Burnt-out wrecks.

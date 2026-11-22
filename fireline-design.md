@@ -3101,3 +3101,49 @@ gain vast at 162,000 ticks.
 **Checks.** `npm run check`: all passed (Fireline drive 402,276 assertions, campaign-check 7,699,
 drive:planet 35,255). `npm run check:ui -- fireline`: 32/32. The size picker at 375 px: four options
 on one row, no sideways scroll.
+
+### 2026-11-22: The ground is held in chunks
+
+The ground was painted once per battle onto one canvas, and the battle marks kept a second copy of
+it, so memory grew with the map's area: a Huge map 200 MB, and a Vast map at full resolution would
+have been 800 MB, which is why Vast shipped at half resolution. Huge's 5,120-pixel canvas is also
+past the canvas size iPhone Safari is commonly reported to refuse (not tested on a device here).
+
+**Now** (`src/game/terrainStore.ts`), on every map size: the ground is 512-pixel chunks, painted near
+the camera by a worker that lives for the battle (visible chunks first, two in flight), the furthest
+dropped once the ground held passes 96 MB and painted again when the camera returns. Until a chunk
+arrives the minimap's colours stand in for it. Each chunk's canvas reaches 2 pixels into its
+neighbours and is drawn a pixel past its edge, so no seam can show under zoom (Chrome shows none
+even without it; the overlap is for browsers that soften image edges). Vast is back at full
+resolution, and `terrainScale` is gone.
+
+**The painter** (`createTerrainPainter`, `terrain.ts`) works out everything that depends on the whole
+map once (the shading fields, noise, grass patches and zones, relief, groups of ruins and bridges)
+and paints any region: per-tile decoration from the tiles within 3 of the region, streams and groups
+filtered by where they reach, the per-pixel passes over the region's pixels only. A whole-map paint
+is byte-identical to before on six real maps (standard, large and huge). Chunks laid side by side
+are within a few levels of the whole: Chrome's antialiased circle and path edges shift by a level or
+two when the same drawing is moved by whole pixels (gradients, stretched images and the blade blocks
+do not), so about 0.02% to 0.13% of pixels differ by more than 2 levels and the worst single pixel by
+23. Exact equality across chunks cannot be had in this browser; nothing is missing or misplaced.
+
+**Marks and water.** `Scars` draws fading marks into the loaded chunks (`paintLive`) and fades them
+back from a clean copy each chunk keeps only once marked (`restore`); it now tracks only the marked
+squares, so fading no longer slows on bigger maps. Rubble and craters are permanent marks with their
+own seed (`permanent`, drawn with the seeded `rand`, not `Math.random`), replayed into a chunk painted
+again. `Water` redraws its tiles from the clean copy a chunk with animated water keeps from the start.
+
+**Measured** (Chromium, 1440 by 900, panning the whole map for fifteen seconds): ground held at most
+32 MB on standard (as before), 96 MB on Huge four sides (200 MB before), 97 MB on Vast four sides at
+full resolution (200 MB before at half). `perf-render.cjs`, minute 25, four sides, before and after
+on the same battle: Huge, frame work median 4.0 to 1.3 ms, p99 14.6 to 11.2 ms; Vast (half to full
+resolution), median 4.1 to 1.6 ms, p99 14.6 to 14.0 ms, though the 95th percentile gap between frames
+while panning flat out rose from 21.9 to 24.2 ms (newly painted chunks being installed).
+
+**Checks.** `scripts/terrain-check.cjs` (new, Playwright, not in `npm run check`): chunks against the
+whole on three maps and a 2,048-pixel square of a Vast city; no seams under a fractional zoom over
+magenta (and a deliberate one-pixel gap is seen, so the test can see one); a chunk dropped and painted
+again comes back the same with its permanent mark and without its fading one; water animates and never
+builds up; Vast four sides opens and pans with the worker and with no Worker at all, held under budget,
+no page errors: 22/22. `npm run check`: all passed. `npm run check:ui -- fireline`: 32/32. Fireline
+tour: ok.
