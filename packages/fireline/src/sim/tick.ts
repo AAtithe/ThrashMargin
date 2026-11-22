@@ -1,5 +1,6 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
+import { labWorking, productionOn, productionStep, spendMunition, truckStep } from './production';
 import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
@@ -234,6 +235,9 @@ export function step(s: GameState): void {
     territoryOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : undefined,
   );
   supplyStep(s);
+  // Advanced production (2026-11-22): Farms, Munitions Works, meals and Supply Trucks. No-ops without it.
+  productionStep(s, ctx.power, productionOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : new Set());
+  truckStep(s);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
@@ -360,7 +364,8 @@ function production(s: GameState, ctx: Ctx): void {
     const perk = perks ? perks.buildSpeedMul : 1;
     // round6:C end.
     const rate = (ctx.power[owner] ? 0.5 : 1) * perk;
-    if (p.research) researchStep(s, owner, ctx.power[owner]);
+    // Advanced production: research waits for a crewed Research Lab.
+    if (p.research && labWorking(s, owner)) researchStep(s, owner, ctx.power[owner]);
     for (const cat of CATEGORIES) {
       // Units: one line per producer, each working its own item (productionLines, state.ts).
       if (cat !== 'building') {
@@ -870,7 +875,8 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           // counts), as main fires it; without a module it is spec.weapon, as before.
           const w = inAura(s, u) ? auraWeapon(weaponOf(s, u)!) : weaponOf(s, u)!;
           // round6:C end.
-          fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id, (VET_DAMAGE[vet] ?? 1) * (u.hero ? heroDamageMul(u) : 1));
+          // Advanced production: a heavy gun without a munition holds fire (and reloads as if it had fired).
+          if (spendMunition(s, u)) fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id, (VET_DAMAGE[vet] ?? 1) * (u.hero ? heroDamageMul(u) : 1));
           u.cooldown = vet ? Math.round(w.cooldown * (VET_RELOAD[vet] ?? 1)) : w.cooldown;
           if (u.hero && overdrive(u)) u.cooldown = Math.max(1, Math.round(u.cooldown * OVERDRIVE_RELOAD));
           // Autoloaders (development lines): ground vehicles.

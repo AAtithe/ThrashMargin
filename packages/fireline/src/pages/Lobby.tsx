@@ -477,6 +477,7 @@ export default function Lobby() {
                 <Order k="Industry">{setup.industry ? 'On' : 'Off'}</Order>
                 {setup.industry && <Order k="Supply lines">{setup.supply ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && <Order k="Territory">{setup.territory ? 'On' : 'Off'}</Order>}
+                {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
                 <Order k="Your General">{generalLabel(setup)}</Order>

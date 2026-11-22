@@ -288,6 +288,10 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'hauler':
       drawVehicleCached(ctx, kind, owner, team, pose, drawHauler);
       break;
+    // Advanced production (2026-11-22): the Supply Truck.
+    case 'supplytruck':
+      drawVehicleCached(ctx, kind, owner, team, pose, drawSupplyTruck);
+      break;
     case 'artillery':
       drawVehicleCached(ctx, kind, owner, team, pose, drawArtillery);
       break;
@@ -374,7 +378,7 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
 // right because it is baked per facing. Only sparks and flames are drawn live, over the stamp.
 
 type Layer = 'all' | 'hull' | 'turret';
-type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler' | 'ace' | 'flametank' | 'missilecarrier' | 'bastion' | 'flaktrack';
+type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler' | 'ace' | 'flametank' | 'missilecarrier' | 'bastion' | 'flaktrack' | 'supplytruck';
 type TrooperKind = 'rifleman' | 'rocketeer' | 'grenadier' | 'medic' | 'spy' | 'commando' | 'engineer' | 'skyhunter';
 type VehicleFn = (ctx: Ctx, team: Team, p: UnitPose, layer: Layer) => void;
 
@@ -391,9 +395,10 @@ const HULL: Record<VehicleKind, [number, number]> = {
   missilecarrier: [26, 11],
   bastion: [34, 20],
   flaktrack: [23, 13],
+  supplytruck: [26, 14],
 };
 /** Half the side of a vehicle's sprite canvas: the Ace's twin barrels and pennant reach further. */
-const VHALF: Record<VehicleKind, number> = { tank: 26, artillery: 26, buggy: 26, hauler: 26, ace: 31, flametank: 26, missilecarrier: 28, bastion: 40, flaktrack: 28 };
+const VHALF: Record<VehicleKind, number> = { tank: 26, artillery: 26, buggy: 26, hauler: 26, ace: 31, flametank: 26, missilecarrier: 28, bastion: 40, flaktrack: 28, supplytruck: 26 };
 const SPRITE_BUDGET = 12_000_000;
 const sprites = new Map<string, HTMLCanvasElement>();
 let spritePixels = 0;
@@ -1713,6 +1718,16 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       break;
     case 'quarters':
       drawQuarters(ctx, w, h, team, pose);
+      break;
+    // Advanced production (2026-11-22).
+    case 'farm':
+      drawFarm(ctx, w, h, team, pose);
+      break;
+    case 'munitions':
+      drawMunitions(ctx, w, h, team, pose);
+      break;
+    case 'trainingcentre':
+      drawTrainingCentre(ctx, w, h, team, pose);
       break;
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
@@ -6124,4 +6139,108 @@ export function drawBorders(ctx: Ctx, grid: Int8Array, mapW: number, tx0: number
       ctx.stroke();
     }
   ctx.restore();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Advanced production (2026-11-22, setup.production)
+
+/** The Farm: three strips of crops, a barn in the team colour and a silo. Crops sway while it grows. */
+function drawFarm(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  // Tilled ground, not a concrete slab.
+  ctx.fillStyle = shade(ctx, 2, 2, w - 4, h - 4, '#7a5a36', '#5a4226');
+  rrect(ctx, 2, 2, w - 4, h - 4, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const work = !!p.working;
+  const sway = work ? Math.sin(p.t * 2) * 0.8 : 0;
+  for (let row = 0; row < 3; row++) {
+    const y = 8 + row * 18;
+    ctx.fillStyle = row % 2 ? '#7fa142' : '#93b54c';
+    ctx.fillRect(6, y, w - 40, 12);
+    ctx.strokeStyle = 'rgba(40,60,20,0.55)';
+    for (let x = 9; x < w - 36; x += 5) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + 11);
+      ctx.lineTo(x + sway, y + 2);
+      ctx.stroke();
+    }
+  }
+  // The barn and the silo on the right.
+  const bx = w - 30;
+  block(ctx, bx, 10, 22, 24, shade(ctx, bx, 10, 22, 24, team.light, team.dark), '#4a3a2a', 3);
+  ctx.fillStyle = '#efe6d2';
+  ctx.fillRect(bx + 8, 24, 6, 10);
+  ctx.fillStyle = shade(ctx, bx + 4, 46, 14, 40, '#cfd3d4', '#8e9497');
+  rrect(ctx, bx + 4, 42, 14, 40, 6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.stroke();
+}
+
+/** The Munitions Works: a bunker under earth, a row of shells on the apron and a warning lamp. */
+function drawMunitions(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const work = !!p.working && !p.lowPower;
+  ctx.fillStyle = shade(ctx, 6, 8, w - 12, h - 26, '#6f7a5a', '#4b5540');
+  rrect(ctx, 6, 8, w - 12, h - 26, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(10, 12, w - 20, 3);
+  ctx.fillStyle = '#1e201f';
+  rrect(ctx, w / 2 - 9, h - 26, 18, 8, 2);
+  ctx.fill();
+  // Shells on the apron, brass with dark tips.
+  for (let i = 0; i < 6; i++) {
+    const x = 10 + i * 7;
+    ctx.fillStyle = '#c9a24a';
+    ctx.fillRect(x, h - 14, 4, 8);
+    ctx.fillStyle = '#4a4d4b';
+    ctx.fillRect(x, h - 16, 4, 3);
+  }
+  hazardStripe(ctx, w - 30, h - 9, 22, 3);
+  lamp(ctx, w - 10, h - 20, work, '#ff6a4a', p.t, 5, true);
+}
+
+/** The Supply Truck: the hauler's chassis carrying stacked crates under a team tarpaulin. */
+function drawSupplyTruck(ctx: Ctx, team: Team, p: UnitPose) {
+  drawHauler(ctx, team, p);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.fillStyle = '#9c8458';
+  ctx.fillRect(-9, -5, 7, 5);
+  ctx.fillRect(-9, 0.5, 7, 5);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-2, -5.5, 6, 11);
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(-9, -5.5, 13, 11);
+  ctx.restore();
+}
+
+/** The Training Centre: a classroom block with a team roof, a drill yard and a lit sign. */
+function drawTrainingCentre(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  block(ctx, 6, 8, w - 12, h - 28, shade(ctx, 6, 8, w - 12, h - 28, '#d6d0c0', '#a39b86'), '#77705f', 4);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(6, 8, w - 12, 5);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = on ? 'rgba(255,220,140,0.85)' : 'rgba(60,64,62,0.7)';
+    ctx.fillRect(10 + i * ((w - 24) / 4), 18, (w - 24) / 4 - 4, 6);
+  }
+  // The drill yard: a marked square with a cog painted on it.
+  ctx.strokeStyle = 'rgba(235,235,220,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(10.5, h - 17.5, w - 21, 11);
+  ctx.strokeStyle = 'rgba(235,235,220,0.75)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(w / 2, h - 12, 3.4, 0, Math.PI * 2);
+  ctx.stroke();
+  lamp(ctx, w - 9, h - 8, on && !!p.working, '#9ad7ff', p.t, 2);
 }

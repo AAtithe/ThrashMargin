@@ -243,7 +243,7 @@ export const sections: [string, (ok: Ok) => void][] = [
 // ---- Workstream A: two armies ----------------------------------------------------------------
 
 /** This round's recruits, which close every list (integration): the field General and the heroes. */
-const RECRUITS: (BuildingKind | UnitKind)[] = ['general', ...HERO_KINDS];
+const RECRUITS: (BuildingKind | UnitKind)[] = ['general', ...HERO_KINDS, 'supplytruck'];
 
 /** The four kinds workstream A adds: each army's signature unit and Ashen's two aircraft. */
 const NEW_KINDS: UnitKind[] = ['sapper', 'raider', 'kestrel', 'firebrand'];
@@ -647,7 +647,8 @@ function buildKeys(ok: Ok): void {
       const before = menuFor(tab, plain);
       ok(before.every((k, i) => RECRUITS.includes(k) || list[i] === k), `${f}, ${tab}: turning Heroes and Generals on moves no key already in use`);
     }
-    ok(RECRUITS.every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
+    // The Supply Truck closes the list with the recruits but needs Advanced production, not Heroes or Generals.
+    ok(RECRUITS.filter(k => k !== 'supplytruck').every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
   }
 }
 
@@ -793,8 +794,8 @@ function navalWarBothArmies(ok: Ok): void {
     ok(factionAllows(f, 'shipyard') && buildingSpecFor(f, 'shipyard') === BUILDINGS.shipyard, `${f}: the Naval Yard at the catalogue's exact numbers`);
     const list = menuOf(f, 'building');
     // Industry's Fuel Well and Foundry (2026-11-21) come after the Academy, so nothing before them moved.
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list.slice(-6).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower',
-      `${f}: the Structures list ends Fortress, Naval Yard, Academy, then the economy's five (${list.slice(-6).join(', ')})`);
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list.slice(-9).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,farm,munitions,trainingcentre',
+      `${f}: the Structures list ends Fortress, Naval Yard, Academy, then the economy's eight (${list.slice(-9).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');
 

@@ -14,7 +14,7 @@
  *
  * Imports rules.ts, supply.ts and types only.
  */
-import { BUILDINGS, CLAIM_RADIUS, CREW, CREW_ORDER, HOUSING, type BuildingKind, type Owner } from './rules';
+import { BUILDINGS, CLAIM_RADIUS, CREW, CREW_ORDER, HOUSING, PREFAB_HOUSING, TECH_CREW, TECHNICIANS_PER_CENTRE, type BuildingKind, type Owner, type ProjectId } from './rules';
 import { supplyOn } from './supply';
 import type { Building, GameState } from './types';
 
@@ -91,38 +91,85 @@ export function territoryProblem(s: GameState, owner: Owner, kind: BuildingKind,
 }
 
 /** Workers this side houses. */
+/** Advanced production is on (read here directly: production.ts imports this module). */
+const advanced = (s: GameState): boolean => territoryOn(s) && s.setup?.production === true;
+const hasProject = (s: GameState, owner: Owner, id: ProjectId): boolean => advanced(s) && !!s.players[owner]?.projects?.includes(id);
+
+/** Workers a structure of this kind needs for this side: CREW, one fewer with Mechanised crews (never under one). */
+export function crewNeed(s: GameState, owner: Owner, kind: BuildingKind): number {
+  const n = CREW[kind] ?? 0;
+  return n && hasProject(s, owner, 'mechanised') ? Math.max(1, n - 1) : n;
+}
+
+/** Technicians a structure of this kind needs (advanced production only). */
+export const techNeed = (s: GameState, kind: BuildingKind): number => (advanced(s) ? TECH_CREW[kind] ?? 0 : 0);
+
+const needsAny = (s: GameState, owner: Owner, kind: BuildingKind): boolean => crewNeed(s, owner, kind) > 0 || techNeed(s, kind) > 0;
+const orderOf = (k: BuildingKind): number => {
+  const i = CREW_ORDER.indexOf(k);
+  return i < 0 ? CREW_ORDER.length : i;
+};
+
+/** Workers this side houses. A hungry Quarters houses half; Prefab housing raises a Quarters'. */
 export function housed(s: GameState, owner: Owner): number {
   let n = 0;
-  for (const b of s.buildings) if (b.owner === owner && b.hp > 0) n += HOUSING[b.kind] ?? 0;
+  const prefab = hasProject(s, owner, 'prefab');
+  for (const b of s.buildings) {
+    if (b.owner !== owner || b.hp <= 0) continue;
+    const full = b.kind === 'quarters' && prefab ? PREFAB_HOUSING : (HOUSING[b.kind] ?? 0);
+    n += b.hungry ? Math.floor(full / 2) : full;
+  }
   return n;
 }
 
 /** Workers this side's structures ask for, all of them. */
 export function crewWanted(s: GameState, owner: Owner): number {
   let n = 0;
-  for (const b of s.buildings) if (b.owner === owner && b.hp > 0) n += CREW[b.kind] ?? 0;
+  for (const b of s.buildings) if (b.owner === owner && b.hp > 0) n += crewNeed(s, owner, b.kind);
   return n;
 }
 
-/** The ids of this side's structures that have their crew, assigned in CREW_ORDER, lowest id first. */
+/**
+ * The ids of this side's structures that have their crew, assigned in CREW_ORDER (anything not in it
+ * last), lowest id first. With advanced production a structure also needs its Technicians, whom each
+ * crewed Training Centre adds as it is assigned.
+ */
 export function crewed(s: GameState, owner: Owner): Set<number> {
   const out = new Set<number>();
   let left = housed(s, owner);
+  let techs = 0;
   const wanting = s.buildings
-    .filter(b => b.owner === owner && b.hp > 0 && CREW[b.kind])
-    .sort((a, b) => CREW_ORDER.indexOf(a.kind) - CREW_ORDER.indexOf(b.kind) || a.id - b.id);
+    .filter(b => b.owner === owner && b.hp > 0 && needsAny(s, owner, b.kind))
+    .sort((a, b) => orderOf(a.kind) - orderOf(b.kind) || a.id - b.id);
   for (const b of wanting) {
-    const need = CREW[b.kind]!;
-    if (need > left) continue;
+    const need = crewNeed(s, owner, b.kind);
+    const tech = techNeed(s, b.kind);
+    if (need > left || tech > techs) continue;
     left -= need;
+    techs -= tech;
+    if (b.kind === 'trainingcentre') techs += TECHNICIANS_PER_CENTRE;
     out.add(b.id);
   }
   return out;
 }
 
+/** Technicians this side has (crewed Training Centres) and those its structures ask for. */
+export function technicians(s: GameState, owner: Owner): { have: number; wanted: number } {
+  if (!advanced(s)) return { have: 0, wanted: 0 };
+  const ok = crewed(s, owner);
+  let have = 0;
+  let wanted = 0;
+  for (const b of s.buildings) {
+    if (b.owner !== owner || b.hp <= 0) continue;
+    if (b.kind === 'trainingcentre' && ok.has(b.id)) have += TECHNICIANS_PER_CENTRE;
+    wanted += techNeed(s, b.kind);
+  }
+  return { have, wanted };
+}
+
 /** True when this structure can work: always without territory, or when it needs no crew or has it. */
 export function staffed(s: GameState, b: Building): boolean {
-  if (!territoryOn(s) || !CREW[b.kind]) return true;
+  if (!territoryOn(s) || !needsAny(s, b.owner, b.kind)) return true;
   return crewed(s, b.owner).has(b.id);
 }
 
@@ -130,13 +177,13 @@ export function staffed(s: GameState, b: Building): boolean {
 export function unstaffed(s: GameState, owner: Owner): Building[] {
   if (!territoryOn(s)) return [];
   const ok = crewed(s, owner);
-  return s.buildings.filter(b => b.owner === owner && b.hp > 0 && CREW[b.kind] && !ok.has(b.id));
+  return s.buildings.filter(b => b.owner === owner && b.hp > 0 && needsAny(s, owner, b.kind) && !ok.has(b.id));
 }
 
 /** Workers free once every crew that fits is assigned. */
 export function freeWorkers(s: GameState, owner: Owner): number {
   const ok = crewed(s, owner);
   let used = 0;
-  for (const b of s.buildings) if (ok.has(b.id)) used += CREW[b.kind] ?? 0;
+  for (const b of s.buildings) if (ok.has(b.id)) used += crewNeed(s, owner, b.kind);
   return housed(s, owner) - used;
 }

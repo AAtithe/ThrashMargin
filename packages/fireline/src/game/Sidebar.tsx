@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
-import { crewWanted, housed, staffed, territoryOn, unstaffed } from '../sim/territory';
+import { crewNeed, crewWanted, housed, staffed, techNeed, technicians, territoryOn, unstaffed } from '../sim/territory';
+import { foodStore, munitionsStore, productionOn, projectProblem } from '../sim/production';
 import { goodsFor } from '../sim/commands';
 import { alloyStore, fuelStore, hasGoods, industryOn } from '../sim/industry';
 import {
@@ -37,6 +38,8 @@ import {
   UNITS,
   SUPPLY_SERVE_RANGE,
   CREW,
+  PROJECTS,
+  PROJECT_ORDER,
   TICKS_PER_SECOND,
   type Armor,
   type BuildingKind,
@@ -1280,7 +1283,8 @@ export function SelectionPanel({
               {(building.kind === 'barracks' || building.kind === 'factory') && (touch ? ' Tap the map to set where new units gather.' : ' Right-click the map to set where new units gather.')}
             </p>
             {supplyOn(state) && isProducer(building.kind) && <SupplyNote state={state} building={building} />}
-            {territoryOn(state) && CREW[building.kind] !== undefined && <CrewNote state={state} building={building} />}
+            {territoryOn(state) && (CREW[building.kind] !== undefined || techNeed(state, building.kind) > 0) && <CrewNote state={state} building={building} />}
+            {productionOn(state) && building.kind === 'trainingcentre' && <ProjectsPanel state={state} dispatch={dispatch} />}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="fl-d-sbtn"
@@ -1638,6 +1642,7 @@ function IndustryGauge({ state }: { state: GameState }) {
   const cut = cutOff(state, 0).length;
   const terr = territoryOn(state);
   const idle = terr ? unstaffed(state, 0).length : 0;
+  const hungry = state.buildings.filter(b => b.owner === 0 && b.hungry).length;
   return (
     <div
       className="fl-d-gauge fl-d-industry"
@@ -1650,6 +1655,11 @@ function IndustryGauge({ state }: { state: GameState }) {
         {cut > 0 && (
           <span className="fl-d-gauge-state" data-cut="1" data-testid="supply-cut">
             {cut} cut off
+          </span>
+        )}
+        {hungry > 0 && (
+          <span className="fl-d-gauge-state" data-cut="1" data-testid="hungry">
+            {hungry} hungry
           </span>
         )}
         {idle > 0 && (
@@ -1665,6 +1675,21 @@ function IndustryGauge({ state }: { state: GameState }) {
         <span data-full={alloys >= aCap ? '1' : '0'}>
           Alloys <span className="fl-d-goods-n" data-testid="alloys">{alloys}</span>/{aCap}
         </span>
+        {productionOn(state) && (
+          <>
+            <span title="Food: Farms grow it, every Quarters eats 10 a minute.">
+              Food <span className="fl-d-goods-n" data-testid="food">{Math.floor(p.food ?? 0)}</span>/{foodStore(state, 0)}
+            </span>
+            <span title="Munitions: the heavy guns spend one a shot, aircraft one a load.">
+              Munitions <span className="fl-d-goods-n" data-testid="munitions">{Math.floor(p.munitions ?? 0)}</span>/{munitionsStore(state, 0)}
+            </span>
+          </>
+        )}
+        {productionOn(state) && (
+          <span title="Technicians: wanted by your Foundries, Munitions Works, Helipads and Research Labs, against those your Training Centres train.">
+            Technicians <span className="fl-d-goods-n" data-testid="technicians">{technicians(state, 0).wanted}</span>/{technicians(state, 0).have}
+          </span>
+        )}
         {terr && (
           <span title="Workers: crews wanted by your structures, against the workers your yards and Quarters house.">
             Workers <span className="fl-d-goods-n" data-testid="workers">{crewWanted(state, 0)}</span>/{housed(state, 0)}
@@ -1697,13 +1722,58 @@ function SupplyNote({ state, building }: { state: GameState; building: Building 
 /** Territory and workforce: whether a structure of yours has its crew. */
 function CrewNote({ state, building }: { state: GameState; building: Building }) {
   const ok = staffed(state, building);
-  const need = CREW[building.kind] ?? 0;
+  const need = crewNeed(state, building.owner, building.kind);
+  const tech = techNeed(state, building.kind);
+  const who = [need ? `${need} workers` : '', tech ? `${tech} Technician${tech === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
   const text = ok
-    ? `Crewed: ${need} workers at work here.`
-    : `No crew: it needs ${need} workers and your housing is full. Build Quarters, or lose something less important, and it starts again.`;
+    ? `Crewed: ${who} at work here.`
+    : `No crew: it needs ${who}${tech ? ' (a Training Centre trains Technicians)' : ''}. House more and it starts again.`;
   return (
     <p data-testid="crew-note" data-cut={ok ? '0' : '1'} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.4, color: ok ? UI.textSoft : UI.warn }}>
       {text}
     </p>
+  );
+}
+
+/** Advanced production: the Industry projects, run at a Training Centre one at a time. */
+function ProjectsPanel({ state, dispatch }: { state: GameState; dispatch: (a: GameAction) => boolean }) {
+  const p = state.players[0];
+  return (
+    <div data-testid="projects" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span className="fl-d-sect" style={{ fontSize: '0.62rem' }}>
+        Industry projects
+      </span>
+      {PROJECT_ORDER.map(id => {
+        const spec = PROJECTS[id];
+        const done = !!p.projects?.includes(id);
+        const running = p.project?.id === id;
+        const problem = projectProblem(state, 0, id);
+        return (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.72rem', color: done ? UI.good : UI.text }} title={spec.blurb}>
+              {spec.name}
+              {running ? ` (${Math.floor((100 * p.project!.progress) / spec.ticks)}%)` : ''}
+            </span>
+            {done ? (
+              <span style={{ fontSize: '0.68rem', color: UI.good }}>Done</span>
+            ) : running ? (
+              <button className="fl-d-sbtn" data-testid={`project-cancel`} onClick={() => dispatch({ type: 'cancelProject' })}>
+                Cancel
+              </button>
+            ) : (
+              <button
+                className="fl-d-sbtn"
+                data-testid={`project-${id}`}
+                disabled={!!problem && problem !== 'Not enough credits'}
+                title={problem ?? `${spec.blurb} ${spec.cost} credits.`}
+                onClick={() => dispatch({ type: 'project', id })}
+              >
+                {spec.cost}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

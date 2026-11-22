@@ -39,6 +39,9 @@ import {
   INDUSTRY_START_FUEL,
   UNITS,
   WELL_HOLD,
+  BLAST_FURNACE_ALLOYS,
+  DEEP_WELLS_BEAT,
+  type ProjectId,
   type BuildingKind,
   type Owner,
   type UnitKind,
@@ -158,7 +161,9 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
     if (b.hp <= 0 || (b.kind !== 'fuelwell' && b.kind !== 'foundry')) continue;
     const p = s.players[b.owner];
     if (!p) continue;
-    const beat = (b.kind === 'fuelwell' ? FUEL_WELL_TICKS : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1);
+    // Advanced production's Deep wells pump faster.
+    const deep = b.kind === 'fuelwell' && projectDone(s, b.owner, 'deepwells');
+    const beat = Math.round((b.kind === 'fuelwell' ? FUEL_WELL_TICKS * (deep ? DEEP_WELLS_BEAT : 1) : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1));
     if ((s.tick + b.id) % beat !== 0) continue;
     // Territory and workforce: without its crew it does nothing at all.
     if (idle.has(b.id)) continue;
@@ -174,15 +179,21 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
     } else {
       if (isCut) continue;
       if (p.credits < FOUNDRY_CREDITS + FOUNDRY_RESERVE || (p.fuel ?? 0) < FOUNDRY_FUEL) continue;
-      if ((p.alloys ?? 0) + FOUNDRY_ALLOYS > alloyStore(s, b.owner)) continue;
+      // Advanced production's Blast furnace makes more from the same inputs.
+      const made = projectDone(s, b.owner, 'blastfurnace') ? BLAST_FURNACE_ALLOYS : FOUNDRY_ALLOYS;
+      if ((p.alloys ?? 0) + made > alloyStore(s, b.owner)) continue;
       p.credits -= FOUNDRY_CREDITS;
       p.fuel = (p.fuel ?? 0) - FOUNDRY_FUEL;
-      p.alloys = (p.alloys ?? 0) + FOUNDRY_ALLOYS;
+      p.alloys = (p.alloys ?? 0) + made;
     }
   }
 }
 
 const NO_CUT: ReadonlySet<number> = new Set();
+
+/** An Industry project this side has finished (advanced production; read directly, production.ts imports this module's users). */
+const projectDone = (s: GameState, owner: Owner, id: ProjectId): boolean =>
+  s.setup?.production === true && s.setup.territory === true && industryOn(s) && !!s.players[owner]?.projects?.includes(id);
 
 /** An aircraft's load at its Helipad: burns AIR_LOAD_FUEL from the side's store. False when there is not enough. */
 export function burnLoadFuel(p: PlayerState | undefined): boolean {

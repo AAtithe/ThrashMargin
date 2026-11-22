@@ -80,6 +80,7 @@ import { sections as heroesSections } from './drive-heroes';
 import { sections as generalsSections } from './drive-generals';
 import { sections as industrySections } from './drive-industry';
 import { sections as territorySections } from './drive-territory';
+import { sections as productionSections } from './drive-production';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 
@@ -2804,6 +2805,8 @@ if (!CAMPAIGN_ONLY) {
     ...industrySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Territory and workforce (2026-11-21): its sections, from scripts/drive-territory.ts.
     ...territorySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Advanced production (2026-11-22): its sections, from scripts/drive-production.ts.
+    ...productionSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

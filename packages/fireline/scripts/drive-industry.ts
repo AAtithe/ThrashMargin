@@ -80,7 +80,7 @@ function setup(ok: Ok): void {
   ok(normaliseSetup({}).industry === false, 'a setup saved before industry reads as off');
   ok(normaliseSetup({ industry: true }).industry === true, 'industry: true is kept');
   ok(normaliseSetup({ industry: 'yes' as unknown as boolean }).industry === false, 'anything but a boolean reads as off');
-  ok(BUILD_MENU.slice(-5).join() === 'fuelwell,foundry,depot,quarters,watchtower', "the economy's five structures close the build menu, so nothing already listed moves");
+  ok(BUILD_MENU.slice(-8).join() === 'fuelwell,foundry,depot,quarters,watchtower,farm,munitions,trainingcentre', "the economy's eight structures close the build menu, so nothing already listed moves");
   const off = fresh({ map: 'plains', tech: 'advanced' });
   ok(!industryOn(off) && !techAllowed(off, 0, 'fuelwell') && !techAllowed(off, 0, 'foundry'), 'off: neither structure may be built');
   ok(off.players.every(p => !('fuel' in p) && !('alloys' in p)), 'off: no side holds fuel or alloys');

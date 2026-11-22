@@ -121,6 +121,12 @@ export interface Unit {
   slotX?: number;
   slotY?: number;
   // round6:D end.
+  /**
+   * Advanced production: a Supply Truck on its own errand. `site` is the structure it is fetching
+   * from (0 once loaded), `hub` the one it is taking the load to, `credits` and `fuel` what it carries,
+   * `x`, `y` where it was sent (an order to anywhere else means the player took over).
+   */
+  truck?: { site: number; hub: number; credits: number; fuel: number; x: number; y: number };
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -169,6 +175,8 @@ export interface Building {
   // round6:C end.
   /** Supply lines: what a cut-off Refinery (credits) or Fuel Well (fuel) holds on site. Absent: nothing. */
   held?: number;
+  /** Advanced production: a Quarters that could not eat at its last meal (houses half). Absent: fed. */
+  hungry?: boolean;
 }
 
 /**
@@ -245,6 +253,12 @@ export interface PlayerState {
   /** Industry (setup.industry): fuel and alloys in store. Absent on every other battle. */
   fuel?: number;
   alloys?: number;
+  /** Advanced production (setup.production): food and munitions in store. Absent on every other battle. */
+  food?: number;
+  munitions?: number;
+  /** Advanced production: Industry projects finished, and the one under way (paid for). Absent: none. */
+  projects?: import('./rules').ProjectId[];
+  project?: { id: import('./rules').ProjectId; progress: number } | null;
 }
 
 export interface Projectile {
@@ -748,6 +762,9 @@ export type GameAction =
    * the point. Until workstream D handles it, a move that carries one is refused (the same state back).
    */
   | { type: 'move'; ids: number[]; x: number; y: number; attackMove?: boolean; queue?: boolean; formation?: FormationShape }
+  // Advanced production (2026-11-22): start or cancel an Industry project at a Training Centre.
+  | { type: 'project'; id: import('./rules').ProjectId }
+  | { type: 'cancelProject' }
   | { type: 'attack'; ids: number[]; target: number; queue?: boolean }
   | { type: 'stance'; ids: number[]; stance: 'aggressive' | 'guard' | 'hold' }
   | { type: 'stop'; ids: number[] }
