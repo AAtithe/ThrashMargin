@@ -12,7 +12,7 @@
  * cloned (cloneState copies the history, see cloneHistory).
  *
  * Compact: each series is a string of small integers, five bits a character with a continuation
- * bit (encodeInts). Money is stored in tens of credits; credits held, army value, structure value,
+ * bit (encodeInts). Income is stored in tens of credits and other money in fifties; credits held, army value, structure value,
  * power and ore control are stored as the change since the last sample (zigzag), which is mostly one
  * or two characters. An Epic battle (huge map, four sides) run to 85 minutes keeps it near 15 KB.
  */

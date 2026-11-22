@@ -527,7 +527,7 @@ export interface GameState {
 
 // round7:review begin. The after-action review: the recorded history, compact (src/sim/history.ts).
 /**
- * Each series is a string of small integers (history.ts, encodeInts): money in tens of credits,
+ * Each series is a string of small integers (history.ts, encodeInts): income in tens of credits, other money in fifties,
  * counts as they are, ore control in thousandths. Read it through decodeHistory, never directly.
  */
 export interface BattleHistory {

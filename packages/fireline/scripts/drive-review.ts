@@ -14,7 +14,10 @@
  */
 import { MISSIONS } from '../src/campaign/missions';
 import { missionContext, newCampaign } from '../src/campaign/progression';
-import { buildPlanetBattle } from '../src/planet/battle';
+import { buildPlanetBattle, planetBattleReport } from '../src/planet/battle';
+import { REVIEW_LINES_MAX, REVIEW_LINE_CHARS, attachReview, cleanReview } from '../src/planet/journal';
+import { JOURNAL_MAX } from '../src/planet/rules';
+import { PLANET_STRATEGIC_MAX_BYTES, migratePlanetSave, newPlanetSave, planetSaveBytes } from '../src/planet/save';
 import { processAction } from '../src/sim/actions';
 import {
   HISTORY_CATS,
@@ -127,7 +130,7 @@ function encoding(ok: Ok): void {
   const h = newHistory(2, 100);
   const rows: number[][][] = [];
   let seed = 7;
-  const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
+  const rnd = (n: number) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 65536) % n;
   for (let i = 0; i < 40; i++) {
     const r = [0, 1].map(() => HISTORY_FIELDS.map((_, f) => (f >= 4 && f <= 13 ? (rnd(3) ? 0 : rnd(40)) : rnd(f === 16 ? 1001 : 5000))));
     rows.push(r);
@@ -590,11 +593,11 @@ function size(ok: Ok): void {
   ok(perSideSample < 16, `a sample costs under 16 bytes a side (${perSideSample.toFixed(1)})`);
 
   // Busier than any battle measured: 85 minutes of four sides whose every number moves every sample
-  // (about 18 bytes a side a sample, against 14 in the busiest real Epic battle measured), half
+  // (about 16 bytes a side a sample, against 14 in the busiest real Epic battle measured), half
   // of the loss and kill counts busy, and three thousand events. Still under 20 KB.
   const busy = newHistory(4);
   let seed = 12345;
-  const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
+  const rnd = (n: number) => Math.floor((seed = (seed * 1103515245 + 12345) % 2147483648) / 65536) % n;
   const walk = [0, 1, 2, 3].map(() => [100, 0, 100, 200]);
   for (let i = 0; i < 170; i++) {
     appendSample(
@@ -603,7 +606,7 @@ function size(ok: Ok): void {
         w[0] = Math.max(0, w[0] + rnd(41) - 20);
         w[2] = Math.max(0, w[2] + rnd(41) - 20);
         w[3] = Math.max(0, w[3] + rnd(11) - 5);
-        return [w[0], 40 + rnd(80), w[2], w[3], ...Array.from({ length: 10 }, () => (rnd(3) ? 0 : 1 + rnd(12))), 300 + rnd(3) * 10, 280 + rnd(3) * 10, 100 + rnd(10)];
+        return [w[0], 40 + rnd(80), w[2], w[3], ...Array.from({ length: 10 }, () => (rnd(2) ? 0 : 1 + rnd(12))), 300 + rnd(3) * 10, 280 + rnd(3) * 10, 100 + rnd(10)];
       }),
     );
   }
@@ -616,13 +619,56 @@ function size(ok: Ok): void {
   const busyBytes = historyBytes(busy);
   const busyPer = busy.s.flat().reduce((a, c) => a + c.length, 0) / 170 / 4;
   console.log(`  a busier 85 minutes: ${busyBytes} B (${busyPer.toFixed(1)} B a side a sample)`);
-  ok(busyPer > 16, `the busy history is busier than any measured (${busyPer.toFixed(1)} B a side a sample)`);
+  ok(busyPer > 15, `the busy history is busier than any measured (${busyPer.toFixed(1)} B a side a sample)`);
   ok(busyBytes < 20000, `a busier 85-minute history stays under 20 KB (${busyBytes} B)`);
   const kept = historyEvents(busy);
   ok(busy.capped !== undefined && kept.length < 3000, 'past its budget the record keeps fewer events, and says from when');
   const late = kept.filter(e => e.tick > busy.capped!);
   ok(late.length > 0 && late.every(e => e.kind === 'lost' || e.kind === 'losses' || e.kind === 'research'), 'and what it keeps after that is what the turning points read');
   ok(decodeHistory(busy) !== null && migrateState({ ...copy(s), history: busy })?.history?.capped === busy.capped, 'the busy history reads back and survives a save');
+}
+
+// ---- War for the Planet: the journal keeps one battle's turning points -------------------------
+
+function planetJournal(ok: Ok): void {
+  // A fought planet battle, played out: its review, and the lines its report would carry.
+  const setup = craftSetup(3);
+  let g = buildPlanetBattle(setup, { id: 'rv-pj', name: 'Planet', createdAt: 0 }, { autopilot: true });
+  while (g.winner === null && g.tick < 30000) g = tickBy(g, 600);
+  const rep = planetBattleReport(setup, g);
+  const r = reviewOf(g);
+  ok(!!rep && !!r, 'a fought planet battle has a report and a review');
+  const lines = r ? reviewLines(r.review, REVIEW_LINES_MAX, REVIEW_LINE_CHARS) : [];
+  ok(lines.length <= REVIEW_LINES_MAX && lines.every(l => l.length <= REVIEW_LINE_CHARS), `its journal lines: ${lines.length}, each a line`);
+
+  // The journal: lines on the newest battle entry alone, every entry replaced rather than edited.
+  const save = newPlanetSave('rv-war', 'War', { seedText: 'rv-war', preset: 'short', difficulty: 'normal', commander: 'Tester', createdAt: 0 } as never);
+  const w = copy(save.planet);
+  while (w.journal.length < JOURNAL_MAX) w.journal.push({ turn: 1, text: 'x'.repeat(200), tone: 'info' });
+  const long = Array.from({ length: 5 }, (_, i) => `${'Turning point '.repeat(20)}${i}`);
+  const frozen = deepFreeze(copy(w.journal));
+  const d = { ...w, journal: frozen.slice() };
+  attachReview(d as never, long);
+  ok(d.journal[d.journal.length - 1].review?.length === REVIEW_LINES_MAX && d.journal[d.journal.length - 1].review!.every(l => l.length <= REVIEW_LINE_CHARS), 'at most three lines, each cut to length');
+  ok(frozen.every(e => e.review === undefined), 'entries are replaced, never edited');
+  d.journal.push({ turn: 2, text: 'Another battle.', tone: 'good' });
+  attachReview(d as never, ['Second battle.']);
+  ok(d.journal.filter(e => e.review).length === 1 && d.journal[d.journal.length - 1].review![0] === 'Second battle.', "a newer battle's lines replace the older ones");
+  ok(cleanReview('x') === null && cleanReview([1, 2]) === null && cleanReview([]) === null, 'anything but lines of text is no review');
+  // The largest it can be: three full lines. Through a save round trip, junk dropped, and the budget.
+  attachReview(d as never, long);
+  const before = planetSaveBytes({ ...save, planet: { ...w } }).strategic;
+  const withLines = { ...save, planet: { ...w, journal: d.journal } };
+  const back = migratePlanetSave(copy(withLines));
+  ok(!!back && back.planet.journal.filter(e => e.review).length === 1, 'the lines survive a save round trip');
+  const two = copy(withLines);
+  two.planet.journal[0].review = ['An older battle.'];
+  two.planet.journal[1].review = 'junk';
+  const cleaned = migratePlanetSave(two)!;
+  ok(cleaned.planet.journal.filter(e => e.review).length === 1 && !!cleaned.planet.journal[cleaned.planet.journal.length - 1].review, 'a save with more than one keeps the newest; junk is dropped');
+  const added = planetSaveBytes(withLines).strategic - before;
+  console.log(`  the journal's review lines add ${added} B to the strategic save (budget ${PLANET_STRATEGIC_MAX_BYTES} B)`);
+  ok(added > 0 && added < 600, `the review lines cost a few hundred bytes at most (${added} B)`);
 }
 
 export const sections: [string, (ok: Ok) => void][] = [
@@ -634,4 +680,5 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Review: turning points on constructed histories', rulesTests],
   ['Review: real battles', realReviews],
   ['Review: size on a long huge battle', size],
+  ['Review: War for the Planet journal lines', planetJournal],
 ];
