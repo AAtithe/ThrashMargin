@@ -4866,8 +4866,94 @@ kbd {
   min-height: 40px;
   font-size: 0.85rem;
 }
-.fl-d-top[data-touch="1"] .fl-d-range {
+/*
+ * The volume slider on a touch screen, in the header's full row and in the Menu alike: a 40px tall
+ * target with a 24px thumb a finger can find, on a 6px track whose filled part follows `--vol` (set
+ * inline from the volume). The browser's own slider kept its 16px thumb at any height, and in the
+ * Menu it was 110 by 16px. The thumb's centre runs from 12px to the width less 12px, so the fill
+ * meets it at every value. On the full row the slider is 72px wide (52 or 64 with a mouse), so the
+ * thumb still has 48px to travel. Muted, it is disabled and greys out. A mouse keeps the browser's
+ * slider, and the keyboard and the accessible name are the input's own, unchanged.
+ */
+.fl-d-top[data-touch="1"] .fl-d-range,
+.fl-d-sheet[data-touch="1"] .fl-d-range {
+  -webkit-appearance: none;
+  appearance: none;
   height: 40px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+.fl-d-top[data-touch="1"] .fl-d-range {
+  width: 72px;
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-webkit-slider-runnable-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--ui-accent) calc(12px + var(--vol, 0) * (100% - 24px)),
+    var(--ui-rule-strong) 0
+  );
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-webkit-slider-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-panel);
+  background: var(--ui-accent);
+  box-shadow: 0 1px 3px var(--ui-shadow);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-rule-strong);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-progress,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-accent);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-panel);
+  background: var(--ui-accent);
+  box-shadow: 0 1px 3px var(--ui-shadow);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled {
+  cursor: default;
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-webkit-slider-runnable-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-webkit-slider-runnable-track {
+  background: var(--ui-rule);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-webkit-slider-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-webkit-slider-thumb {
+  background: var(--ui-rule-strong);
+  box-shadow: none;
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-moz-range-progress,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-moz-range-progress {
+  background: var(--ui-rule);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-moz-range-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-moz-range-thumb {
+  background: var(--ui-rule-strong);
+  box-shadow: none;
 }
 /*
  * An upright phone. The worst header (a campaign mission, paused, with the save warning showing) needs

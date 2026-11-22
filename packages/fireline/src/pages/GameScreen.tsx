@@ -1437,6 +1437,13 @@ export function Battle({
       <span className="fl-d-btn-label">{paused ? 'Resume' : 'Pause'}</span>
     </button>
   );
+  // On a touch screen the slider draws its own track and a 24px thumb (styles.css), and the track's
+  // filled part follows the volume through `--vol`; a mouse keeps the browser's own slider.
+  const rangeStyle = layout.touch
+    ? ({ ...(layout.compact ? { width: 110 } : null), '--vol': soundPrefs.volume } as CSSProperties)
+    : layout.compact
+      ? { width: 110 }
+      : undefined;
   const soundControls = (
     <div className="fl-d-sound">
       <button
@@ -1461,7 +1468,7 @@ export function Battle({
         aria-label="Volume"
         disabled={soundPrefs.muted}
         onChange={e => changeSound({ volume: Number(e.target.value) })}
-        style={layout.compact ? { width: 110 } : undefined}
+        style={rangeStyle}
       />
     </div>
   );
@@ -1647,7 +1654,15 @@ export function Battle({
 
       {menu && (layout.compact || layout.touch) && (
         <div style={menuScrim} onClick={() => setMenu(false)}>
-          <div role="dialog" aria-label="Battle menu" style={menuSheet} onClick={e => e.stopPropagation()} data-testid="menu">
+          <div
+            role="dialog"
+            aria-label="Battle menu"
+            className="fl-d-sheet"
+            data-touch={layout.touch ? '1' : '0'}
+            style={menuSheet}
+            onClick={e => e.stopPropagation()}
+            data-testid="menu"
+          >
             <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
               {s.name} · {DIFFICULTIES[s.difficulty].label}
             </div>
