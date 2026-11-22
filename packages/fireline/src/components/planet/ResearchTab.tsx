@@ -38,6 +38,9 @@ export default function ResearchTab({ s, map, act }: PlanetProps) {
 
       <section className="fl-pl-card">
         <h3>Development lines</h3>
+        <span className="fl-small">
+          Each line runs Mk I, Mk II, then a doctrine. A doctrine is free and permanent: it opens one Mk III branch and closes the other.
+        </span>
         <div className="fl-pl-lines">
           {LINE_ORDER.map(line => (
             <Line key={line} line={line} s={s} map={map} act={act} />
@@ -48,13 +51,22 @@ export default function ResearchTab({ s, map, act }: PlanetProps) {
       <section className="fl-pl-card" data-testid="loadouts">
         <h3>Loadouts</h3>
         <span className="fl-small">Modules fitted to every vehicle of a kind in your battles. Each module is unlocked by research.</span>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+        <div className="fl-pl-loadouts">
           {ARMY_KINDS.filter(k => MODULE_SLOTS[k as UnitKind]).map(k => (
             <Loadout key={k} kind={k as UnitKind} s={s} map={map} act={act} />
           ))}
         </div>
       </section>
     </div>
+  );
+}
+
+function Progress({ points, cost }: { points: number; cost: number }) {
+  const pct = Math.min(100, Math.round((100 * points) / Math.max(1, cost)));
+  return (
+    <span className="fl-pl-progress" aria-hidden="true">
+      <span style={{ width: `${pct}%` }} />
+    </span>
   );
 }
 
@@ -66,11 +78,19 @@ function Node({ id, s, act }: Omit<PlanetProps, 'map'> & { id: UpgradeId }) {
   const state = done ? 'done' : current ? 'current' : pre ? 'locked' : 'open';
   return (
     <div className="fl-pl-node" data-state={state} data-testid={`research-${id}`} title={UPGRADES[id].blurb}>
-      <strong>{UPGRADES[id].name}</strong>
+      <strong>
+        {done && (
+          <span className="fl-pl-node-mark" aria-hidden="true">
+            ✓
+          </span>
+        )}
+        {UPGRADES[id].name}
+      </strong>
       <span className="fl-small">{UPGRADES[id].blurb}</span>
-      <span className="fl-small">
+      <span className="fl-small fl-pl-node-cost">
         {done ? 'Researched' : current ? `${r.points} / ${scienceCost(id)} science` : `${scienceCost(id)} science`}
       </span>
+      {current && <Progress points={r.points} cost={scienceCost(id)} />}
       {!done && !current && (
         <OrderButton s={s} act={act} a={{ type: 'research', upgrade: id }}>
           Research
@@ -84,12 +104,18 @@ function Line({ line, s, act }: PlanetProps & { line: LineId }) {
   const l = LINES[line];
   const r = s.factions[0].research;
   const doc = r.doctrines[line];
+  const marks = [l.marks[0], l.marks[1], ...(doc ? [doc] : [])].filter(m => r.done.includes(m)).length;
   return (
     <div className="fl-pl-line" data-testid={`line-${line}`}>
-      <strong>{l.name}</strong>
+      <strong className="fl-pl-line-name">
+        {l.name}
+        <span className="fl-pl-line-count">{marks}/3</span>
+      </strong>
       <Node id={l.marks[0]} s={s} act={act} />
-      <Node id={l.marks[1]} s={s} act={act} />
-      <div className="fl-pl-fork">
+      <div className="fl-pl-step" data-from-done={r.done.includes(l.marks[0]) ? '1' : undefined}>
+        <Node id={l.marks[1]} s={s} act={act} />
+      </div>
+      <div className="fl-pl-fork fl-pl-step" data-from-done={r.done.includes(l.marks[1]) ? '1' : undefined}>
         {l.fork.map(b =>
           doc === b ? (
             <Node key={b} id={b} s={s} act={act} />
@@ -103,7 +129,6 @@ function Line({ line, s, act }: PlanetProps & { line: LineId }) {
             </div>
           ),
         )}
-        {!doc && <span className="fl-small">A doctrine is free and permanent: it opens one Mk III branch and closes the other.</span>}
       </div>
     </div>
   );

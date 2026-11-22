@@ -610,10 +610,15 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     }
   }
 
-  // Ripples on open water.
+  // Ripples on open water. Not on tiles by the shore, where the animated foam (fx/water.ts) laps
+  // and a static ripple beside it only made the water look tiled.
+  const shoreTile = (x: number, y: number) => {
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if ((i || j) && at(x + i, y + j) !== 'w') return true;
+    return false;
+  };
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'w') continue;
+      if (at(x, y) !== 'w' || shoreTile(x, y)) continue;
       const r = rnd(y * MAP_W + x + 4242);
       ctx.strokeStyle = ART.waterLight;
       ctx.globalAlpha = 0.3;
