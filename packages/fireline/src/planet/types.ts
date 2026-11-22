@@ -200,7 +200,16 @@ export interface PlanetHero {
   lost: boolean;
 }
 
-export interface JournalEntry { turn: number; text: string; tone: 'info' | 'good' | 'bad'; f?: FactionId }
+export interface JournalEntry {
+  turn: number;
+  text: string;
+  tone: 'info' | 'good' | 'bad';
+  f?: FactionId;
+  // round7:review begin. The after-action review: a fought battle's turning points, in short lines.
+  /** Kept on the newest fought battle's entry alone (journal.ts, attachReview), so it costs a few hundred bytes at most. */
+  review?: string[];
+  // round7:review end.
+}
 
 export interface PlanetResult {
   won: boolean;
@@ -321,4 +330,7 @@ export interface BattleReport {
   cityDamage: Partial<Record<CityBuildingId, number>>;
   /** 1 when the city changed hands (its level drops by one, never below 1), else 0. */
   cityLevelLost: 0 | 1;
+  // round7:review begin. The after-action review: a fought battle's turning points (REVIEW_LINES_MAX lines).
+  review?: string[];
+  // round7:review end.
 }

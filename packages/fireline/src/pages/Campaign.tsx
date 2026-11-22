@@ -57,6 +57,9 @@ import {
 import type { GameState, MissionOutcome, MissionSpec, ObjectiveRuntime } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { Battle, chromeBtn } from './GameScreen';
+// round7:review begin. The after-action review: its button on the debrief.
+import { ReviewButton } from '../components/Review';
+// round7:review end.
 
 /**
  * The campaign, from the theatre map to the debrief. One CampaignSave holds the whole career and
@@ -1107,6 +1110,9 @@ function Debrief({ s, campaign, onDone }: { s: GameState; campaign: CampaignStat
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {/* round7:review begin. The after-action review of the mission. */}
+          <ReviewButton s={s} className="fl-camp-btn" />
+          {/* round7:review end. */}
           {spec && (
             <button type="button" className="fl-camp-btn" data-testid="retry" onClick={() => onDone(after, spec)}>
               Retry

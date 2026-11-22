@@ -514,7 +514,64 @@ export interface GameState {
   // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
   /** A battle generated from the planet war (fireline-planet-design.md, section 14). */
   planet?: PlanetBattle;
+
+  // round7:review begin. The after-action review (fireline-round7-review.md): what the battle recorded.
+  /**
+   * Samples of every side every HISTORY_SAMPLE_TICKS and the battle's key events (src/sim/history.ts).
+   * Created for every new battle; absent on saves from before it, which never start one. Read by
+   * nothing in the battle itself: recording never changes play.
+   */
+  history?: BattleHistory;
+  // round7:review end.
 }
+
+// round7:review begin. The after-action review: the recorded history, compact (src/sim/history.ts).
+/**
+ * Each series is a string of small integers (history.ts, encodeInts): money in tens of credits,
+ * counts as they are, ore control in thousandths. Read it through decodeHistory, never directly.
+ */
+export interface BattleHistory {
+  v: 1;
+  /** Ticks between samples. */
+  every: number;
+  /** Samples taken, at every, 2 * every, ... */
+  n: number;
+  /**
+   * Per side, per stored column (history.ts, COLUMNS: credits, income, army, structures, losses and
+   * kills packed together, power made, power used, ore): the encoded series.
+   */
+  s: string[][];
+  /** Per side, per field of HISTORY_FIELDS: the last value stored (delta-encoded fields are stored against it). */
+  last: number[][];
+  /** Events, comma-separated, each "tick in base 36.side code argument" (history.ts, HistoryEvent). */
+  ev: string;
+  /** The kind names events refer to, by index: a dictionary built as the battle goes. */
+  dict: string[];
+  /** The tick the first event was left out to keep the record small (history.ts, EVENTS_SOFT). Absent: none was. */
+  capped?: number;
+  /**
+   * Per side, running tallies since the last sample: [harvested at the last sample, other income,
+   * lost by category (5), killed by category (5)]. Categories in HISTORY_CATS order.
+   */
+  acc: number[][];
+  /** Per side, the unit kinds lost since the last sample, and what killed them: [victims, killers]. */
+  win: [Record<string, number>, Record<string, number>][];
+  /**
+   * What has been seen, so new things are told apart: upgrades finished per side, each side's power
+   * cooldowns, site owners, structure kinds built per side, and the tick of the last structure scan.
+   * Absent until the first tick recorded (taken then, so a battle built in steps starts clean).
+   */
+  seen?: {
+    up: number[];
+    pw: Record<string, number>[];
+    site: (number | null)[];
+    kinds: string[][];
+    scan: number;
+    /** Per site, a bit for each side that has held it: only a side's first capture of a site is an event. */
+    held?: number[];
+  };
+}
+// round7:review end.
 
 /** What a planet battle adds to a GameState. Every field is read only when `s.planet` is set. */
 export interface PlanetBattle {

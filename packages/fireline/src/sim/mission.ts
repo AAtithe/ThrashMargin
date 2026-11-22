@@ -55,6 +55,9 @@ import type {
   SpawnSpec,
   Unit,
 } from './types';
+// round7:review begin. The after-action review: the history a new mission starts.
+import { newHistory } from './history';
+// round7:review end.
 
 /**
  * Missions, heroes, stealth and support powers in the simulation. Pure, like the rest of sim/:
@@ -324,6 +327,9 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
   if (spec.convoy) placeConvoy(s, spec.convoy);
   if (spec.structurePowers) syncStructurePowers(s);
   updateExplored(s);
+  // round7:review begin. The after-action review: a mission records its history too (src/sim/history.ts).
+  s.history = newHistory(s.players.length);
+  // round7:review end.
   return s;
 }
 

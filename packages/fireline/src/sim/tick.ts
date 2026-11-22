@@ -118,6 +118,9 @@ import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './
 import { auraWeapon, generalsStep, inAura } from './generals';
 import { lostAboard, transportStep } from './transport';
 import { canReach, isShip, launchTile, navalStep } from './naval';
+// round7:review begin. The after-action review: recording (src/sim/history.ts). Reads only; never changes play.
+import { noteBuildingDeath, noteKill, noteUnitDeath, recordHistory } from './history';
+// round7:review end.
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
 function crossDomain(u: Unit, t: Target): boolean {
@@ -241,6 +244,9 @@ export function step(s: GameState): void {
   // A mission is decided by its objectives; a skirmish by who still has structures.
   if (s.mission) evaluateMission(s);
   else checkVictory(s);
+  // round7:review begin. The after-action review: the history's sample and events (a no-op without s.history).
+  if (s.history) recordHistory(s);
+  // round7:review end.
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -314,6 +320,9 @@ function charges(s: GameState): void {
 
 /** A kill: the sides' tallies, and the killer's rank and (for a hero) experience. */
 function credit(s: GameState, by: Owner, victimOwner: Owner, killer: Unit | undefined, t: Target): void {
+  // round7:review begin. The after-action review: the kill, for the history (reads only).
+  if (s.history) noteKill(s, by, victimOwner, killer, t);
+  // round7:review end.
   s.players[by].stats.killed++;
   s.players[victimOwner].stats.lost++;
   // Salvage crews (development lines): paid for every enemy vehicle or aircraft destroyed.
@@ -1285,6 +1294,10 @@ function removeDead(s: GameState): void {
     for (const u of s.units) {
       if (u.hp > 0) continue;
       if (u.hero) noteFallen(s, u);
+      // round7:review begin. The after-action review: the loss and any riders aboard, for the history
+      // (reads only; before lostAboard, which empties the carrier).
+      if (s.history) noteUnitDeath(s, u);
+      // round7:review end.
       if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
       s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
@@ -1300,6 +1313,9 @@ function removeDead(s: GameState): void {
       else if (isEnemy(s, 0, b.owner)) log(s, `Enemy ${spec.name} destroyed.`, 'good');
       else log(s, `Allied ${spec.name} destroyed.`, 'bad');
       noteDestroyed(s, b);
+      // round7:review begin. The after-action review: the structure lost, for the history (reads only).
+      if (s.history) noteBuildingDeath(s, b);
+      // round7:review end.
     }
     fallen = s.buildings.filter(b => b.hp <= 0);
     s.buildings = s.buildings.filter(b => b.hp > 0);

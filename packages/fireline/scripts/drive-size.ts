@@ -90,7 +90,12 @@ const strip = (k: string, v: unknown) =>
             ((k === 'heroes' || k === 'generals') && v === false) ||
             (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
           ? undefined
-          : v;
+          : // round7:review begin. The after-action history (src/sim/history.ts) records play and
+            // never changes it (scripts/drive-review.ts), so it is left out of the pinned hashes.
+            k === 'history' && !!v && typeof v === 'object' && !Array.isArray(v)
+            ? undefined
+            : // round7:review end.
+              v;
 const hashOf = (s: GameState) => createHash('sha256').update(JSON.stringify(s, strip)).digest('hex').slice(0, 16);
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };

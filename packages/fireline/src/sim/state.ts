@@ -67,6 +67,9 @@ import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
+// round7:review begin. The after-action review: the history (src/sim/history.ts).
+import { cloneHistory, migrateHistory, newHistory } from './history';
+// round7:review end.
 
 export { startOf };
 // Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
@@ -333,6 +336,9 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     }
   }
   updateExplored(s);
+  // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
+  s.history = newHistory(s.players.length);
+  // round7:review end.
   return s;
 }
 
@@ -462,6 +468,9 @@ export function cloneState(s: GameState): GameState {
     ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
     // round6:D begin. Formations and squads: anything else of D's that cloneState must copy.
     // round6:D end.
+    // round7:review begin. The after-action review: the history, copied where the tick changes it.
+    ...(s.history ? { history: cloneHistory(s.history) } : {}),
+    // round7:review end.
     ...(s.planet
       ? {
           planet: {
@@ -774,6 +783,14 @@ export function migrateState(raw: unknown): GameState | null {
       result: m.result === 'won' || m.result === 'lost' ? m.result : null,
     };
   }
+  // round7:review begin. The after-action review: a history kept only when well formed, else dropped.
+  // A save from before it has none and is not given one: it plays on exactly as it did.
+  if (s.history !== undefined) {
+    const h = migrateHistory(s.history, n);
+    if (h) out.history = h;
+    else delete out.history;
+  }
+  // round7:review end.
   // A planet battle: kept only when well formed, else dropped (the battle then plays as a skirmish).
   if (s.planet !== undefined) {
     const p = migratePlanetBattle(s.planet, n);

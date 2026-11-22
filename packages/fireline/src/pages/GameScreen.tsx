@@ -14,6 +14,9 @@ import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+// round7:review begin. The after-action review: its button, on the end card, the paused card and the menu.
+import { ReviewButton } from '../components/Review';
+// round7:review end.
 import BuildWindow from '../game/BuildWindow';
 import { airRoom } from '../sim/air';
 import { researchProblem } from '../sim/research';
@@ -1657,6 +1660,9 @@ export function Battle({
               <FullscreenToggle style={{ padding: '6px 10px' }} />
             </div>
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
+              {/* round7:review begin. The review of the battle so far. */}
+              <ReviewButton s={s} label="Review so far" style={touchBtn} />
+              {/* round7:review end. */}
               {tourButton}
               <button
                 type="button"
@@ -1946,6 +1952,9 @@ export function Battle({
                 <button type="button" className="fl-d-btn fl-d-primary" onClick={() => setPaused(false)}>
                   Resume <kbd>P</kbd>
                 </button>
+                {/* round7:review begin. The review of the battle so far. */}
+                <ReviewButton s={s} label="Review so far" />
+                {/* round7:review end. */}
               </div>
             </div>
           )}
@@ -2279,6 +2288,9 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           </table>
         </div>
         <div className="fl-d-end-foot">
+          {/* round7:review begin. The after-action review. */}
+          <ReviewButton s={state} />
+          {/* round7:review end. */}
           <button type="button" className="fl-d-btn fl-d-primary" onClick={onLobby} autoFocus>
             Back to the lobby
           </button>

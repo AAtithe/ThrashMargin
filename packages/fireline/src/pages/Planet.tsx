@@ -36,6 +36,11 @@ import { DIFFICULTIES } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import type { GameState } from '../sim/types';
 import { Battle } from './GameScreen';
+// round7:review begin. The after-action review: its button on a fought battle's result.
+import { ReviewButton } from '../components/Review';
+import { reviewLines, reviewOf } from '../sim/review';
+import { REVIEW_LINES_MAX, REVIEW_LINE_CHARS } from '../planet/journal';
+// round7:review end.
 import { LiveRegion } from '../lib/Kit';
 
 type Tab = PlanetTabKey;
@@ -192,6 +197,14 @@ export default function PlanetFlow({
     if (!pb) return;
     const report = planetBattleReport(pb.setup, g, { retreat });
     if (!report) return;
+    // round7:review begin. The after-action review: a fought battle's turning points travel with its
+    // report to its journal entry (the history itself is never copied into the war's save).
+    if (report.how === 'fought') {
+      const r = reviewOf(g);
+      const lines = r ? reviewLines(r.review, REVIEW_LINES_MAX, REVIEW_LINE_CHARS) : [];
+      if (lines.length) report.review = lines;
+    }
+    // round7:review end.
     sessionRef.current += 1;
     setSession(sessionRef.current);
     act({ type: 'battleResult', report });
@@ -392,7 +405,10 @@ function BattleOver({ g, onDone }: { g: GameState; onDone: () => void }) {
         <p className="fl-small" style={{ margin: 0 }}>
           {g.log[g.log.length - 1]?.text ?? ''} The survivors return to the planet, with their kills.
         </p>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* round7:review begin. The after-action review of the battle, before it folds back into the war. */}
+          <ReviewButton s={g} className="fl-camp-btn" />
+          {/* round7:review end. */}
           <button type="button" className="fl-camp-btn primary" onClick={onDone} data-testid="back-to-planet">
             Back to the planet
           </button>
