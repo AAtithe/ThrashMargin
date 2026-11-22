@@ -63,6 +63,12 @@ type BuildingPoseX = BuildingPose & { hp?: number; working?: boolean };
  */
 const FOG_MEMORY: [number, number, number] = [22, 34, 48];
 const FOG_MEMORY_A = 108;
+/**
+ * The rim at the edge of sight: a faint warm light laid just inside the boundary between ground in
+ * sight and the fog, at most FOG_RIM_A of 255, so the player reads where their vision ends at a glance.
+ */
+const FOG_RIM: [number, number, number] = [255, 196, 120];
+const FOG_RIM_A = 32;
 /** Milliseconds a hit unit flashes, and how long its health bar's lost segment lingers and drains. */
 const HIT_FLASH_MS = 110;
 const GHOST_HOLD_MS = 260;
@@ -240,6 +246,8 @@ export class Renderer {
   private fogRow = new Uint16Array(0);
   /** Per tile, 0..255: how much of the fog there is never-seen ground rather than remembered ground. */
   private fogMix = new Uint8Array(0);
+  /** Per tile, 0..255: the edge-of-sight rim's strength (fogAlpha), before FOG_RIM_A. */
+  private fogRim = new Uint8Array(0);
   /** Whether motion is on (lib/motion.ts), read once a second: off holds the ore's glints still. */
   private sparkle = true;
   private paceAt = -Infinity;
@@ -319,6 +327,10 @@ export class Renderer {
    * Alongside it, `fogMix`: the same blur of 'never seen' alone, which the fog loop uses to tint
    * remembered ground a cool slate and keep near-black for ground nobody has scouted, so the two
    * read apart rather than as two densities of night.
+   *
+   * And `fogRim`: the edge of sight (a tile in sight with a fogged neighbour), blurred and kept to
+   * ground in sight, folded into the returned alpha and the canvas's colours as a faint warm light.
+   * All of it is per state; the frame loop only multiplies in the cloud shadows.
    */
   private fogAlpha(s: GameState, vis: Uint8Array): Uint8Array {
     if (this.fogFor === s) return this.fogA;
@@ -331,6 +343,7 @@ export class Renderer {
       this.fogRaw = new Uint8Array(n);
       this.fogRow = new Uint16Array(n);
       this.fogMix = new Uint8Array(n);
+      this.fogRim = new Uint8Array(n);
     }
     const raw = this.fogRaw;
     const row = this.fogRow;
@@ -369,6 +382,67 @@ export class Renderer {
       const up = y > 0 ? o - W : o;
       const dn = y < H - 1 ? o + W : o;
       for (let x = 0; x < W; x++) mix[o + x] = (row[up + x] + 2 * row[o + x] + row[dn + x]) >> 4;
+    }
+    // The rim: tiles in sight with a fogged neighbour (the map's own border is not fog), blurred the
+    // same way and kept to ground in sight, so the band lies just inside the edge and the scaled-up
+    // canvas fades it into the fog. Its flags go in `rim`, the horizontal pass in `row`, and the
+    // vertical pass back into `rim`.
+    const rim = this.fogRim;
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const k = o + x;
+        rim[k] =
+          raw[k] === 0 && ((x > 0 && raw[k - 1] !== 0) || (x < W - 1 && raw[k + 1] !== 0) || (y > 0 && raw[k - W] !== 0) || (y < H - 1 && raw[k + W] !== 0))
+            ? 255
+            : 0;
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const c = rim[o + x];
+        row[o + x] = (x > 0 ? rim[o + x - 1] : c) + 2 * c + (x < W - 1 ? rim[o + x + 1] : c);
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      const up = y > 0 ? o - W : o;
+      const dn = y < H - 1 ? o + W : o;
+      for (let x = 0; x < W; x++) {
+        // Squared, so the light sits on the edge tile and falls away fast inward (255, then about 64).
+        const v = raw[o + x] === 0 ? Math.min(255, (row[up + x] + 2 * row[o + x] + row[dn + x]) >> 3) : 0;
+        rim[o + x] = (v * v) / 255;
+      }
+    }
+    // The fog's colour depends only on the state, so it is written here, once per state: the slate
+    // or near-black of the fog, with the rim's warm light over it where there is one (two layers
+    // folded into one pixel, so the draw stays a single canvas). The frame loop writes alpha only.
+    const d = this.fogImg.data;
+    const [fr, fg, fb] = ART.fog;
+    const [mr, mg, mb] = FOG_MEMORY;
+    const [wr, wg, wb] = FOG_RIM;
+    for (let k = 0; k < n; k++) {
+      const m = mix[k];
+      const cr = mr + (((fr - mr) * m) >> 8);
+      const cg = mg + (((fg - mg) * m) >> 8);
+      const cb = mb + (((fb - mb) * m) >> 8);
+      const q = rim[k];
+      if (q === 0) {
+        d[k * 4] = cr;
+        d[k * 4 + 1] = cg;
+        d[k * 4 + 2] = cb;
+        continue;
+      }
+      // Warm light (alpha w) over the fog (alpha a): alpha w + a(1 - w), colour weighted to match.
+      const w = (q * FOG_RIM_A) / 65025;
+      const a = out[k] / 255;
+      const lo = a * (1 - w);
+      const all = w + lo;
+      d[k * 4] = (wr * w + cr * lo) / all;
+      d[k * 4 + 1] = (wg * w + cg * lo) / all;
+      d[k * 4 + 2] = (wb * w + cb * lo) / all;
+      out[k] = Math.round(all * 255);
     }
     return out;
   }
@@ -1171,17 +1245,12 @@ export class Renderer {
     // looked no better and cost frames on a machine without a GPU.)
     // Remembered ground is tinted a cool slate (FOG_MEMORY), never-seen ground keeps ART.fog's
     // near-black, blended by fogMix so the boundary between them is as soft as the fog's own edge.
+    // A faint warm rim (FOG_RIM) lies just inside the edge of sight; fogAlpha folds it into the same
+    // pixels and writes the colours once per state, so this loop writes only alpha.
     const d = this.fogImg.data;
-    const [fr, fg, fb] = ART.fog;
-    const [mr, mg, mb] = FOG_MEMORY;
     const shade = this.atmosphere.shade(t, cam, tx0, ty0, tx1, ty1);
     const fa = this.fogAlpha(cur, vis);
-    const fm = this.fogMix;
     for (let k = 0; k < MAP_W * MAP_H; k++) {
-      const m = fm[k];
-      d[k * 4] = mr + (((fr - mr) * m) >> 8);
-      d[k * 4 + 1] = mg + (((fg - mg) * m) >> 8);
-      d[k * 4 + 2] = mb + (((fb - mb) * m) >> 8);
       const a = fa[k];
       d[k * 4 + 3] = 255 - ((255 - a) * (255 - shade[k])) / 255;
     }

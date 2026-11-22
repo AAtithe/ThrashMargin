@@ -30,8 +30,11 @@ const maxFactions = (o: PlanetOptions) => Math.max(3, Math.min(5, Math.floor(o.r
 export default function WarSetup({
   defaultCommander,
   onBegin,
+  onPresetChange,
 }: {
   defaultCommander: string;
+  /** Told whenever the length changes (the lobby's preview follows it). */
+  onPresetChange?: (k: LengthPreset) => void;
   /** `guided`: open the guided first turn when the war loads (kept in this browser, not the save). */
   onBegin: (r: NewPlanetRequest, guided: boolean) => Promise<boolean>;
 }) {
@@ -50,6 +53,7 @@ export default function WarSetup({
 
   const choosePreset = (k: LengthPreset) => {
     setPreset(k);
+    onPresetChange?.(k);
     setFactions(PRESETS[k].factions);
     setRules(pick(PRESETS[k]));
   };

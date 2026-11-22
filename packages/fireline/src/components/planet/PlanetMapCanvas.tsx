@@ -3,12 +3,21 @@
  * The drawing is game/planetArt.ts; this owns the canvas, its size, the theme's colours, the
  * click that selects a region, the hovered region (a soft fill and a name tag, mouse and pen only)
  * and the selection ring's slow pulse, which runs only while motion is on and a region is selected.
+ * After a turn ends it also shows last turn's moves (handed down by the page): drawn on, held, then
+ * faded over a few seconds with motion on; held still and then removed with motion off.
  * Clicks, hover and drawing all use the one fitPlanet, so what is drawn is what is hit.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { drawPlanetMap, fitPlanet, planetAspect, readPlanetPalette, regionAt, type PlanetPalette } from '../../game/planetArt';
+import { drawPlanetMap, fitPlanet, planetAspect, readPlanetPalette, regionAt, type PlanetPalette, type TurnMoves } from '../../game/planetArt';
 import { usePace } from '../../lib/motion';
 import type { PlanetMap, PlanetState, RegionId } from '../../planet/types';
+
+/** Last turn's moves, in milliseconds at full pace: drawn on, held, faded out. */
+const TURN_GROW = 700;
+const TURN_HOLD = 1800;
+const TURN_FADE = 1200;
+/** With motion off: shown still for this long, then removed. */
+const TURN_HOLD_STILL = 4000;
 
 export default function PlanetMapCanvas({
   s,
@@ -17,6 +26,8 @@ export default function PlanetMapCanvas({
   targets,
   moves,
   onSelect,
+  lastTurn = null,
+  onLastTurnShown,
 }: {
   s: PlanetState;
   map: PlanetMap;
@@ -24,6 +35,9 @@ export default function PlanetMapCanvas({
   targets: RegionId[];
   moves: RegionId[];
   onSelect: (r: RegionId | null) => void;
+  /** Last turn's army moves and captures, shown once and then handed back through onLastTurnShown. */
+  lastTurn?: TurnMoves | null;
+  onLastTurnShown?: () => void;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -33,6 +47,10 @@ export default function PlanetMapCanvas({
   const pace = usePace();
   const pulse = useRef(0);
   const moveFrame = useRef(0);
+  // Last turn's moves: how far drawn on and how opaque, advanced by their own loop (one object, reused).
+  const fade = useRef({ grow: 1, alpha: 1 });
+  const shown = useRef(onLastTurnShown);
+  shown.current = onLastTurnShown;
 
   // The box's size, kept current (measured before the first paint, so the map never flashes empty).
   useLayoutEffect(() => {
@@ -65,7 +83,7 @@ export default function PlanetMapCanvas({
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const fit = fitPlanet(size.w, size.h, map);
-    drawPlanetMap(ctx, map, s, { ...fit, palette, selected, targets, moves, names: size.w >= 640, hover: hoverRegion, pulse: pulse.current });
+    drawPlanetMap(ctx, map, s, { ...fit, palette, selected, targets, moves, names: size.w >= 640, hover: hoverRegion, pulse: pulse.current, lastTurn, lastTurnGrow: fade.current.grow, lastTurnAlpha: fade.current.alpha });
   };
 
   useLayoutEffect(() => {
@@ -80,7 +98,49 @@ export default function PlanetMapCanvas({
 
   useLayoutEffect(() => {
     draw.current();
-  }, [s, map, selected, targets, moves, palette, size, hoverRegion]);
+  }, [s, map, selected, targets, moves, palette, size, hoverRegion, lastTurn]);
+
+  // Last turn's moves: with motion on, drawn on, held, then faded; with motion off, held still and
+  // then removed. Either way the page is told when they are done, so they show once. A layout
+  // effect, so the first paint already has them undrawn rather than whole for a frame.
+  useLayoutEffect(() => {
+    if (!lastTurn) return;
+    const f = fade.current;
+    if (pace === 'off') {
+      f.grow = 1;
+      f.alpha = 1;
+      draw.current();
+      const t = window.setTimeout(() => shown.current?.(), TURN_HOLD_STILL);
+      return () => window.clearTimeout(t);
+    }
+    const k = pace === 'quick' ? 0.4 : 1;
+    const growMs = TURN_GROW * k;
+    const holdMs = TURN_HOLD * k;
+    const fadeMs = TURN_FADE * k;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const e = now - t0;
+      const g = Math.min(1, e / growMs);
+      f.grow = 1 - (1 - g) * (1 - g);
+      f.alpha = e <= growMs + holdMs ? 1 : Math.max(0, 1 - (e - growMs - holdMs) / fadeMs);
+      draw.current();
+      if (e >= growMs + holdMs + fadeMs) {
+        shown.current?.();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    f.grow = 0;
+    f.alpha = 1;
+    draw.current();
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      f.grow = 1;
+      f.alpha = 1;
+    };
+  }, [lastTurn, pace]);
 
   // The selection's pulse: a slow breath while motion is on; a still ring when it is off.
   useEffect(() => {

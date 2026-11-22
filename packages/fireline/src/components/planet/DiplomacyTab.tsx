@@ -6,9 +6,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { describeTerms, draftProblem, isBreach, proposalVerdict, TREATY_NAMES } from '../../planet/diplomacy';
-import { GIFT_MAX, PAYMENT_MAX, TERM_AMOUNT_MAX, TREATY_TURNS } from '../../planet/rules';
+import { BREACH_TRUST_MAX, GIFT_MAX, PAYMENT_MAX, TEMPERAMENTS, TERM_AMOUNT_MAX, TREATY_TURNS } from '../../planet/rules';
 import { stanceOf, treatyBetween } from '../../planet/state';
-import { NEUTRAL, RESOURCES, type FactionId, type Resource, type Treaty, type TreatyDraft, type TreatyKind, type TreatyTerm } from '../../planet/types';
+import { NEUTRAL, RESOURCES, type FactionId, type Resource, type Temperament, type Treaty, type TreatyDraft, type TreatyKind, type TreatyTerm } from '../../planet/types';
 import { FactionName, OrderButton, facStyle, RES_NAME, StancePill, turnsLeftText, why, type PlanetProps } from './common';
 
 const TEMPERAMENT_TEXT = {
@@ -81,14 +81,7 @@ export default function DiplomacyTab({
                 {f.alive ? <StancePill st={st} /> : <span className="fl-tag">Out of the war</span>}
               </div>
               {f.temperament && <span className="fl-small">{TEMPERAMENT_TEXT[f.temperament]}</span>}
-              <div className="fl-pl-trust" title="How far they trust you, 0 to 100">
-                <span className="fl-small">Their trust in you</span>
-                <span className="fl-pl-trust-bar" data-level={trust >= 60 ? 'high' : trust >= 40 ? 'mid' : 'low'}>
-                  <span style={{ width: `${trust}%` }} />
-                  <i className="fl-pl-trust-mid" />
-                </span>
-                <strong>{trust}</strong>
-              </div>
+              <TrustBar trust={trust} temperament={f.temperament} legend={f.alive} />
               {t ? <TreatyText s={s} t={t} /> : f.alive && <span className="fl-small">No treaty: you are at war.</span>}
               {f.alive && (
                 <>
@@ -116,6 +109,78 @@ export default function DiplomacyTab({
         })}
       </div>
       {proposing !== null && <ProposeDialog s={s} map={map} act={act} to={proposing} onClose={() => setProposing(null)} />}
+    </div>
+  );
+}
+
+/**
+ * A trust threshold that changes what a faction will do, read from the rules (never copied):
+ * - `alliance`: it signs or offers an alliance only at its temperament's allianceTrust or more
+ *   (proposalVerdict and the AI's own proposals, diplomacy.ts and ai.ts);
+ * - `word`: a temperament that breaks treaties breaches a dated one only while its trust is at
+ *   most BREACH_TRUST_MAX (ai.ts), so above it its word holds. Temperaments that never break have no such mark.
+ * Ceasefires and trade pacts have no trust gate: trust only adds to their score.
+ */
+export interface TrustMark {
+  key: 'alliance' | 'word';
+  /** Where the tick goes on the 0-100 bar. */
+  at: number;
+  /** The least trust that passes it. */
+  passAt: number;
+  label: string;
+  passed: boolean;
+}
+
+export function trustMarks(trust: number, temperament: Temperament | null): TrustMark[] {
+  // A faction with no temperament is judged as an expansionist (specOf in diplomacy.ts).
+  const T = TEMPERAMENTS[temperament ?? 'expansionist'];
+  const marks: TrustMark[] = [{ key: 'alliance', at: T.allianceTrust, passAt: T.allianceTrust, label: `Alliance at ${T.allianceTrust}`, passed: trust >= T.allianceTrust }];
+  if (T.breakAt !== null) {
+    marks.push({ key: 'word', at: BREACH_TRUST_MAX, passAt: BREACH_TRUST_MAX + 1, label: `Keeps dated treaties above ${BREACH_TRUST_MAX}`, passed: trust > BREACH_TRUST_MAX });
+  }
+  return marks.sort((a, b) => a.at - b.at);
+}
+
+const markState = (m: TrustMark, trust: number): string => (m.passed ? 'reached' : `${m.passAt - trust} to go`);
+
+/** Their trust in you, with a tick at each threshold that gates what they will do and a legend saying which are passed. */
+function TrustBar({ trust, temperament, legend }: { trust: number; temperament: Temperament | null; legend: boolean }) {
+  const marks = trustMarks(trust, temperament);
+  const valueText = [`${trust} of 100`, ...marks.map(m => `${m.label}: ${markState(m, trust)}`)].join('. ');
+  return (
+    <div className="fl-pl-trustbox">
+      <div className="fl-pl-trust" title="How far they trust you, 0 to 100">
+        <span className="fl-small">Their trust in you</span>
+        <span
+          className="fl-pl-trust-scale"
+          role="meter"
+          aria-label="Their trust in you"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={trust}
+          aria-valuetext={valueText}
+          data-testid="trust-meter"
+        >
+          <span className="fl-pl-trust-bar" data-level={trust >= 60 ? 'high' : trust >= 40 ? 'mid' : 'low'}>
+            <span style={{ width: `${trust}%` }} />
+          </span>
+          {marks.map(m => (
+            <i key={m.key} className="fl-pl-trust-tick" data-mark={m.key} data-passed={m.passed ? '1' : undefined} style={{ left: `${m.at}%` }} />
+          ))}
+        </span>
+        <strong aria-hidden="true">{trust}</strong>
+      </div>
+      {legend && (
+        <ul className="fl-pl-trust-legend" aria-label="Trust thresholds" data-testid="trust-legend">
+          {marks.map(m => (
+            <li key={m.key} data-mark={m.key} data-passed={m.passed ? '1' : undefined}>
+              <i className="fl-pl-trust-key" />
+              <span>{m.label}:</span>
+              <span className="fl-pl-trust-state">{markState(m, trust)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

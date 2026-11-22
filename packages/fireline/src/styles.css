@@ -618,58 +618,16 @@ kbd {
   opacity: 0.7;
 }
 .fl-hero-cta:focus-visible,
-.fl-lobby-path button:focus-visible,
 .fl-lobby-theatre-sheet:focus-visible,
 .fl-new summary:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
 
-/* Under the hero: the pitch, and the order of play as a three-stop path. */
+/* Under the hero: the pitch. The way round the lobby is the section rail (the lobby block at the end). */
 .fl-lobby-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 1.2rem;
-  align-items: center;
+  max-width: 72ch;
   margin-bottom: 1rem;
-}
-.fl-lobby-path {
-  display: flex;
-  border: 1px solid var(--ui-rule);
-  border-radius: 4px;
-  background: var(--ui-panel);
-  overflow: hidden;
-}
-.fl-lobby-path button {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 0.55rem 0.7rem;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ui-text);
-  background: transparent;
-  border: 0;
-  border-left: 1px solid var(--ui-rule);
-  cursor: pointer;
-  text-align: left;
-}
-.fl-lobby-path button:first-child {
-  border-left: 0;
-  box-shadow: inset 0 3px 0 var(--ui-accent);
-}
-.fl-lobby-path button:hover {
-  background: var(--ui-panel-raised);
-}
-.fl-lobby-path button span {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.62rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  color: var(--ui-accent);
 }
 
 /* What is new: one line of headings; open it for a sentence on each. */
@@ -1643,8 +1601,7 @@ kbd {
 }
 
 @media (max-width: 820px) {
-  .fl-campaign-grid,
-  .fl-lobby-intro {
+  .fl-campaign-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -3985,14 +3942,6 @@ kbd {
 .fl-pl-trust-bar[data-level="high"] > span {
   background: var(--pl-alliance);
 }
-.fl-pl-trust-mid {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: var(--ui-rule-strong);
-}
 .fl-pl-side[style] {
   border-left: 4px solid var(--fac);
 }
@@ -4629,69 +4578,6 @@ kbd {
   color: var(--army-ashen);
   background: var(--army-ashen-soft);
   border: 1px solid var(--army-ashen);
-}
-.fl-armies-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-}
-.fl-armies-tile {
-  display: flex;
-  gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--ui-rule);
-  border-radius: 4px;
-  background: var(--ui-panel-raised);
-  min-width: 0;
-}
-.fl-armies-tile[data-army="meridian"] {
-  border-left: 3px solid var(--army-meridian);
-}
-.fl-armies-tile[data-army="ashen"] {
-  border-left: 3px solid var(--army-ashen);
-}
-.fl-armies-tile img {
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-.fl-armies-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  font-size: 0.76rem;
-  line-height: 1.4;
-  color: var(--ui-text-soft);
-}
-.fl-armies-body strong {
-  font-size: 0.88rem;
-  color: var(--ui-text);
-}
-.fl-armies-facts {
-  font-size: 0.72rem;
-  color: var(--ui-text-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.fl-armies-body summary {
-  cursor: pointer;
-  color: var(--ui-text-faint);
-}
-.fl-armies-body dl {
-  margin: 4px 0 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 8px;
-  row-gap: 1px;
-  font-size: 0.72rem;
-}
-.fl-armies-body dl > div {
-  display: contents;
-}
-.fl-armies-body dt {
-  color: var(--ui-text-faint);
-}
-.fl-armies-body dd {
-  margin: 0;
 }
 .fl-armies-table-wrap {
   overflow-x: auto;
@@ -8388,3 +8274,687 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   background: var(--ui-accent);
 }
 /* menus polish end */
+
+/* lobby */
+/* The section rail (fixed under the top edge once the hero has scrolled out) and the War section's
+   planet preview. The preview's colours are the --pl-* tokens, defined globally on :root above. */
+:root {
+  --fl-rail-shadow: rgba(20, 28, 24, 0.14);
+}
+:root[data-theme="dark"] {
+  --fl-rail-shadow: rgba(0, 0, 0, 0.5);
+}
+.fl-lobby .fl-lobby-section {
+  scroll-margin-top: 64px;
+}
+.fl-lobby-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-rule);
+  box-shadow: 0 2px 10px var(--fl-rail-shadow);
+  visibility: hidden;
+  transform: translateY(-100%);
+  transition: transform 180ms ease, visibility 0s linear 180ms;
+}
+.fl-lobby-rail.is-shown {
+  visibility: visible;
+  transform: none;
+  transition: transform 180ms ease, visibility 0s;
+}
+.fl-lobby-rail-inner {
+  display: flex;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+.fl-lobby-rail button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ui-text-soft);
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.fl-lobby-rail button:hover {
+  color: var(--ui-text);
+  background: var(--ui-panel-raised);
+}
+.fl-lobby-rail button[aria-current] {
+  color: var(--ui-text);
+  border-bottom-color: var(--ui-accent);
+}
+.fl-lobby-rail button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: -2px;
+}
+.fl-lobby-rail-num {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--ui-accent);
+}
+.fl-lobby-rail-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fl-lobby-rail-count {
+  font-weight: 500;
+}
+.fl-lobby-rail-short {
+  display: none;
+}
+.fl-lobby-end {
+  height: 1px;
+}
+.fl-war-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 242px;
+  margin: 0 0 1rem;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ui-panel);
+}
+.fl-war-preview-map {
+  height: 240px;
+  aspect-ratio: 1.8;
+  max-width: 62vw;
+  background: var(--pl-sea-deep);
+}
+.fl-war-preview-map canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+.fl-war-preview[data-ready="1"] .fl-war-preview-map canvas {
+  opacity: 1;
+}
+.fl-war-preview-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border-left: 1px solid var(--ui-rule);
+  font-size: 0.8rem;
+  color: var(--ui-text-soft);
+}
+.fl-war-preview-name {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text);
+}
+.fl-war-preview-size {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+}
+.fl-war-preview-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ui-text);
+}
+.fl-war-preview-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.fl-war-preview-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--pl-border);
+}
+.fl-war-preview-note {
+  margin-top: auto;
+  font-size: 0.74rem;
+}
+@media (max-width: 560px) {
+  .fl-lobby .fl-lobby-section {
+    scroll-margin-top: 56px;
+  }
+  .fl-lobby-rail-inner {
+    padding: 0 4px;
+  }
+  .fl-lobby-rail button {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.25rem 0.3rem;
+    font-size: 0.74rem;
+    text-align: center;
+  }
+  .fl-lobby-rail-short {
+    display: inline;
+  }
+  .fl-lobby-rail-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .fl-war-preview {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .fl-war-preview-map {
+    width: 100%;
+    height: auto;
+    max-width: none;
+  }
+  .fl-war-preview-key {
+    padding: 0.6rem 0.75rem;
+    border-left: 0;
+    border-top: 1px solid var(--ui-rule);
+  }
+  .fl-war-preview-legend {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.8rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-lobby-rail,
+  .fl-lobby-rail.is-shown,
+  .fl-war-preview-map canvas {
+    transition: none;
+  }
+}
+:root[data-motion="off"] .fl-lobby-rail,
+:root[data-motion="off"] .fl-lobby-rail.is-shown,
+:root[data-motion="off"] .fl-war-preview-map canvas {
+  transition: none;
+}
+/* lobby end */
+/* planet-moves */
+/* War for the Planet: the legend's keys for last turn's moves (game/planetArt.ts drawTurnMoves).
+   Static glyphs; the map's own animation follows the motion setting in PlanetMapCanvas. */
+.fl-pl-key-trail {
+  width: 18px;
+  height: 10px;
+}
+.fl-pl-key-trail::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--pl-f0);
+}
+.fl-pl-key-trail::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 10px;
+  background: var(--pl-f0);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.fl-pl-key-taken {
+  border: 2px dashed var(--pl-border-strong);
+  border-radius: 50%;
+  transform: scale(0.8);
+}
+.fl-pl-key-taken::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  background:
+    linear-gradient(var(--pl-war), var(--pl-war)) center / 100% 2px no-repeat,
+    linear-gradient(var(--pl-war), var(--pl-war)) center / 2px 100% no-repeat;
+  transform: rotate(45deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 9px, black 9.5px);
+  mask: radial-gradient(circle, transparent 0 9px, black 9.5px);
+}
+/* planet-moves end */
+
+/* howto-armies */
+/* How to play: unit and structure tiles (icon banner, name and badge, stat chips, clamped blurb),
+   and the two armies' comparison with each difference marked by a symbol as well as a colour. */
+:root {
+  --howto-tech-standard: #6f8a80;
+  --howto-tech-advanced: #a86a0c;
+  --howto-banner: #e2e7e2;
+  --howto-banner-adv: #ece3d2;
+  --howto-chip: #f3f5f2;
+  --howto-chip-rule: #cdd4ce;
+  --howto-badge-ink: #7a4b04;
+  --howto-badge-bg: rgba(168, 106, 12, 0.1);
+  --armies-better: #22622a;
+  --armies-better-bg: rgba(47, 125, 52, 0.12);
+  --armies-worse: #a3342a;
+  --armies-worse-bg: rgba(184, 56, 44, 0.1);
+}
+:root[data-theme="dark"] {
+  --howto-tech-standard: #5f7a72;
+  --howto-tech-advanced: #e0a43a;
+  --howto-banner: #151b1e;
+  --howto-banner-adv: #241f15;
+  --howto-chip: #151b1e;
+  --howto-chip-rule: #33404a;
+  --howto-badge-ink: #e0a43a;
+  --howto-badge-bg: rgba(224, 164, 58, 0.12);
+  --armies-better: #82cf86;
+  --armies-better-bg: rgba(111, 191, 115, 0.13);
+  --armies-worse: #f08276;
+  --armies-worse-bg: rgba(224, 87, 74, 0.14);
+}
+.fl-howto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
+}
+.fl-howto-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--d-btn-rule);
+  border-left: 4px solid var(--howto-tech-standard);
+  border-radius: 5px;
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  box-shadow: inset 0 1px 0 var(--d-bevel);
+  overflow: hidden;
+}
+.fl-howto-tile[data-tech="advanced"] {
+  border-left-color: var(--howto-tech-advanced);
+}
+.fl-howto-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 76px;
+  background: var(--howto-banner);
+  border-bottom: 1px solid var(--d-btn-rule);
+}
+.fl-howto-tile[data-tech="advanced"] .fl-howto-banner {
+  background: var(--howto-banner-adv);
+}
+.fl-howto-tile[data-army="meridian"] .fl-howto-banner {
+  background: var(--army-meridian-soft);
+  box-shadow: inset 0 -3px 0 var(--army-meridian);
+}
+.fl-howto-tile[data-army="ashen"] .fl-howto-banner {
+  background: var(--army-ashen-soft);
+  box-shadow: inset 0 -3px 0 var(--army-ashen);
+}
+.fl-howto-banner img {
+  display: block;
+  width: 96px;
+  height: 64px;
+}
+.fl-howto-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px 9px;
+}
+.fl-howto-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  min-width: 0;
+}
+.fl-howto-name strong {
+  font-size: 0.88rem;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+.fl-howto-badge {
+  display: inline-block;
+  padding: 0 5px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  white-space: nowrap;
+  color: var(--howto-badge-ink);
+  background: var(--howto-badge-bg);
+  border: 1px solid var(--howto-tech-advanced);
+  border-radius: 3px;
+}
+.fl-howto-name .fl-army-tag {
+  white-space: nowrap;
+}
+.fl-howto-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+.fl-howto-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 3.1rem;
+  padding: 2px 6px 3px;
+  background: var(--howto-chip);
+  border: 1px solid var(--howto-chip-rule);
+  border-radius: 3px;
+}
+.fl-howto-stat dt {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-howto-stat dd {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fl-howto-unit {
+  font-size: 0.66rem;
+  font-weight: 400;
+  color: var(--ui-text-faint);
+}
+.fl-howto-blurb {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.fl-howto-blurb[data-open] {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  overflow: visible;
+}
+.fl-howto-more {
+  align-self: flex-start;
+  margin-top: -4px;
+}
+.fl-howto-all {
+  font-size: 0.72rem;
+  color: var(--ui-text-soft);
+}
+.fl-howto-all summary {
+  cursor: pointer;
+  color: var(--ui-text-faint);
+}
+/* A 40px hit area on phones without growing the tile: the summary's box reaches down over the gap. */
+@media (max-width: 600px) {
+  .fl-howto-all summary {
+    position: relative;
+  }
+  .fl-howto-all summary::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -6px;
+    bottom: -20px;
+  }
+}
+.fl-howto-all dl {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 1px;
+}
+.fl-howto-all dl > div {
+  display: contents;
+}
+.fl-howto-all dt {
+  color: var(--ui-text-faint);
+}
+.fl-howto-all dd {
+  margin: 0;
+}
+.fl-howto-needs {
+  font-size: 0.7rem;
+  color: var(--ui-text-faint);
+}
+/* The armies: what sets each apart, then the table. */
+.fl-armies-apart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+}
+.fl-armies-apart-h {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-armies-apart-list,
+.fl-armies-apart-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fl-armies-apart-list {
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-armies-apart-army {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.fl-armies-apart-chip {
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  border: 1px solid;
+  border-radius: 3px;
+}
+.fl-armies-apart-chip[data-mark="better"] {
+  color: var(--armies-better);
+  background: var(--armies-better-bg);
+}
+.fl-armies-apart-chip[data-mark="worse"] {
+  color: var(--armies-worse);
+  background: var(--armies-worse-bg);
+}
+.fl-armies-apart-n {
+  font-variant-numeric: tabular-nums;
+}
+.fl-armies-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--ui-text-faint);
+}
+.fl-armies-sign {
+  font-size: 0.78em;
+}
+.fl-armies-legend .fl-armies-sign[data-mark="better"] {
+  color: var(--armies-better);
+}
+.fl-armies-legend .fl-armies-sign[data-mark="worse"] {
+  color: var(--armies-worse);
+}
+/* Holds the cells' screen-reader words, which are absolutely placed, inside the scroller. */
+.fl-armies-table-wrap {
+  position: relative;
+}
+/* The item names stay in view while the numbers scroll sideways on a phone. */
+.fl-armies-cmp-table th[scope="row"],
+.fl-armies-cmp-table thead tr:first-child th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--ui-panel);
+}
+.fl-armies-cmp-table .fl-armies-cmp-army {
+  text-align: center;
+  border-left: 1px solid var(--ui-rule-strong);
+}
+.fl-armies-cmp-table .fl-armies-cmp-army[data-army="meridian"] {
+  box-shadow: inset 0 -2px 0 var(--army-meridian);
+}
+.fl-armies-cmp-table .fl-armies-cmp-army[data-army="ashen"] {
+  box-shadow: inset 0 -2px 0 var(--army-ashen);
+}
+.fl-armies-cmp-table thead .fl-armies-cmp-stat {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+  text-align: right;
+}
+.fl-armies-cmp-table [data-first="1"] {
+  border-left: 1px solid var(--ui-rule-strong);
+}
+.fl-armies-cmp-table .fl-armies-cmp-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-faint);
+}
+.fl-armies-cmp-table .fl-armies-cmp-val[data-mark] {
+  font-weight: 600;
+}
+.fl-armies-cmp-table .fl-armies-cmp-val[data-mark="better"] {
+  color: var(--armies-better);
+  background: var(--armies-better-bg);
+}
+.fl-armies-cmp-table .fl-armies-cmp-val[data-mark="worse"] {
+  color: var(--armies-worse);
+  background: var(--armies-worse-bg);
+}
+.fl-armies-cmp-table .fl-armies-cmp-val[data-mark="differs"] {
+  color: var(--ui-text);
+}
+.fl-armies-cmp-val .fl-armies-sign {
+  display: inline-block;
+  width: 1em;
+  margin-left: 2px;
+  text-align: center;
+}
+.fl-armies-cmp-val:not([data-mark])::after {
+  content: "";
+  display: inline-block;
+  width: 1em;
+  margin-left: 2px;
+}
+/* howto-armies end */
+/* trust-ticks */
+/* Diplomacy trust bars: a tick at each trust threshold that gates a treaty (DiplomacyTab trustMarks), and a legend. */
+.fl-pl-trustbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fl-pl-trust-scale {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 3px 0;
+}
+.fl-pl-trust-scale > .fl-pl-trust-bar {
+  flex: 1;
+  max-width: none;
+}
+/* A tick stands proud of the bar so it reads over the fill and the track alike; a halo in the panel colour separates it from both. */
+.fl-pl-trust-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ui-text);
+  box-shadow: 0 0 0 1px var(--ui-panel);
+  border-radius: 1px;
+}
+/* Not yet passed: hollow, an outline in the text colour. */
+.fl-pl-trust-tick:not([data-passed]) {
+  background: var(--ui-panel);
+  box-shadow: inset 0 0 0 1px var(--ui-text);
+  width: 4px;
+  margin-left: -2px;
+}
+.fl-pl-trust-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
+.fl-pl-trust-legend > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fl-pl-trust-key {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 2px;
+  height: 0.9em;
+  border-radius: 1px;
+  background: var(--ui-text);
+}
+.fl-pl-trust-legend > li:not([data-passed]) .fl-pl-trust-key {
+  width: 4px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ui-text);
+}
+.fl-pl-trust-state {
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-faint);
+}
+.fl-pl-trust-legend > li[data-passed] .fl-pl-trust-state {
+  color: var(--ui-text);
+  font-weight: 600;
+}
+/* trust-ticks end */

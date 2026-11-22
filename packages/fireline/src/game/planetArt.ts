@@ -16,7 +16,11 @@
  * pulse is one drawImage plus the markers. Over that: trade routes (blockaded ones in the blockade
  * colour), the hovered region, move and attack rings, the selection, cities (a rounded tile in the
  * owner's colour band with the owner's letter, level pips, a star on capitals, a mark when cut
- * off) and field armies (a pennant with the unit count).
+ * off) and field armies (a pennant with the unit count). After a turn ends, last turn's moves sit
+ * over the rings for a few seconds: a trail with an arrowhead from where each field army stood to
+ * where it stands now, in its owner's colour, starting from a disc with the owner's letter, and a
+ * ring with a burst of ticks on each region that changed hands (drawTurnMoves, under and over the
+ * cities).
  *
  * Every colour comes from the --pl-* tokens in styles.css, read with getComputedStyle by
  * readPlanetPalette, so the map follows the light or dark choice. Owners are shown by a letter on
@@ -111,6 +115,85 @@ export interface PlanetView {
   hover?: RegionId | null;
   /** The selection ring's pulse, 0..1 (absent or 0 with motion off: a still ring). */
   pulse?: number;
+  /** Last turn's army moves and captures (null or absent: none drawn). */
+  lastTurn?: TurnMoves | null;
+  /** How far the trails have drawn on, 0..1 (1 with motion off). */
+  lastTurnGrow?: number;
+  /** Their opacity, 0..1, as they fade out. */
+  lastTurnAlpha?: number;
+}
+
+// ---- Last turn's moves (presentation only: remembered by the page, never by the reducer) -------
+
+/** Where every field army stood and who held every region, when a turn began. */
+export interface TurnSnapshot {
+  seed: string;
+  turn: number;
+  /** By faction id: the field army's region, or null for none. */
+  armies: (RegionId | null)[];
+  owners: number[];
+}
+
+export interface TurnTrail {
+  owner: number;
+  /** Region to region, from where the army stood to where it stands, by the shortest chain of links. */
+  path: RegionId[];
+}
+
+export interface TurnMoves {
+  /** The turn these moves led into. */
+  turn: number;
+  trails: TurnTrail[];
+  /** Regions that changed hands, with their new owner (-1: the independents). */
+  captures: { region: RegionId; owner: number }[];
+}
+
+export function snapshotTurn(s: PlanetState): TurnSnapshot {
+  return {
+    seed: s.seedText,
+    turn: s.turn,
+    armies: s.factions.map(f => (f.alive && f.army ? f.army.region : null)),
+    owners: s.regions.map(r => r.owner),
+  };
+}
+
+/** The regions on the shortest chain of links from a to b, both included (land and sea alike). */
+function linkPath(map: PlanetMap, a: RegionId, b: RegionId): RegionId[] {
+  if (a === b) return [a];
+  const from = new Array<number>(map.regions.length).fill(-2);
+  from[a] = -1;
+  const queue: RegionId[] = [a];
+  for (let q = 0; q < queue.length; q++) {
+    const r = queue[q];
+    for (const l of map.regions[r]?.links ?? []) {
+      if (from[l.to] !== -2) continue;
+      from[l.to] = r;
+      if (l.to === b) {
+        const out: RegionId[] = [b];
+        for (let c = r; c !== -1; c = from[c]) out.push(c);
+        return out.reverse();
+      }
+      queue.push(l.to);
+    }
+  }
+  return [a, b];
+}
+
+/** What changed between a snapshot taken when the last turn began and the state now; null if nothing did. */
+export function turnMovesOf(map: PlanetMap, prev: TurnSnapshot, s: PlanetState): TurnMoves | null {
+  const trails: TurnTrail[] = [];
+  s.factions.forEach(f => {
+    const was = prev.armies[f.id];
+    const now = f.alive && f.army ? f.army.region : null;
+    if (was == null || now == null || was === now || !map.regions[was] || !map.regions[now]) return;
+    trails.push({ owner: f.id, path: linkPath(map, was, now) });
+  });
+  const captures: TurnMoves['captures'] = [];
+  s.regions.forEach((r, i) => {
+    const was = prev.owners[i];
+    if (was !== undefined && was !== r.owner && map.regions[i]) captures.push({ region: i, owner: r.owner });
+  });
+  return trails.length || captures.length ? { turn: s.turn, trails, captures } : null;
 }
 
 /** The part of the planet worth showing: every site, padded by how far land reaches, as a box. */
@@ -838,6 +921,9 @@ export function drawPlanetMap(ctx: CanvasRenderingContext2D, map: PlanetMap, s: 
     ring(view.selected, P.select, rad, 2.5, []);
   }
 
+  // Last turn's rings and trails, under the cities so their letters stay readable.
+  if (view.lastTurn) drawTurnMoves(ctx, map, s, view, rk, false);
+
   // 5. Cities: a rounded tile sized by level, the owner's colour band, the owner's letter, level
   // pips, a star on capitals and a mark when cut off from the capital.
   const capitals = new Set(s.factions.filter(f => f.alive).map(f => f.capital));
@@ -940,6 +1026,9 @@ export function drawPlanetMap(ctx: CanvasRenderingContext2D, map: PlanetMap, s: 
     }
   }
 
+  // Last turn's arrowheads and start discs, over the cities.
+  if (view.lastTurn) drawTurnMoves(ctx, map, s, view, rk, true);
+
   // 6. Field armies: a pennant in the faction's colour with the unit count beside it; a second
   // army in the same region stands further along.
   const stacked = new Map<RegionId, number>();
@@ -999,4 +1088,193 @@ export function drawPlanetMap(ctx: CanvasRenderingContext2D, map: PlanetMap, s: 
     ctx.fillText(label, px + pw / 2, py + ph / 2 + 0.5);
     ctx.restore();
   }
+}
+
+// ---- Last turn's moves --------------------------------------------------------------------------
+
+const NO_DASH: number[] = [];
+/** Where tracePath stopped, and the direction it was heading (scratch: no allocation per frame). */
+const tip = { x: 0, y: 0, dx: 1, dy: 0 };
+
+function pathLength(map: PlanetMap, path: RegionId[], scale: number): number {
+  let len = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = map.regions[path[i - 1]];
+    const b = map.regions[path[i]];
+    len += Math.hypot(b.x - a.x, b.y - a.y) * scale;
+  }
+  return len;
+}
+
+/** Adds to the current path the stretch of `path` from `from` to `to` pixels along it; sets `tip`. */
+function tracePath(ctx: CanvasRenderingContext2D, map: PlanetMap, path: RegionId[], view: PlanetView, from: number, to: number): void {
+  let d = 0;
+  let started = false;
+  for (let i = 1; i < path.length; i++) {
+    const a = map.regions[path[i - 1]];
+    const b = map.regions[path[i]];
+    const ax = a.x * view.scale + view.ox;
+    const ay = a.y * view.scale + view.oy;
+    const bx = b.x * view.scale + view.ox;
+    const by = b.y * view.scale + view.oy;
+    const l = Math.hypot(bx - ax, by - ay);
+    if (l <= 0) continue;
+    const ux = (bx - ax) / l;
+    const uy = (by - ay) / l;
+    const end = d + l;
+    if (end >= from) {
+      if (!started) {
+        const t = Math.max(0, from - d);
+        ctx.moveTo(ax + ux * t, ay + uy * t);
+        started = true;
+      }
+      if (to <= end) {
+        const t = Math.max(0, to - d);
+        tip.x = ax + ux * t;
+        tip.y = ay + uy * t;
+        tip.dx = ux;
+        tip.dy = uy;
+        ctx.lineTo(tip.x, tip.y);
+        return;
+      }
+      ctx.lineTo(bx, by);
+      tip.x = bx;
+      tip.y = by;
+      tip.dx = ux;
+      tip.dy = uy;
+    }
+    d = end;
+  }
+}
+
+/** The start of `path`, `at` pixels along it, into `tip`. */
+function pointAlong(map: PlanetMap, path: RegionId[], view: PlanetView, at: number): void {
+  const a = map.regions[path[0]];
+  const b = map.regions[path[1] ?? path[0]];
+  const l = Math.hypot(b.x - a.x, b.y - a.y) * view.scale;
+  const t = l > 0 ? Math.min(at, l) / l : 0;
+  tip.x = (a.x + (b.x - a.x) * t) * view.scale + view.ox;
+  tip.y = (a.y + (b.y - a.y) * t) * view.scale + view.oy;
+}
+
+/**
+ * Last turn's moves, in two passes. Under the cities (`over` false), so names stay readable: each
+ * captured region's ring in its new owner's colour with four ticks in the war colour, and each
+ * army's trail in its owner's colour over a halo, drawn on along the chain of regions it crossed.
+ * Over the cities (`over` true): each trail's arrowhead short of the city it reached and,
+ * on a hop long enough to have room, a disc with the owner's letter where it started (so a trail
+ * never reads by colour alone). `lastTurnGrow` draws them on and `lastTurnAlpha` fades them; both
+ * are 1 with motion off.
+ */
+function drawTurnMoves(ctx: CanvasRenderingContext2D, map: PlanetMap, s: PlanetState, view: PlanetView, rk: number, over: boolean): void {
+  const moves = view.lastTurn;
+  if (!moves) return;
+  const P = view.palette;
+  const grow = Math.max(0, Math.min(1, view.lastTurnGrow ?? 1));
+  const alpha = Math.max(0, Math.min(1, view.lastTurnAlpha ?? 1));
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash(NO_DASH);
+
+  for (const c of moves.captures) {
+    const g = map.regions[c.region];
+    if (!g) continue;
+    const x = g.x * view.scale + view.ox;
+    const y = g.y * view.scale + view.oy;
+    const r = (15 + 6 * grow) * rk;
+    if (!over) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = P.halo;
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.strokeStyle = c.owner >= 0 ? P.faction[c.owner] ?? P.borderStrong : P.borderStrong;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    if (over) continue;
+    ctx.beginPath();
+    for (let k = 0; k < 4; k++) {
+      const a = Math.PI / 4 + (k * Math.PI) / 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      ctx.moveTo(x + ca * (r + 3.5), y + sa * (r + 3.5));
+      ctx.lineTo(x + ca * (r + 10 * rk), y + sa * (r + 10 * rk));
+    }
+    ctx.strokeStyle = P.halo;
+    ctx.lineWidth = 5.5;
+    ctx.stroke();
+    ctx.strokeStyle = P.war;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+
+  // The disc sits just outside the city it left and the arrowhead stops short of the one it
+  // reached; on a short hop the arrow comes in closer and the disc is left out, so it has room.
+  const dr = 6.5 * rk;
+  const head = 9 * rk;
+  const half = 5.5 * rk;
+  for (const t of moves.trails) {
+    if (t.path.length < 2) continue;
+    const col = P.faction[t.owner] ?? P.borderStrong;
+    const len = pathLength(map, t.path, view.scale);
+    // A city's name hangs below it: a trail leaving downwards or arriving from below keeps clear of it.
+    const a0 = map.regions[t.path[0]];
+    const a1 = map.regions[t.path[1]];
+    const z0 = map.regions[t.path[t.path.length - 2]];
+    const z1 = map.regions[t.path[t.path.length - 1]];
+    const leavesDown = view.names && a1.y - a0.y > 0.4 * Math.hypot(a1.x - a0.x, a1.y - a0.y);
+    const arrivesUp = view.names && z0.y - z1.y > 0.4 * Math.hypot(z1.x - z0.x, z1.y - z0.y);
+    const disc = len >= 80 * rk;
+    const discAt = (leavesDown ? 27 : 15) * rk;
+    const startCut = disc ? discAt + dr * 0.8 : Math.min(13 * rk, len * 0.25);
+    const endCut = Math.min((arrivesUp ? 27 : 16) * rk, len * (arrivesUp ? 0.35 : 0.25));
+    const usable = len - startCut - endCut;
+    if (usable <= head) continue;
+    const to = startCut + usable * grow;
+    ctx.beginPath();
+    tracePath(ctx, map, t.path, view, startCut, to);
+    if (!over) {
+      ctx.strokeStyle = P.halo;
+      ctx.lineWidth = 6.5;
+      ctx.stroke();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+      continue;
+    }
+    // The arrowhead, at wherever the trail has reached.
+    if (to - startCut > head * 0.6) {
+      const bx = tip.x - tip.dx * head;
+      const by = tip.y - tip.dy * head;
+      ctx.beginPath();
+      ctx.moveTo(tip.x + tip.dx * 2, tip.y + tip.dy * 2);
+      ctx.lineTo(bx - tip.dy * half, by + tip.dx * half);
+      ctx.lineTo(bx + tip.dy * half, by - tip.dx * half);
+      ctx.closePath();
+      ctx.strokeStyle = P.halo;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.fill();
+    }
+    if (!disc) continue;
+    pointAlong(map, t.path, view, discAt);
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, dr, 0, Math.PI * 2);
+    ctx.fillStyle = P.halo;
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = P.name;
+    ctx.font = letterFont(Math.round(8 * rk));
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ownerLetter(s, t.owner), tip.x, tip.y + 0.5);
+  }
+  ctx.restore();
 }

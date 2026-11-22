@@ -30,6 +30,7 @@ import { quickResolve } from '../planet/resolve';
 import type { PlanetSave } from '../planet/save';
 import { simulateInWorker } from '../planet/simulateClient';
 import { armyPath } from '../planet/supply';
+import { snapshotTurn, turnMovesOf, type TurnMoves, type TurnSnapshot } from '../game/planetArt';
 import { applyPlanetAction, planetActionProblem, type PlanetAction } from '../planet/turn';
 import { RESOURCES, type BattleReport, type FactionId, type RegionId } from '../planet/types';
 import { DIFFICULTIES } from '../sim/rules';
@@ -217,6 +218,21 @@ export default function PlanetFlow({
     return map.regions.map(g => g.id).filter(r => r !== army.region && armyPath(s, 0, r) !== null);
   }, [s, map]);
 
+  // Last turn's moves, for the map (presentation only): where every field army stood and who held
+  // every region when the turn began, kept here so a fought battle or another tab does not lose it.
+  // When the turn number goes up by one, what changed is handed to the map, which shows it for a few
+  // seconds and hands it back. A loaded save or a jump of more than one turn shows nothing.
+  const turnSnap = useRef<TurnSnapshot | null>(null);
+  if (turnSnap.current === null) turnSnap.current = snapshotTurn(s);
+  const [lastTurn, setLastTurn] = useState<TurnMoves | null>(null);
+  useEffect(() => {
+    const prev = turnSnap.current;
+    if (!prev || (prev.turn === s.turn && prev.seed === s.seedText)) return;
+    turnSnap.current = snapshotTurn(s);
+    setLastTurn(prev.seed === s.seedText && s.turn === prev.turn + 1 ? turnMovesOf(map, prev, s) : null);
+  }, [s, map]);
+  const lastTurnShown = useCallback(() => setLastTurn(null), []);
+
   // ---- The battle --------------------------------------------------------------------------------
   if (view === 'battle' && ps.battle && s.pending[0]?.fighting) {
     return (
@@ -322,7 +338,16 @@ export default function PlanetFlow({
         {tab === 'map' && (
           <div className="fl-pl-mapview">
             <div className="fl-pl-mapcol">
-              <PlanetMapCanvas s={s} map={map} selected={selected} targets={targets} moves={moves} onSelect={setSelected} />
+              <PlanetMapCanvas
+                s={s}
+                map={map}
+                selected={selected}
+                targets={targets}
+                moves={moves}
+                onSelect={setSelected}
+                lastTurn={lastTurn && lastTurn.turn === s.turn ? lastTurn : null}
+                onLastTurnShown={lastTurnShown}
+              />
               <div className="fl-pl-legend" aria-label="Legend">
                 <div className="fl-pl-legend-row">
                   {s.factions.map(f => (
@@ -356,6 +381,14 @@ export default function PlanetFlow({
                   <li className="fl-pl-legend-key">
                     <span className="fl-pl-key fl-pl-key-capital" aria-hidden="true" />
                     Capital
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-trail" aria-hidden="true" />
+                    Arrow: an army's move last turn
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-taken" aria-hidden="true" />
+                    Burst ring: taken last turn
                   </li>
                   <li className="fl-pl-legend-key">
                     <span className="fl-pl-key fl-pl-key-army" aria-hidden="true" />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import GamePacePicker, { attackText } from '../components/GamePacePicker';
@@ -60,6 +60,57 @@ const goTo = (id: string) => {
   el.scrollIntoView({ behavior: currentPace() === 'off' ? 'auto' : 'smooth', block: 'start' });
 };
 
+/** The War section's planet preview: its own chunk, fetched after the lobby has painted. */
+const PlanetPreview = lazy(() => import('../components/PlanetPreview'));
+
+/** The lobby's sections, in page order, as the section rail lists them. */
+const RAIL_SECTIONS = ['fl-campaign', 'fl-war', 'fl-skirmish', 'fl-battles'] as const;
+type RailSection = (typeof RAIL_SECTIONS)[number];
+
+/**
+ * The section rail's state: shown once the hero has scrolled out of view, and which section is
+ * current (the one crossing a band just under the rail; the last one once the page's end is in
+ * view, since a short final section never reaches the band). Off while the lobby is not shown.
+ */
+function useLobbyRail(enabled: boolean): { shown: boolean; current: RailSection | null } {
+  const [shown, setShown] = useState(false);
+  const [current, setCurrent] = useState<RailSection | null>(null);
+  useEffect(() => {
+    if (!enabled || typeof IntersectionObserver === 'undefined') return;
+    const hero = document.querySelector('.fl-lobby .fl-hero');
+    const end = document.querySelector('.fl-lobby-end');
+    const sections = RAIL_SECTIONS.map(id => document.getElementById(id)).filter((el): el is HTMLElement => !!el);
+    const inBand = new Set<string>();
+    let atEnd = false;
+    const pick = () => {
+      if (atEnd) return setCurrent(RAIL_SECTIONS[RAIL_SECTIONS.length - 1]);
+      const first = RAIL_SECTIONS.find(id => inBand.has(id));
+      if (first) setCurrent(first);
+    };
+    const heroIo = new IntersectionObserver(([e]) => setShown(!e.isIntersecting && e.boundingClientRect.top < 0));
+    if (hero) heroIo.observe(hero);
+    const bandIo = new IntersectionObserver(
+      entries => {
+        for (const e of entries) (e.isIntersecting ? inBand.add(e.target.id) : inBand.delete(e.target.id));
+        pick();
+      },
+      { rootMargin: '-72px 0px -60% 0px' },
+    );
+    sections.forEach(el => bandIo.observe(el));
+    const endIo = new IntersectionObserver(([e]) => {
+      atEnd = e.isIntersecting;
+      pick();
+    });
+    if (end) endIo.observe(end);
+    return () => {
+      heroIo.disconnect();
+      bandIo.disconnect();
+      endIo.disconnect();
+    };
+  }, [enabled]);
+  return { shown, current };
+}
+
 export default function Lobby() {
   const navigate = useNavigate();
   const user = getStoredUser();
@@ -73,6 +124,8 @@ export default function Lobby() {
   const latest = campaigns.reduce<SaveMeta | null>((a, s) => (!a || s.savedAt > a.savedAt ? s : a), null);
   const wars = allSaves.filter(isPlanetMeta);
   const [warError, setWarError] = useState<string | null>(null);
+  // The length picked in the war setup, so the preview above it shows a planet of that size.
+  const [warPreset, setWarPreset] = useState<LengthPreset>('short');
   const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
   const [campName, setCampName] = useState('');
   const [campBusy, setCampBusy] = useState(false);
@@ -119,6 +172,7 @@ export default function Lobby() {
   })();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const rail = useLobbyRail(!!user && hasGameAccess(user, 'fireline'));
 
   const begin = async () => {
     if (busy) return;
@@ -207,26 +261,36 @@ export default function Lobby() {
           </div>
         </HeroScene>
 
+        <nav className={`fl-lobby-rail${rail.shown ? ' is-shown' : ''}`} aria-label="Lobby sections" data-testid="lobby-rail">
+          <div className="fl-lobby-rail-inner">
+            {([
+              ['fl-campaign', '01', 'Campaign', 'Campaign', 0],
+              ['fl-war', '02', 'War for the Planet', 'War', wars.length],
+              ['fl-skirmish', '03', 'Skirmish', 'Skirmish', 0],
+              ['fl-battles', '04', 'Your battles', 'Battles', saves.length],
+            ] as const).map(([id, num, full, short, count]) => (
+              <button key={id} type="button" aria-current={rail.current === id ? 'location' : undefined} onClick={() => goTo(id)}>
+                <span className="fl-lobby-rail-num" aria-hidden="true">
+                  {num}
+                </span>
+                <span className="fl-lobby-rail-label">
+                  <span className="fl-lobby-rail-full">{full}</span>
+                  <span className="fl-lobby-rail-short" aria-hidden="true">
+                    {short}
+                  </span>
+                  {count ? <span className="fl-lobby-rail-count"> ({count})</span> : null}
+                </span>
+              </button>
+            ))}
+          </div>
+        </nav>
+
         <div className="fl-lobby-intro">
           <p style={{ ...bodySmall, margin: 0 }}>
             Command the Meridian Corps against the Ashen Combine. Build a base from a single Command Yard, send haulers out for
             ore, keep the generators ahead of demand, and train an army of riflemen, rocketeers, buggies, tanks and artillery.
             Destroy every enemy structure to win; lose all of yours and it is over.
           </p>
-          <nav className="fl-lobby-path" aria-label="Lobby sections">
-            <button type="button" onClick={() => goTo('fl-campaign')}>
-              <span>01</span>Campaign
-            </button>
-            <button type="button" onClick={() => goTo('fl-war')}>
-              <span>02</span>War for the Planet{wars.length > 0 ? ` (${wars.length})` : ''}
-            </button>
-            <button type="button" onClick={() => goTo('fl-skirmish')}>
-              <span>03</span>Skirmish
-            </button>
-            <button type="button" onClick={() => goTo('fl-battles')}>
-              <span>04</span>Your battles{saves.length > 0 ? ` (${saves.length})` : ''}
-            </button>
-          </nav>
         </div>
 
         <WhatsNew />
@@ -349,8 +413,12 @@ export default function Lobby() {
           <SectionHead num="02" kicker="Strategic campaign" title="War for the Planet" id="fl-war-title">
             <Label>Turn-based · every attack a battle</Label>
           </SectionHead>
+          <Suspense fallback={<div className="fl-war-preview" data-ready="0" aria-hidden="true" />}>
+            <PlanetPreview preset={warPreset} />
+          </Suspense>
           <WarSetup
             defaultCommander={commander}
+            onPresetChange={setWarPreset}
             onBegin={async (req, guided) => {
               setWarError(null);
               try {
@@ -562,6 +630,7 @@ export default function Lobby() {
             </div>
           )}
         </section>
+        <div className="fl-lobby-end" aria-hidden="true" />
       </main>
       <PortalNav variant="footer" />
     </div>

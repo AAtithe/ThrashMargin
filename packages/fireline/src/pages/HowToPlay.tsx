@@ -1,10 +1,9 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import { Button, ManualSection as Section, bodySmall, manualSlug as slug } from '../components/ui';
-import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
-import { listedCost, statsOf } from '../game/Sidebar';
+import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsPanel } from '../components/Generals';
@@ -56,7 +55,6 @@ import {
   MISSILE_DAMAGE,
   POWERS,
   SKIRMISH_POWERS,
-  STANDARD_TECH,
   TICKS_PER_SECOND,
   UNITS,
   VEHICLE_MENU,
@@ -66,7 +64,7 @@ import {
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
 // round6:A. Two armies (fireline-round6-design.md, workstream A): its panel.
-import ArmiesPanel from './ArmiesPanel';
+import ArmiesPanel, { ItemTile, tileStats } from './ArmiesPanel';
 import { CITY_BUILDING_SPECS, LENGTH_PRESETS, PRESETS } from '../planet/rules';
 import { CITY_BUILDINGS } from '../planet/types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
@@ -197,7 +195,7 @@ export default function HowToPlay() {
         <Section title="Advanced tech">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
-              The build window gains an Air tab and a longer tree. Items marked <span style={advBadge}>Advanced</span> below appear only
+              The build window gains an Air tab and a longer tree. Items marked <span className="fl-howto-badge">Advanced</span> below appear only
               with advanced tech; the computer builds from the same list.
             </li>
             <li>
@@ -574,46 +572,13 @@ const SECTIONS = [
 
 function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+    <div className="fl-howto-grid">
       {kinds.map(k => {
-        const isB = k in BUILDINGS;
-        const spec = isB ? BUILDINGS[k as BuildingKind] : UNITS[k as UnitKind];
+        const spec = k in BUILDINGS ? BUILDINGS[k as BuildingKind] : UNITS[k as UnitKind];
         const needs = spec.requires.map(r => BUILDINGS[r].name).join(', ');
-        // A hero's recruit price, not the campaign's 0 (listedCost).
-        const facts: ReactNode[] = [`${listedCost(k).cost} credits`, `${spec.hp} hp`];
-        if (isB) {
-          const p = BUILDINGS[k as BuildingKind].power;
-          facts.push(p > 0 ? `+${p} power` : `${p} power`);
-        }
-        const w = spec.weapon;
-        if (w) facts.push(`range ${w.range}`);
-        // The full card, the same one the build menu shows on hover.
+        // The full card, the same one the build menu shows on hover, less what the chips already say.
         const rows = statsOf(k).filter(r => r.label !== 'Needs' && r.label !== 'Cost' && r.label !== 'Health');
-        return (
-          <div key={k} style={tile}>
-            <img src={iconFor(k)} alt="" width={96} height={64} style={{ borderRadius: 3, flexShrink: 0 }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <strong style={{ fontSize: '0.88rem' }}>
-                {spec.name}
-                {!STANDARD_TECH.includes(k) && <span style={{ ...advBadge, marginLeft: 6 }}>Advanced</span>}
-              </strong>
-              <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>{facts.join(' · ')}</span>
-              <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>{spec.blurb}</span>
-              <details style={{ fontSize: '0.72rem', color: UI.textSoft }}>
-                <summary style={{ cursor: 'pointer', color: UI.textFaint }}>All numbers</summary>
-                <dl style={{ margin: '4px 0 0', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 8, rowGap: 1 }}>
-                  {rows.map(r => (
-                    <div key={r.label} style={{ display: 'contents' }}>
-                      <dt style={{ color: UI.textFaint }}>{r.label}</dt>
-                      <dd style={{ margin: 0 }}>{r.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </details>
-              {needs && <span style={{ fontSize: '0.7rem', color: UI.textFaint }}>Needs: {needs}</span>}
-            </div>
-          </div>
-        );
+        return <ItemTile key={k} kind={k} name={spec.name} blurb={spec.blurb} stats={tileStats(k)} rows={rows} needs={needs || undefined} />;
       })}
     </div>
   );
@@ -628,19 +593,6 @@ const tile: CSSProperties = {
   borderRadius: 5,
   background: 'linear-gradient(180deg, var(--d-btn-hi), var(--d-btn))',
   boxShadow: 'inset 0 1px 0 var(--d-bevel)',
-};
-
-const advBadge: CSSProperties = {
-  display: 'inline-block',
-  padding: '0 5px',
-  fontSize: '0.62rem',
-  fontWeight: 600,
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  verticalAlign: '1px',
-  color: UI.accent,
-  border: `1px solid ${UI.accent}`,
-  borderRadius: 3,
 };
 
 /** A cooldown in words: seconds under two minutes, else minutes. */
