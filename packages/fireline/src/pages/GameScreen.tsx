@@ -1957,7 +1957,7 @@ export function Battle({
               Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
               implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
           {/* round6:C end. */}
-          {buildOpen && !paused && !help && !ended && (
+          {buildOpen && !help && !ended && (
             <BuildWindow
               state={s}
               tab={tab}
@@ -1973,18 +1973,26 @@ export function Battle({
               }}
             />
           )}
+          {/* round7:pause begin. A tactical pause: the battle holds but the map stays live, so
+              orders, selections, queues and placements can be given while time stands still. A
+              banner, not a scrim, so nothing on the battlefield is covered. */}
           {paused && !help && !ended && (
-            <div style={scrim}>
-              <div className="fl-d-card fl-d-paused" role="dialog" aria-label="Paused">
+            <div style={pauseBanner}>
+              <div className="fl-d-card fl-d-paused" role="status" aria-label="Paused" style={pauseCard}>
                 <span className="fl-d-glyph fl-d-paused-glyph" data-glyph="pause" aria-hidden="true" />
-                <h2 className="fl-d-card-title">Paused</h2>
-                <p className="fl-d-card-sub">The battle is holding. Your progress has been saved.</p>
+                <div>
+                  <h2 className="fl-d-card-title" style={{ margin: 0 }}>Paused</h2>
+                  <p className="fl-d-card-sub" style={{ margin: 0 }}>
+                    Time is holding and your progress is saved. Orders, queues and placements still work: plan, then resume.
+                  </p>
+                </div>
                 <button type="button" className="fl-d-btn fl-d-primary" onClick={() => setPaused(false)}>
                   Resume <kbd>P</kbd>
                 </button>
               </div>
             </div>
           )}
+          {/* round7:pause end */}
           {help && (
             <div style={scrim} onClick={() => setHelp(false)}>
               <div className="fl-d-card fl-d-help-card fl-scroll" role="dialog" aria-label="Controls" onClick={e => e.stopPropagation()}>
@@ -2010,7 +2018,7 @@ export function Battle({
         {tourOpen && (
           <GuidedTour
             key={tourRun}
-            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !paused && !help && !ended, sheet }}
+            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !help && !ended, sheet }}
             onFinish={() => setTourOpen(false)}
             hidden={paused || help || menu || ended}
           />
@@ -2431,6 +2439,31 @@ const scrim: CSSProperties = {
   justifyContent: 'center',
   padding: 16,
 };
+
+// round7:pause begin
+/** The tactical pause's banner: across the top of the battlefield, letting clicks through beside it. */
+const pauseBanner: CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 0,
+  right: 0,
+  display: 'flex',
+  justifyContent: 'center',
+  padding: '0 16px',
+  pointerEvents: 'none',
+};
+const pauseCard: CSSProperties = {
+  pointerEvents: 'auto',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  textAlign: 'left',
+  gap: 14,
+  padding: '12px 18px',
+  maxWidth: 680,
+  width: 'auto',
+};
+// round7:pause end
 
 const errorStrip: CSSProperties = {
   padding: '6px 12px',
