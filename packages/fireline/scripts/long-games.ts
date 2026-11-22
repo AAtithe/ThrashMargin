@@ -26,7 +26,7 @@ const arg = (name: string, def: string) => {
 const SEEDS = Number(arg('seeds', '8'));
 
 /** The harness's tick cap (as in drive.ts): 45000 standard, 72000 large, 108000 huge. */
-const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'vast' ? 162000 : setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 
 function battle(seed: string, size: MapSize, sides: 2 | 4, mode: SideMode): GameState {
   const setup: Partial<SkirmishSetup> = { map: 'random', tech: 'advanced', sides, mode, size };

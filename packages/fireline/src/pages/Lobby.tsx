@@ -809,7 +809,7 @@ const mapTypeOf = (s: SaveMeta): MapType | null => {
 /** "Large map" or "Huge map" for a battle on a larger map (round 5); null for standard size and older rows. */
 const sizeOfSave = (s: SaveMeta): string | null => {
   const z = (s as SaveMeta & { size?: unknown }).size;
-  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : null;
+  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : z === 'vast' ? 'Vast map' : null;
 };
 
 /** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */

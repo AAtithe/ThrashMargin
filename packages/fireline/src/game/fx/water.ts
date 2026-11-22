@@ -159,9 +159,11 @@ export class Water {
   private shown: Int8Array;
   /** Per tile: where its untouched ground sits in `base`, or -1. */
   private slot: Int32Array;
-  /** The map's size in tiles, read from the terrain canvas. */
+  /** The map's size in tiles. */
   private mapW: number;
   private mapH: number;
+  /** Canvas pixels per world pixel in the terrain (terrainScale in terrain.ts). */
+  private scale: number;
   private base: HTMLCanvasElement | null = null;
   /** Each land mask's strip of frames, painted on first sight (paintStrip). */
   private strips: (HTMLCanvasElement | undefined)[] = new Array(256);
@@ -169,11 +171,14 @@ export class Water {
   private tctx: CanvasRenderingContext2D;
   private count = 0;
 
-  constructor(tiles: string, terrain: HTMLCanvasElement) {
+  constructor(tiles: string, terrain: HTMLCanvasElement, mapW = Math.round(terrain.width / TILE), mapH = Math.round(terrain.height / TILE)) {
     this.terrain = terrain;
     this.tctx = terrain.getContext('2d')!;
-    const MAP_W = (this.mapW = Math.round(terrain.width / TILE));
-    const MAP_H = (this.mapH = Math.round(terrain.height / TILE));
+    const MAP_W = (this.mapW = mapW);
+    const MAP_H = (this.mapH = mapH);
+    // Drawn in world pixels whatever the terrain's resolution (as fx/scars.ts sets it too).
+    this.scale = terrain.width / (mapW * TILE);
+    this.tctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     this.mask = new Int16Array(MAP_W * MAP_H).fill(-1);
     this.phase = new Float32Array(MAP_W * MAP_H);
     this.shown = new Int8Array(MAP_W * MAP_H).fill(-1);
@@ -223,7 +228,8 @@ export class Water {
       for (let k = 0; k < MAP_W * MAP_H; k++) {
         const s = this.slot[k];
         if (s < 0) continue;
-        bctx.drawImage(this.terrain, (k % MAP_W) * TILE, Math.floor(k / MAP_W) * TILE, TILE, TILE, (s % cols) * TILE, Math.floor(s / cols) * TILE, TILE, TILE);
+        const sc = this.scale;
+        bctx.drawImage(this.terrain, (k % MAP_W) * TILE * sc, Math.floor(k / MAP_W) * TILE * sc, TILE * sc, TILE * sc, (s % cols) * TILE, Math.floor(s / cols) * TILE, TILE, TILE);
       }
       this.base = b;
     }

@@ -72,8 +72,17 @@ export class Scars {
   private dirty: Uint8Array;
   /** Chunks across (and down: the grid is square, sized to the longer side of the map). */
   private chunks: number;
-  /** The map's width in tiles, read from the terrain canvas. */
+  /** The map's width in tiles. */
   private mapW: number;
+  /** The map's size in world pixels (TILE to a tile); every mark is drawn in these. */
+  private worldW: number;
+  private worldH: number;
+  /**
+   * Canvas pixels per world pixel in the terrain (terrainScale in terrain.ts: 1, or 0.5 on a Vast
+   * map). Both canvases' contexts carry it as their transform, so drawing is in world pixels; a
+   * copy between them gives its source rectangle in canvas pixels, so it is scaled by hand (copy).
+   */
+  private scale: number;
   private fadeClock = 0;
   private nextChunk = 0;
   private trackAt = new Map<number, { x: number; y: number }>();
@@ -82,10 +91,13 @@ export class Scars {
   private last: GameState | null = null;
   private tiles: string;
 
-  constructor(terrain: HTMLCanvasElement, tiles: string) {
+  constructor(terrain: HTMLCanvasElement, tiles: string, mapW = Math.round(terrain.width / TILE), mapH = Math.round(terrain.height / TILE)) {
     this.tiles = tiles;
-    this.mapW = Math.round(terrain.width / TILE);
-    this.chunks = Math.ceil(Math.max(terrain.width, terrain.height) / CHUNK);
+    this.mapW = mapW;
+    this.worldW = mapW * TILE;
+    this.worldH = mapH * TILE;
+    this.scale = terrain.width / this.worldW;
+    this.chunks = Math.ceil(Math.max(this.worldW, this.worldH) / CHUNK);
     this.dirty = new Uint8Array(this.chunks * this.chunks);
     this.dctx = terrain.getContext('2d')!;
     this.pristine = document.createElement('canvas');
@@ -93,6 +105,15 @@ export class Scars {
     this.pristine.height = terrain.height;
     this.pctx = this.pristine.getContext('2d')!;
     this.pctx.drawImage(terrain, 0, 0);
+    const s = this.scale;
+    this.dctx.setTransform(s, 0, 0, s, 0, 0);
+    this.pctx.setTransform(s, 0, 0, s, 0, 0);
+  }
+
+  /** Copies a region of the pristine ground (world pixels) into the live terrain. */
+  private copy(x: number, y: number, w: number, h: number) {
+    const s = this.scale;
+    this.dctx.drawImage(this.pristine, x * s, y * s, w * s, h * s, x, y, w, h);
   }
 
   /** Finds what died since the last call and marks the ground for it. */
@@ -314,9 +335,9 @@ export class Scars {
     const m = Math.ceil(w * 0.12) + 2;
     const rx = Math.max(0, px - m);
     const ry = Math.max(0, py - m);
-    const rw = Math.min(this.pristine.width - rx, w + m * 2);
-    const rh = Math.min(this.pristine.height - ry, h + m * 2);
-    this.dctx.drawImage(this.pristine, rx, ry, rw, rh, rx, ry, rw, rh);
+    const rw = Math.min(this.worldW - rx, w + m * 2);
+    const rh = Math.min(this.worldH - ry, h + m * 2);
+    this.copy(rx, ry, rw, rh);
     this.onRepaint?.(rx, ry, rw, rh);
   }
 
@@ -381,10 +402,10 @@ export class Scars {
     const m = r * 2.4;
     const rx = Math.max(0, Math.floor(x - m));
     const ry = Math.max(0, Math.floor(y - m));
-    const rw = Math.min(this.pristine.width - rx, Math.ceil(m * 2));
-    const rh = Math.min(this.pristine.height - ry, Math.ceil(m * 2));
+    const rw = Math.min(this.worldW - rx, Math.ceil(m * 2));
+    const rh = Math.min(this.worldH - ry, Math.ceil(m * 2));
     if (rw <= 0 || rh <= 0) return;
-    this.dctx.drawImage(this.pristine, rx, ry, rw, rh, rx, ry, rw, rh);
+    this.copy(rx, ry, rw, rh);
     this.onRepaint?.(rx, ry, rw, rh);
     this.smoulders.push({ x: x - r, y: y - r * 0.8, w: r * 2, h: r * 1.6, born: t, life: 40 });
   }
@@ -415,7 +436,7 @@ export class Scars {
       const done = ++this.dirty[k] > FADES_TO_CLEAR;
       // Blend towards the pristine ground; the last pass copies it outright.
       d.globalAlpha = done ? 1 : FADE_ALPHA;
-      d.drawImage(this.pristine, x, y, CHUNK, CHUNK, x, y, CHUNK, CHUNK);
+      this.copy(x, y, CHUNK, CHUNK);
       d.globalAlpha = 1;
       if (done) this.dirty[k] = 0;
       this.onRepaint?.(x, y, CHUNK, CHUNK);

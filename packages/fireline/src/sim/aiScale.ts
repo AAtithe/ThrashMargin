@@ -24,8 +24,21 @@ const sizeOf = (s: GameState): MapSize => s.setup?.size ?? 'standard';
 export function mapScale(s: GameState): number {
   if (sizeOf(s) === 'standard') return 1;
   const n = s.players.length;
-  const base = MAP_SIZE_FOR[(n === 3 || n === 4 ? n : 2) as 2 | 3 | 4];
-  return Math.max(1, s.mapW / base);
+  const sides = (n === 3 || n === 4 ? n : 2) as 2 | 3 | 4;
+  return damped(Math.max(1, s.mapW / MAP_SIZE_FOR[sides]), sides);
+}
+
+/**
+ * Vast maps (2026-11-22): beyond a huge map's scale, each number grows at VAST_SCALE_RATE of the
+ * rate above, so a vast two-sided map (raw scale 4) plays at 3 rather than 4. Linear growth would
+ * have put Normal's first attack five and a half times later than on a standard map and given
+ * every side 24 more turrets, and the battle's tick time grows with what is on the field
+ * (perf-fire.ts, build log). Large and huge are below the knee and unchanged.
+ */
+export const VAST_SCALE_RATE = 0.5;
+function damped(k: number, sides: 2 | 3 | 4): number {
+  const knee = MAP_SIZE_TILES.huge[sides] / MAP_SIZE_FOR[sides];
+  return k <= knee ? k : knee + (k - knee) * VAST_SCALE_RATE;
 }
 
 /**
@@ -61,7 +74,7 @@ export function scaledFor(s: GameState, d: DifficultySpec): DifficultySpec {
  */
 export function scaledForSetup(setup: Pick<SkirmishSetup, 'sides' | 'size'>, d: DifficultySpec): DifficultySpec {
   const size = setup.size ?? 'standard';
-  return scaledBy(size === 'standard' ? 1 : Math.max(1, MAP_SIZE_TILES[size][setup.sides] / MAP_SIZE_FOR[setup.sides]), d);
+  return scaledBy(size === 'standard' ? 1 : damped(Math.max(1, MAP_SIZE_TILES[size][setup.sides] / MAP_SIZE_FOR[setup.sides]), setup.sides), d);
 }
 
 function scaledBy(k: number, d: DifficultySpec): DifficultySpec {
