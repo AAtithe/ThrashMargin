@@ -238,6 +238,10 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
 // round6:D. Formations and squads: the waves' formation moves (fireline-round6-design.md).
 import { doFormationMove } from './commands';
 
+/** Territory: most Watchtowers built to make room, and the kinds no Watchtower makes room for. */
+const ROOM_TOWERS = 4;
+const NOT_FOR_ROOM: BuildingKind[] = ['watchtower', 'wall', 'shipyard', 'fuelwell', 'depot'];
+
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
@@ -319,7 +323,17 @@ function commander(s: GameState, owner: Owner): void {
         want = 'wall';
     }
     // Territory and workforce: no room inside the borders for it, so a Watchtower to push them out first.
-    if (want && territoryOn(s) && want !== 'watchtower' && want !== 'wall' && unlocked(s, owner, 'watchtower') && !findSpot(s, owner, want, home, enemyHome))
+    // Only for a structure the borders are what limit (a Naval Yard needs a shore, a Fuel Well a field,
+    // a Depot a link), and at most ROOM_TOWERS standing: uncapped, a commander whose Naval Yard could
+    // find no shore built thirteen (fireline-design.md).
+    if (
+      want &&
+      territoryOn(s) &&
+      !NOT_FOR_ROOM.includes(want) &&
+      countBuildings(s, owner, 'watchtower') < ROOM_TOWERS &&
+      unlocked(s, owner, 'watchtower') &&
+      !findSpot(s, owner, want, home, enemyHome)
+    )
       want = 'watchtower';
     if (want) {
       if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);

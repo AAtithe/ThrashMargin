@@ -2830,6 +2830,12 @@ The player asked for phase 3 once phases 1 and 2 had merged (pull request 55).
   32, the Fireline tour ok. In Chromium: a battle ten minutes in with dashed borders, a Watchtower
   and Depot out toward a field, NO CREW over a War Factory and Barracks once a Quarters was removed,
   and the gauge reading "2 no crew" and "Workers 17/12"; no console errors.
+- **A cap found after the pull request opened.** Probing phase 4 showed one side with 13 Watchtowers.
+  The rule that builds a Watchtower when a wanted structure has no room had no limit, and a Naval
+  Yard that could find no shore (its problem, not the borders') kept asking. It now applies only to
+  structures the borders limit (not a Naval Yard, Fuel Well or Depot) and stops at 4 standing. Over
+  30 battles no side then held more than 3 at once; the 60-seed read moved within noise (new Normal
+  v previous Normal 48%, Normal v Easy 97%); all 140 industry, supply and territory assertions pass.
 
 ### 2026-11-21: The objectives are a finger wide on a tablet too
 
