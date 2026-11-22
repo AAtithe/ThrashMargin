@@ -25,8 +25,10 @@
  * pill is under 40px either way. It repeats all of that in a second mission with five objectives,
  * four of which can be shown on the map, where tapping one must also move the view. In every case,
  * running and paused, and once more in the mission with the save warning showing, it fails if a
- * header control leaves the window, overlaps another, is under 40px or cuts off its label.
- * TOUR_SKIP_TOUR=1 runs those checks alone.
+ * header control leaves the window, overlaps another, is under 40px or cuts off its label. In a
+ * skirmish, the mission and a War for the Planet battle it opens the Menu and fails if any control
+ * in it, the volume slider included, is under 40px either way, or if a tap, a one-finger drag or
+ * the arrow keys leave the stored volume unchanged. TOUR_SKIP_TOUR=1 runs those checks alone.
  *
  * On tablets (four, both ways up, in the full run; the iPad mini upright in quick mode) it opens both
  * missions and runs the same objectives checks against the panel in its desktop place at the top
@@ -35,7 +37,8 @@
  * showable row moves the view. In both missions, a skirmish and a War for the Planet battle, running
  * and paused, every header control must be 40px both ways, inside the header and the window, clear
  * of the others, with no sideways scroll; and the Menu must hold the display settings, every
- * button in it 40px both ways. TOUR_TABLET names one tablet, or "all", and runs those checks alone.
+ * button and slider in it 40px both ways, and the volume slider (the Menu's, or the header's on the
+ * two tablets 1100px wide or more) must answer a tap, a drag and the arrow keys. TOUR_TABLET names one tablet, or "all", and runs those checks alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -666,6 +669,7 @@ async function barRow(browser, name) {
       await headerBothWays(page, kind, fail);
       if (kind !== 'bare') await heroDrawer(page, kind, fail);
       if (kind === 'mission') await objectivesClear(page, kind, fail);
+      if (kind === 'heroes' || kind === 'mission' || kind === 'planet') await displayInReach(page, kind, fail);
     }
     // The busiest objectives panel, with targets to show: the same checks, and every row's target.
     const located = await buildLocatedMission(page);
@@ -674,7 +678,7 @@ async function barRow(browser, name) {
     await sleep(600);
     await objectivesClear(page, 'mission, objectives to show', fail, true);
     await headerWithSaveWarning(page, fail);
-    if (problems.length === before) console.log(`  ${name}: every header control fits the window; the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header`);
+    if (problems.length === before) console.log(`  ${name}: every header control fits the window; the bar row is one line and clears the battle feed; the hero drawer works; the objectives clear the feed, strip, banners and header; every Menu control is 40px both ways and the volume slider answers a tap, a drag and the keys`);
   } catch (e) {
     await fail('run', e.message.split('\n')[0]);
   } finally {
@@ -717,6 +721,7 @@ async function tabletObjectives(browser, name) {
       await headerBothWays(page, kind, fail);
       await objectivesClear(page, kind, fail, locate);
     }
+    await displayInReach(page, 'mission', fail);
     // The header in the other two kinds of battle: a skirmish (which has the Tour button) and a War
     // for the Planet battle.
     for (const [kind, build] of [['skirmish', p => buildSkirmish(p, 'heroes')], ['planet', buildPlanet]]) {
@@ -727,7 +732,7 @@ async function tabletObjectives(browser, name) {
       await headerBothWays(page, kind, fail);
       await displayInReach(page, kind, fail);
     }
-    if (problems.length === before) console.log(`  ${name}: every header control is 40px both ways and fits; every objectives control and the pill are 40px both ways; the panel clears the feed, bar row, banners and header; Show moves the view`);
+    if (problems.length === before) console.log(`  ${name}: every header control is 40px both ways and fits; every objectives control and the pill are 40px both ways; the panel clears the feed, bar row, banners and header; Show moves the view; every Menu control is 40px both ways and the volume slider answers a tap, a drag and the keys`);
   } catch (e) {
     await fail('run', e.message.split('\n')[0]);
   } finally {
@@ -736,9 +741,12 @@ async function tabletObjectives(browser, name) {
 }
 
 /**
- * The display settings (motion, light or dark, fullscreen) on a touch screen live in the Menu, so
- * they must be there, every button in the open Menu must be 40px both ways, and the theme switch
- * there must work. On a touch screen 1100px wide or more they were in the header, 26px tall.
+ * The Menu on a touch screen. The display settings (motion, light or dark, fullscreen) live there, so
+ * they must be there; every control in the open Menu, buttons and the volume slider alike, must be
+ * 40px both ways; the theme switch must work; and the volume slider (the Menu's on a phone or a
+ * tablet under 1100px wide, the header's on the full row) must answer a tap, a drag and the arrow
+ * keys. On a touch screen 1100px wide or more the display settings were in the header, 26px tall;
+ * on a phone and a narrower tablet the Menu's slider was 110 by 16px.
  */
 async function displayInReach(page, kind, fail) {
   kind = `${kind}, menu`;
@@ -747,10 +755,12 @@ async function displayInReach(page, kind, fail) {
   await menu.tap();
   await page.getByTestId('menu').waitFor({ timeout: 5000 });
   const bs = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="menu"] button')].map(b => {
-      const r = b.getBoundingClientRect();
-      return { name: b.getAttribute('aria-label') || b.textContent.trim(), w: r.width, h: r.height };
-    }),
+    [...document.querySelectorAll('[data-testid="menu"] button, [data-testid="menu"] input')]
+      .filter(b => b.getClientRects().length)
+      .map(b => {
+        const r = b.getBoundingClientRect();
+        return { name: b.getAttribute('aria-label') || b.textContent.trim(), w: r.width, h: r.height };
+      }),
   );
   for (const want of [/^Motion/, /^Switch to (dark|light)/, /fullscreen/i])
     if (!bs.some(b => want.test(b.name))) await fail(kind, `the Menu has no ${want} button`);
@@ -760,8 +770,60 @@ async function displayInReach(page, kind, fail) {
   await page.locator('[data-testid="menu"] button[aria-label^="Switch to"]').tap();
   if ((await theme()) === was) await fail(kind, "the Menu's theme switch did nothing");
   await page.locator('[data-testid="menu"] button[aria-label^="Switch to"]').tap();
+  const inMenu = page.locator('[data-testid="menu"] input[type="range"]');
+  const menuSlider = (await inMenu.count()) > 0;
+  if (menuSlider) await volumeWorks(page, kind, fail, inMenu.first());
   await page.locator('[data-testid="menu"] .fl-d-primary').tap();
   if (await page.getByTestId('menu').isVisible()) await fail(kind, 'Close left the Menu open');
+  if (!menuSlider) {
+    const inHeader = page.locator('header.fl-d-top input[type="range"]');
+    if (await inHeader.count()) await volumeWorks(page, kind.replace(/menu$/, 'header'), fail, inHeader.first());
+    else await fail(kind, 'no volume slider in the Menu or the header');
+  }
+}
+
+/**
+ * A finger and a keyboard both set the volume: a tap near the slider's left end must lower it, a
+ * one-finger drag to its right end must raise it, and the arrow keys must still step it. The value
+ * is read from the slider and from the stored sound settings (`fireline_sound`), so a slider that
+ * moves without reaching the sound engine fails too.
+ */
+async function volumeWorks(page, kind, fail, slider) {
+  const read = () =>
+    slider.evaluate(el => {
+      let stored = null;
+      try {
+        stored = JSON.parse(localStorage.getItem('fireline_sound') || 'null')?.volume ?? null;
+      } catch {}
+      return { value: Number(el.value), stored, disabled: el.disabled };
+    });
+  const v0 = await read();
+  if (v0.disabled) return await fail(kind, 'the volume slider is disabled (sound off) at the start of the check');
+  const b = await slider.boundingBox();
+  const y = b.y + b.height / 2;
+  await page.touchscreen.tap(b.x + b.width * 0.1, y);
+  await sleep(150);
+  const v1 = await read();
+  if (!(v1.value < v0.value - 0.01) || v1.stored !== v1.value)
+    await fail(kind, `a tap near the volume slider's left end did not lower the volume (${v0.value} to ${v1.value}, stored ${v1.stored})`);
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+  const from = b.x + b.width * 0.15;
+  const to = b.x + b.width * 0.95;
+  await touch('touchStart', [[from, y]]);
+  for (let i = 1; i <= 8; i++) await touch('touchMove', [[from + ((to - from) * i) / 8, y]]);
+  await touch('touchEnd', []);
+  await cdp.detach().catch(() => {});
+  await sleep(150);
+  const v2 = await read();
+  if (!(v2.value > 0.8) || v2.stored !== v2.value)
+    await fail(kind, `a drag along the volume slider to its right end did not raise the volume (${v1.value} to ${v2.value}, stored ${v2.stored})`);
+  await slider.focus();
+  await page.keyboard.press('ArrowLeft');
+  await sleep(50);
+  const v3 = await read();
+  if (!(Math.abs(v2.value - 0.05 - v3.value) < 0.001)) await fail(kind, `ArrowLeft on the volume slider did not step it down by 0.05 (${v2.value} to ${v3.value})`);
+  await slider.evaluate(el => el.blur());
 }
 
 const ALL_TABLETS = ['iPad Mini', 'iPad Mini landscape', 'iPad (gen 7)', 'iPad (gen 7) landscape', 'iPad Pro 11', 'iPad Pro 11 landscape', 'Galaxy Tab S4', 'Galaxy Tab S4 landscape'];

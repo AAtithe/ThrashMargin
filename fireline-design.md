@@ -2890,3 +2890,57 @@ eight ok. `npm run check:ui -- fireline`: 32/32. `npm run check:loading -- firel
 `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check 7,699,
 drive:planet 35,255). Left open: the
 Menu's volume slider on a phone or a narrower tablet is 110 by 16px (`fireline-improvements.md`).
+
+### 2026-11-22: The Menu's volume slider is a finger wide
+
+**Why.** The wide-tablet change (above) made the header's volume slider 40px tall on touch, but on a
+phone and on a tablet under 1100px wide the slider lives in the Menu sheet instead, and there it was
+still the browser's own: 110 by 16px on all five phones and the six narrower tablet views, under the
+40px tap-target minimum. A taller box alone would not have been enough either: the browser's slider
+keeps its 16px thumb at any height, and that thumb is what a finger has to find and hold. Nothing else
+in the Menu was short: the speed buttons, Sound, the display buttons, Tour, Controls and Close are all
+40px tall on touch already, the Sound button (the mute) among them.
+
+**Options weighed.** Making the slider 40px tall in the Menu with one rule, as in the header, fixes the
+target and leaves the 16px thumb. Swapping the slider for minus and plus buttons is a finger's size
+but loses the drag and the at-a-glance level, and the keyboard and screen reader would meet a new
+control. Chosen: on touch the Menu carries `data-touch`, like the header, and one set of rules
+(`.fl-d-top[data-touch="1"] .fl-d-range` and `.fl-d-sheet[data-touch="1"] .fl-d-range`) gives both
+sliders a 40px box and draws them: a 6px track and a 24px thumb ringed in the panel colour, with the
+track's filled part following the volume through a `--vol` custom property set inline. The fill runs
+to `12px + vol * (100% - 24px)`, which is the thumb's centre, so the two meet at every value. Muted,
+the slider is disabled as before and greys out. It is still an `<input type="range">` with its
+"Volume" name, 0.05 steps and the browser's own keys and focus ring, so the keyboard and screen reader
+see nothing new. The header's touch slider goes from 52px (64 above 1179px) to 72px, so the bigger
+thumb keeps 48px of travel. A mouse keeps the browser's slider untouched: every rule is keyed on
+`data-touch="1"` and `--vol` is only set on touch. No new colours: the track, fill, ring and shadow
+are `--ui-rule-strong`, `--ui-accent`, `--ui-panel` and `--ui-shadow`, and disabled `--ui-rule` and
+`--ui-rule-strong`, all defined in both modes.
+
+**Numbers.** Menu slider, before and after, in a skirmish: iPhone SE 320px 110 by 16 at 135..245,
+166..182, now 110 by 40 at 133..243, 154..194; the 375px SE, the iPhone 13 and the Pixel 7 upright and
+the iPhone 13 on its side, the iPad mini, the iPad (7th generation) on its side and the Galaxy Tab S4
+upright, 110 by 16 at 143..159, now 110 by 40 at 131..171. The slider's centre stays on the Sound
+button's, the row was already 40px tall for that button, and the Menu is the same height. On the full
+row, Galaxy Tab S4 on its side, skirmish: slider 888..940 (52 by 40), now 870..942 (72 by 40), the
+speeds from 496 to 480 and Menu still at 1065..1128; iPad Pro 11 on its side: 925..989 (64 by 40), now
+919..991, Menu still 1121..1184. Mouse at 1440 by 900 and at 1000 by 800 (where the Menu sheet holds
+the slider): the header's sound controls byte-identical to before in light and dark, and the open
+Menu's pixels identical apart from 45 at its rounded corners, where the live map shows through.
+
+**Guard.** `scripts/tours/fireline-touch.cjs`: the Menu check (`displayInReach`) now measures every
+button and slider in the open Menu, and runs on the phones too: a skirmish, the mission and a War for
+the Planet battle on all five phones, and both missions' Menu besides a skirmish and a planet battle on
+all eight tablet views. It then works the volume slider (the Menu's, or the header's on the two
+tablets with the full row): a tap near its left end must lower the volume, a one-finger drag to its
+right end must raise it past 0.8, and ArrowLeft must step it down by 0.05, each read from the slider
+and from the stored sound settings, so a slider that moves without reaching the sound engine fails.
+Before the fix: 33 failures, every one the Menu's Volume a 110x16 tap target (three on each of the
+five phones, three on each of the six narrower tablet views); now none.
+
+**Checks.** Screenshots of the open Menu on the five phones, the iPad mini, the iPad (7th generation)
+on its side and the Galaxy Tab S4 upright, light and dark, muted on the iPhone 13, the full row's header
+on the two wide tablets, plus the desktop at 1440 and at 1000 wide, before and after.
+`node scripts/tours/run.mjs fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok.
+`npm run check:ui -- fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All
+checks passed" (Fireline drive 401,825 assertions, campaign-check 7,699, drive:planet 35,255).
