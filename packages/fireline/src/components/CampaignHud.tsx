@@ -104,11 +104,24 @@ function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: num
  * small pill, so it never sits over something the player needs to click; the choice is remembered.
  * On a phone it heads the battle dock instead (GameScreen), in flow above the banners and the feed,
  * and its rows scroll inside it when the map is short.
- * Objectives whose target has been seen carry a Show button that centres the view on it. On a phone
- * (`phone`) the whole row is that button instead, at least 40px tall, with "Show" kept as its cue: a
- * finger gets the row's full width rather than a 44 by 18px chip, and the text loses no width to it.
+ * Objectives whose target has been seen carry a Show button that centres the view on it. For a finger
+ * (a phone, or `touch`: a tablet, where the panel keeps its desktop place) the whole row is that
+ * button instead, at least 40px tall, with "Show" kept as its cue: a finger gets the row's full width
+ * rather than a 44 by 18px chip, and the text loses no width to it. Hide and the pill grow to 40px
+ * too (`data-touch`; the sizing is in the stylesheet, the phone's placing in the dock stays its own).
  */
-export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; onLocate?: (x: number, y: number) => void; phone?: boolean }) {
+export function ObjectivesPanel({
+  s,
+  onLocate,
+  phone = false,
+  touch = false,
+}: {
+  s: GameState;
+  onLocate?: (x: number, y: number) => void;
+  phone?: boolean;
+  touch?: boolean;
+}) {
+  const finger = phone || touch;
   const [open, setOpenState] = useState(readOpen);
   const setOpen = (v: boolean) => {
     setOpenState(v);
@@ -143,6 +156,7 @@ export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; 
         type="button"
         className="fl-objectives-pill"
         data-testid="objectives-show"
+        data-touch={finger ? '1' : undefined}
         onClick={() => setOpen(true)}
         title="Show the objectives (O)"
       >
@@ -153,7 +167,7 @@ export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; 
     );
   }
   return (
-    <section className="fl-objectives" data-testid="objectives" aria-label="Objectives">
+    <section className="fl-objectives" data-testid="objectives" data-touch={finger ? '1' : undefined} aria-label="Objectives">
       <header>
         <span className="fl-objectives-toggle">Objectives</span>
         {left !== null && (
@@ -170,7 +184,7 @@ export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; 
         <div className="fl-objectives-body">
           <ul>
             {m.objectives.map((o, i) => (
-              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} phone={phone} />
+              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} finger={finger} />
             ))}
           </ul>
           {m.bonus.length > 0 && (
@@ -178,7 +192,7 @@ export function ObjectivesPanel({ s, onLocate, phone = false }: { s: GameState; 
               <p className="fl-objectives-sub">Bonus, optional: a star each</p>
               <ul>
                 {m.bonus.map((o, i) => (
-                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} phone={phone} />
+                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} finger={finger} />
                 ))}
               </ul>
             </>
@@ -200,7 +214,7 @@ function ObjectiveRow({
   at,
   onLocate,
   left = null,
-  phone = false,
+  finger = false,
 }: {
   o: ObjectiveRuntime;
   bonus?: boolean;
@@ -208,8 +222,8 @@ function ObjectiveRow({
   onLocate?: (x: number, y: number) => void;
   /** Ticks left on the objective's own clock, if it has one. */
   left?: number | null;
-  /** On a phone a row that can be shown is one button, the whole row. */
-  phone?: boolean;
+  /** For a finger (a phone or a tablet) a row that can be shown is one button, the whole row. */
+  finger?: boolean;
 }) {
   const state = o.failed ? 'failed' : o.done ? 'done' : 'open';
   const locate = state === 'open' && at && onLocate ? () => onLocate(at.x, at.y) : null;
@@ -234,7 +248,7 @@ function ObjectiveRow({
       )}
     </span>
   );
-  if (phone && locate)
+  if (finger && locate)
     return (
       <li className="fl-objective" data-state={state} data-bonus={bonus ? '1' : '0'} data-locate="1">
         <button
