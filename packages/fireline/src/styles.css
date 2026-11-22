@@ -3604,6 +3604,28 @@ kbd {
   display: flex;
   align-items: center;
 }
+/* round7:planet begin. Battle rules 3: what the war brings into a battle, and what it sends back. */
+.fl-pl-links {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--ui-rule);
+  border-left: 3px solid var(--ui-warn);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--ui-panel-raised);
+}
+.fl-pl-links[data-supply="cut"] {
+  border-left-color: var(--ui-bad);
+}
+.fl-pl-links[data-supply="depot"],
+.fl-debrief .fl-pl-links {
+  border-left-color: var(--ui-good);
+}
+.fl-pl-links .fl-eyebrow {
+  margin: 2px 0 0;
+}
+/* round7:planet end */
 .fl-pl-lines {
   display: flex;
   flex-direction: column;

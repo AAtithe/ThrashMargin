@@ -15,7 +15,7 @@ import { routePartner, routeYield, routePath } from '../../planet/trade';
 import { ARMY_KINDS, CITY_BUILDINGS, NEUTRAL, type ArmyKind, type RegionId } from '../../planet/types';
 import { garrisonTotal } from '../../planet/state';
 import { HERO_KINDS, MAP_TYPE_NAMES, UNITS, heroLevelFor, type HeroKind } from '../../sim/rules';
-import { BattleMapSize } from './BattleCards';
+import { BattleMapSize, WarLinks } from './BattleCards';
 import { FactionName, Odds, OrderButton, stockText, unitName, type PlanetProps } from './common';
 
 export default function RegionPanel({ s, map, act, region, onSelect }: PlanetProps & { region: RegionId | null; onSelect: (r: RegionId | null) => void }) {
@@ -309,6 +309,7 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
                     ))}
                   </div>
                   <BattleMapSize setup={setup} />
+                  <WarLinks s={s} map={map} setup={setup} />
                   <Odds p={attackOdds(setup)} label="Chance of taking it" />
                 </>
               )}
