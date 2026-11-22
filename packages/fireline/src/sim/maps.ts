@@ -1,7 +1,8 @@
 import { isWalkable, type GeneratedMap } from './map';
 import { seedFromString, stream } from './rng';
 import type { GameState } from './types';
-import { MAP_SIZE_FOR, MAP_SIZE_TILES, MAP_SIZES, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_SPREAD_AMOUNT, ORE_TILE_MAX, type MapSize, type MapType, type OreLevel } from './rules';
+import { MAP_SIZE_FOR, MAP_SIZE_TILES, MAP_SIZES, MAP_TILES_MAX_BALANCED, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_SPREAD_AMOUNT, ORE_TILE_MAX, sizeHasHazards, type MapSize, type MapType, type OreLevel } from './rules';
+import { carveTile, layRavines, layRuins, settleBridges, type HazardBrush, type HazardCounts } from './hazards';
 
 /**
  * Skirmish battlefields, one generator per map type. The campaign never comes here: its missions
@@ -28,6 +29,17 @@ export const MIN_ORE_FIELDS = 4;
 export const MAX_ORE_FIELDS = 8;
 /** Large and huge maps (round 5): more ore fields, so more may be counted. */
 export const MAX_ORE_FIELDS_LARGE = 24;
+/** Vast maps: more again. */
+export const MAX_ORE_FIELDS_VAST = 44;
+/** Ravines, ruined cities and ruined hamlets in side 0's half of a vast two-sided map (the brush gives side 1 the mirror). */
+export const VAST_HAZARDS_2: HazardCounts = { ravines: 8, cities: 3, hamlets: 10, cityR: 13, cityRSpread: 7 };
+/** The same in side 0's wedge of a vast map of three or four sides. */
+export const VAST_HAZARDS_SIDES: Record<3 | 4, HazardCounts> = {
+  3: { ravines: 6, cities: 2, hamlets: 7, cityR: 11, cityRSpread: 6 },
+  4: { ravines: 6, cities: 2, hamlets: 7, cityR: 11, cityRSpread: 6 },
+};
+/** Ground ore may be laid on: grass, dirt and woods (cleared for it). Never water, rock, a ravine, ruins, a street or a bridge. */
+const oreGround = (c: string) => c === 'g' || c === 'd' || c === 't';
 /** Radius kept clear and buildable round each Command Yard. */
 const CLEARING = 8.5;
 const ATTEMPTS = 24;
@@ -170,6 +182,26 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   const span = dist(b0, b1);
   const perp = { x: (b0.y - b1.y) / span, y: (b1.x - b0.x) / span };
 
+  // 2b. Vast maps: ravines and ruined cities, in side 0's half (the brush mirrors them), before
+  // the type's features so a river or a canyon wall still has its way, and before the tracks so
+  // every track bridges the ravines it crosses (carveTile).
+  const hazards = sizeHasHazards(size);
+  /** Tiles a track was carved through (both of a pair), for the ravines laid after the tracks. */
+  const tracked = new Uint8Array(hazards ? NN : 0);
+  const brush: HazardBrush = {
+    rng,
+    at: (x, y) => (inBounds(x, y) ? t[idx(x, y)] : 'w'),
+    paint,
+    inRegion: p => p.x >= 3 && p.x <= W - 3 && p.y >= CY + 1 && p.y <= H - 3,
+    keepOut: [
+      { p: b0, r: CLEARING + 7 },
+      { p: { x: CX, y: CY }, r: 10 },
+    ],
+    pick: () => ({ x: 3 + rng.float() * (W - 6), y: CY + 1 + rng.float() * (H - CY - 4) }),
+    track: (x, y) => inBounds(x, y) && tracked[idx(x, y)] === 1,
+  };
+  if (hazards) layRuins(brush, VAST_HAZARDS_2);
+
   // 3. The type's own features.
   const contested: Pt[] = [];
   let extraFields = 0;
@@ -186,7 +218,8 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
           if (!inBounds(x + dx, y + dy)) continue;
-          paint(x + dx, y + dy, t[idx(x + dx, y + dy)] === 'g' ? 'g' : 'd');
+          paint(x + dx, y + dy, carveTile(t[idx(x + dx, y + dy)]));
+          if (hazards) tracked[idx(x + dx, y + dy)] = tracked[mirrorOf(idx(x + dx, y + dy))] = 1;
         }
     }
   };
@@ -369,6 +402,9 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     } else contested.push(mid);
   }
 
+  // 3b. Vast maps: the ravines, now that the tracks are down (they bridge every track they cross).
+  if (hazards) layRavines(brush, VAST_HAZARDS_2);
+
   // 4. Clear, buildable ground round each base.
   disc(b0.x, b0.y, CLEARING, 'g');
 
@@ -384,7 +420,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
         const d = Math.sqrt((x + 0.5 - c.x) ** 2 + (y + 0.5 - c.y) ** 2);
         if (d > r + rng.float() * 0.8 - 0.4) continue;
         const k = idx(x, y);
-        if (t[k] === 'w' || t[k] === 'r') continue;
+        if (!oreGround(t[k])) continue;
         if (t[k] === 't') paint(x, y, 'g');
         const amount = Math.round((ORE_TILE_MAX * rich * lv.amount * (1.15 - d / (r + 1)) * (0.75 + rng.float() * 0.25)) / 10) * 10;
         ore[k] = ore[mirrorOf(k)] = Math.max(60, Math.min(ORE_TILE_MAX, amount));
@@ -405,8 +441,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       for (let x = Math.floor(c.x - r); x <= Math.ceil(c.x + r); x++) {
         if (!inBounds(x, y) || (x + 0.5 - c.x) ** 2 + (y + 0.5 - c.y) ** 2 > r * r) continue;
         all++;
-        const ch = t[idx(x, y)];
-        if (ch !== 'w' && ch !== 'r') land++;
+        if (oreGround(t[idx(x, y)])) land++;
       }
     return land >= all * 0.7;
   };
@@ -453,7 +488,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     ];
     const back = backTries.find(p => fits(p, 3, true));
     if (back) field(back, 3, 0.95);
-    const flanks = size === 'huge' ? 2 : 1;
+    const flanks = size === 'vast' ? 4 : size === 'huge' ? 2 : 1;
     const offsets = [16, 20, 24, 28, 32, 36, 40].flatMap(v => [sc(v), -sc(v)]);
     for (let i = 0; i < flanks; i++) {
       const c = offsets.map(bisector).find(p => fits(p, 3));
@@ -462,7 +497,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   }
   // Expansions: further out, still on side 0's half (the brush gives side 1 the mirror). Larger
   // maps have more of them, further out.
-  const expansions = 1 + extraFields + (size === 'huge' ? 3 : size === 'large' ? 2 : 0);
+  const expansions = 1 + extraFields + (size === 'vast' ? 6 : size === 'huge' ? 3 : size === 'large' ? 2 : 0);
   for (let i = 0; i < expansions; i++) {
     for (let tries = 0; tries < 50; tries++) {
       const p = { x: 4 + rng.float() * (W - 8), y: CY + 5 + rng.float() * (H - CY - 9) };
@@ -473,6 +508,9 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       break;
     }
   }
+
+  // 5b. Vast maps: a bridge left with no ravine beside it is dirt (settleBridges).
+  if (hazards) settleBridges(t, W);
 
   // 6. Anything a unit cannot reach from the bases becomes rock, and loses its ore.
   // (From both, so the result stays symmetric even when they are cut off from each other, which
@@ -669,7 +707,7 @@ export function mapProblem(m: GeneratedMap): string | null {
     if (m.ore[k] > 0 && !isWalkable(m.tiles[k])) return 'ore on unwalkable ground';
   }
   const fields = oreFields(m.ore, W).filter(f => f.length >= 5);
-  if (fields.length < MIN_ORE_FIELDS || fields.length > (big ? MAX_ORE_FIELDS_LARGE : MAX_ORE_FIELDS)) return `${fields.length} ore fields`;
+  if (fields.length < MIN_ORE_FIELDS || fields.length > (W > MAP_TILES_MAX_BALANCED ? MAX_ORE_FIELDS_VAST : big ? MAX_ORE_FIELDS_LARGE : MAX_ORE_FIELDS)) return `${fields.length} ore fields`;
   // One near each base, an expansion of each side's own, and one contested between them.
   const c0 = { x: s0.x + 1.5, y: s0.y + 1.5 };
   const c1 = { x: s1.x + 1.5, y: s1.y + 1.5 };
@@ -848,7 +886,8 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
       for (let dy = -half; dy <= half; dy++)
         for (let dx = -half; dx <= half; dx++) {
           if (!inside(x + dx, y + dy)) continue;
-          paint(x + dx, y + dy, t[at(x + dx, y + dy)] === 'g' ? 'g' : 'd');
+          paint(x + dx, y + dy, carveTile(t[at(x + dx, y + dy)]));
+          if (hazards) tracked[at(x + dx, y + dy)] = tracked[mirror(x + dx, y + dy)] = 1;
         }
     }
   };
@@ -875,6 +914,47 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     return { along: px * edge.dx + py * edge.dy, off: Math.abs(px * edge.dy - py * edge.dx) };
   };
   const radius = (x: number, y: number) => Math.sqrt((x + 0.5 - C) ** 2 + (y + 0.5 - C) ** 2);
+
+  // 2b. Vast maps: ruined cities in side 0's wedge (the mirror and the turn give every side the
+  // same), before the type's features and the tracks; the ravines follow the tracks (3b).
+  const hazards = sizeHasHazards(size);
+  /** Tiles a track was carved through (and their mirrors), for the ravines. */
+  const tracked = new Uint8Array(hazards ? NN : 0);
+  /** Which side of the axis the edge lies: the sign of edge x axis. */
+  const edgeSide = Math.sign(edge.dx * axis.dy - edge.dy * axis.dx) || 1;
+  const brush: HazardBrush = {
+    rng,
+    at: (x, y) => (inside(x, y) ? t[at(x, y)] : 'w'),
+    paint,
+    // Inside the wedge, clear of its edges by a few tiles (the turned copies meet there), and
+    // inside the playing disc for three sides.
+    inRegion: p => {
+      const v = { dx: p.x - C, dy: p.y - C };
+      if (!inWedge0(n, v) || v.dx * v.dx + v.dy * v.dy > (C - 4) * (C - 4)) return false;
+      const e = fromEdge(Math.floor(p.x), Math.floor(p.y));
+      // And on the edge's side of the wedge's own axis, two tiles clear of it, so a ravine and
+      // its mirror never cross into an X.
+      const across = ((p.x - C) * axis.dy - (p.y - C) * axis.dx) * edgeSide;
+      return e.off > 3 && across > 2;
+    },
+    keepOut: [
+      { p: b0, r: CLEARING + 7 },
+      { p: { x: C, y: C }, r: 10 },
+      { p: home, r: 6 },
+    ],
+    pick: () => {
+      // A point at a random place in the wedge: a direction between the axis and the edge
+      // (the mirror covers the other half), a distance out from the centre.
+      const u = rng.float();
+      // The square root spreads the points evenly over the area, not crowded at the centre.
+      const out = 10 + Math.sqrt(rng.float()) * (C - 14);
+      const v = { dx: axis.dx * (1 - u) + edge.dx * u, dy: axis.dy * (1 - u) + edge.dy * u };
+      const m = Math.sqrt(v.dx * v.dx + v.dy * v.dy) || 1;
+      return { x: C + (v.dx / m) * out, y: C + (v.dy / m) * out };
+    },
+    track: (x, y) => inside(x, y) && tracked[at(x, y)] === 1,
+  };
+  if (hazards) layRuins(brush, VAST_HAZARDS_SIDES[n]);
 
   // 3. The type's own features.
   let half = 1;
@@ -947,6 +1027,8 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
   carve(b0.x, b0.y, C, C, half, 0.4);
   carve(b0.x, b0.y, cross.x, cross.y, half);
   if (type === 'canyon') carve(cross.x, cross.y, C + edge.dx * 4, C + edge.dy * 4, half);
+  // 3b. Vast maps: the ravines, bridging every track they cross.
+  if (hazards) layRavines(brush, VAST_HAZARDS_SIDES[n]);
 
   // 4. Clear, buildable ground round the base.
   disc(b0.x, b0.y, CLEARING, 'g');
@@ -962,7 +1044,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
         const dd = Math.sqrt((x + 0.5 - c.x) ** 2 + (y + 0.5 - c.y) ** 2);
         if (dd > r + rng.float() * 0.8 - 0.4) continue;
         const k = at(x, y);
-        if (t[k] === 'w' || t[k] === 'r') continue;
+        if (!oreGround(t[k])) continue;
         if (t[k] === 't') paint(x, y, 'g');
         const amount = Math.round((ORE_TILE_MAX * rich * lv.amount * (1.15 - dd / (r + 1)) * (0.75 + rng.float() * 0.25)) / 10) * 10;
         ore[k] = ore[mirror(x, y)] = Math.max(60, Math.min(ORE_TILE_MAX, amount));
@@ -981,6 +1063,20 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     field({ x: C + axis.dx * midway + axis.dy * 6, y: C + axis.dy * midway - axis.dx * 6 }, 3, 1);
     const out2 = Math.min(out + sc(12), C - 7);
     field({ x: C + edge.dx * out2, y: C + edge.dy * out2 }, 3, 1);
+    if (size === 'vast') {
+      // Vast: two more expansions in the wedge, between the axis and the edge, and a third field
+      // on each border, further out again.
+      for (const [u, f] of [
+        [0.35, 0.72],
+        [0.6, 0.38],
+      ]) {
+        const v = { dx: axis.dx * (1 - u) + edge.dx * u, dy: axis.dy * (1 - u) + edge.dy * u };
+        const m = Math.sqrt(v.dx * v.dx + v.dy * v.dy) || 1;
+        field({ x: C + (v.dx / m) * d * f, y: C + (v.dy / m) * d * f }, 3, 1);
+      }
+      const out3 = Math.min(out2 + sc(10), C - 7);
+      if (out3 > out2 + 8) field({ x: C + edge.dx * out3, y: C + edge.dy * out3 }, 3, 1);
+    }
   }
 
   // 6. The map: every tile copies the tile it turns back onto in side 0's wedge. Three sides: the
@@ -1024,6 +1120,9 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
           O[k] = 0;
         } else if (dd <= CLEARING && T[k] !== 'g') T[k] = 'g';
       }
+
+  // 7b. Vast maps: a bridge left with no ravine beside it, here or by the turn's rounding, is dirt.
+  if (hazards) settleBridges(T, S);
 
   // 8. Anything a unit cannot reach from side 0's base becomes rock, and loses its ore.
   const reach = floodOf(T, S, at(starts[0].x + 1, starts[0].y + 1));
@@ -1237,7 +1336,7 @@ export function sidesProblem(m: GeneratedMap): string | null {
     if (m.ore[k] > 0 && !isWalkable(m.tiles[k])) return 'ore on unwalkable ground';
   }
   const fields = fieldsOf(m.ore, S).filter(f => f.size >= 5);
-  if (fields.length < n + 1 || fields.length > (big ? 10 * n + 2 : 3 * n + 2)) return `${fields.length} ore fields`;
+  if (fields.length < n + 1 || fields.length > (S > MAP_TILES_MAX_BALANCED ? 16 * n + 2 : big ? 10 * n + 2 : 3 * n + 2)) return `${fields.length} ore fields`;
   const centres = m.starts.map(st => ({ x: st.x + 1.5, y: st.y + 1.5 }));
   for (const c of centres) if (!fields.some(f => dist(f, c) < HOME_FIELD_RANGE)) return 'no ore field near a base';
   const contested = fields.some(f => {

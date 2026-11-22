@@ -3015,3 +3015,89 @@ on the two wide tablets, plus the desktop at 1440 and at 1000 wide, before and a
 `node scripts/tours/run.mjs fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok.
 `npm run check:ui -- fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All
 checks passed" (Fireline drive 401,825 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-22: Vast maps, with ravines and ruined cities
+
+The player asked for maps four times larger, with more detail and more complications: ravines and
+destroyed cities. Read as four times the ground of the largest size: a fourth size, **Vast**, twice
+as wide as Huge (256, 288 and 320 tiles for two, three and four sides; `MAP_TILES_MAX` 320). Standard,
+large and huge are untouched, map for map: the hazards are gated on `sizeHasHazards`, which is Vast
+only, so nothing round 5 balanced moves.
+
+**The new ground** (`src/sim/hazards.ts`, laid by both generators through their symmetric brush):
+- *Ravines* (`'v'`): winding gorges two to four tiles wide, impassable to ground units and ships,
+  flown over. Laid after the tracks: a ravine crossing a track turns it into a bridge (`'b'`), a
+  ravine that would run along a track is cut short there, and each ravine is bridged every 22 tiles.
+  A final pass (`settleBridges`) turns any bridge group with no ravine beside it back into dirt (a
+  track grazing a ravine's edge, or a third-of-a-turn rounding a bridge apart). Bridges are walkable
+  but nothing is built on them ("Cannot build on a bridge"). In wedge maps ravines keep to one side of
+  the wedge's own axis, or each one and its mirror crossed into an X.
+- *Ruined cities*: a street grid (`'p'`, walkable and buildable) between blocks of rubble and gutted
+  buildings (`'x'`, impassable), with collapsed squares inside and a ragged edge. Laid before the
+  type's features and the tracks, so a track through a city runs down a street (`carveTile`) and a
+  river or a canyon wall still has its way. Three cities a half on two-sided maps (radius 13 to 20),
+  two a wedge on three and four. Plus ruined hamlets, a gutted farmstead on a paved yard.
+- Kept clear of every base's clearing, the contested centre and the home field. Ore only on grass
+  and dirt. More ore to match the ground: four flank pairs and six expansions on two sides
+  (`MAX_ORE_FIELDS_VAST` 44), two expansions and a third border field per wedge on three and four.
+- Over 42 maps (every type and side count, two seeds): ravine 2.1%, bridge 0.34%, ruins 1.5%,
+  streets 4.5% of all tiles. Every draft passed the generator's own checks first time on 8 seeds of
+  every type and side count (two sides 63 to 90 ms a draft, four sides 109 to 124 ms).
+
+**The walkable set** gains `'p'` and `'b'` in two places that must agree: `isWalkable` (`map.ts`) and
+`walkCode` (`grid.ts`, by character code).
+
+**Saves** (`src/sim/pack.ts`). A four-sided vast battle's save is 420 KB before a unit is built (the
+ground, the ore and the explored map are each 102,400 entries), against the portal's 512 KB limit.
+Battles wider than the balanced sizes (`MAP_TILES_MAX_BALANCED`, 160) save those three fields as run
+lengths: 40 to 80 KB at the start, 59 KB ten minutes in. `migrateState` unpacks before anything reads
+the state, refuses a packed save that does not unpack to its own map, and every save a build before
+vast maps could make stays byte-identical (huge is never packed). Packed on both write paths (local
+storage and the cloud saver) and on the server's create.
+
+**Terrain** (src/game). Painted at full resolution a 320-tile map is a 10,240 px canvas and Scars keeps
+a pristine copy: about 840 MB. Maps wider than 160 tiles paint at half resolution (`terrainScale`), so
+the largest canvas is 5,120 px, as huge already was; Scars and Water draw in world pixels through the
+canvas transform and scale their source rectangles by hand, and the renderer scales its blit. Standard,
+large and huge hash pixel-identical to before on five real maps. Ravines paint as a gorge (a lit south
+lip, a streaked north wall, a dark floor with fallen stone), bridges as one span per group (abutments,
+planks, girders, rails), ruins in three styles (concrete, brick, sandstone) with a standing shell or two
+casting a shadow, streets as cracked asphalt with craters, burnt-out cars and faded markings. Checked on
+a revealed vast battle in Chromium: a city and a bridged ravine, no page errors.
+
+**The computer's numbers** (`aiScale.ts`). Linear growth with width would have put Normal's first attack
+five and a half times later than standard on a vast two-sided map and given every side 24 more turrets.
+Beyond huge's scale each number now grows at half the rate (`VAST_SCALE_RATE`): two sides play at
+scale 3 rather than 4, four sides at 2.5 rather than 3.33. Large and huge are below the knee and
+unchanged.
+
+**Tick time** (`perf-fire.ts`, minutes 20 to 30). Vast, four sides, before the damping and two exact
+optimisations: median 7.36 ms, p99 23.95 ms, 491 units on the field. The damping (363 units), then
+target acquisition testing the square round its range before anything else (filters reordered only,
+so the pick is the same), then the walkable mask worked out once per map and copied for each
+occupancy grid: median 4.33 ms, p99 17.36 ms, worst 81.8 ms. Vast two sides: median 1.58 ms, p99
+15.45 ms. Huge four sides for comparison: median 2.66 ms, p99 9.79 ms. Four-sided vast is still a
+little over the 4 ms median the round 5 log aimed for; the p99 is inside its 25 ms.
+
+**Whole battles**, Normal against Normal, advanced tech, map by seed (harness cap 162,000 ticks, 270
+minutes). Two sides, six seeds: 32.6, 33.4, 34.9, 60.2 and 62.2 minutes, and one Coast battle
+unfinished at the cap. Every side harvested in all of them. Four sides as teams, two seeds: 49.2 and
+50.2 minutes. The unfinished one is a stalemate between the two computers across Coast's causeways:
+over a thousand kills each by minute 120, with side 0 holding 300,000 credits it never spends. That is
+the computer's existing limit, not the new ground, and it is not tuned here; a person breaks it. The
+lobby says "30 to 60 minutes or more".
+
+**Harness.** `scripts/drive-vast.ts`, inside `npm run drive:fire` (about 40 seconds, 382 assertions):
+the size and its rules; 42 vast maps through the generator's checks, every tile a known ground, ore
+only on grass and dirt, every bridge spanning a ravine and joining ground, nothing laid by a base, the
+same seed the same map; the balanced sizes free of the new ground; streets and bridges passable,
+ravines and ruins not, no ship on any of them, nothing built on a bridge, a unit walking across a
+ravine by its bridge and a path across a 320-tile map; packing round trips, junk refused, huge never
+packed; the damped numbers; a vast battle replayed byte-identically for ten minutes, its packed save
+under the limit and playing on exactly, and units seen walking the streets or bridges with none
+standing in a ravine or a ruin. The harness caps in `drive.ts`, `drive-maps.ts` and `long-games.ts`
+gain vast at 162,000 ticks.
+
+**Checks.** `npm run check`: all passed (Fireline drive 402,276 assertions, campaign-check 7,699,
+drive:planet 35,255). `npm run check:ui -- fireline`: 32/32. The size picker at 375 px: four options
+on one row, no sideways scroll.

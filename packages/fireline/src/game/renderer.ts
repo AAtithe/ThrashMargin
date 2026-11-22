@@ -195,6 +195,8 @@ export class Renderer {
    * and there are no marks or water animation (scars and water are null).
    */
   private terrain: HTMLCanvasElement | null = null;
+  /** Canvas pixels per world pixel in `terrain` (terrainScale: 1, or 0.5 on a Vast map). */
+  private terrainScale = 1;
   private placeholder: HTMLCanvasElement | null = null;
   private fog: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
@@ -264,9 +266,10 @@ export class Renderer {
 
   private install(terrain: HTMLCanvasElement) {
     this.terrain = terrain;
+    this.terrainScale = terrain.width / (this.mapW * TILE);
     this.placeholder = null;
-    const scars = new Scars(terrain, this.tiles);
-    const water = new Water(this.tiles, terrain);
+    const scars = new Scars(terrain, this.tiles, this.mapW, this.mapH);
+    const water = new Water(this.tiles, terrain, this.mapW, this.mapH);
     scars.onRepaint = (x, y, w, h) => water.invalidate(x, y, w, h);
     this.scars = scars;
     this.water = water;
@@ -366,7 +369,8 @@ export class Renderer {
       this.scars.update(cur, vis, now);
       this.scars.step(dt, now, this.fx);
       this.water.update(t, tx0, ty0, tx1, ty1);
-      ctx.drawImage(this.terrain, sx, sy, sw, sh, sx, sy, sw, sh);
+      const k = this.terrainScale;
+      ctx.drawImage(this.terrain, sx * k, sy * k, sw * k, sh * k, sx, sy, sw, sh);
     } else if (this.placeholder) {
       // Still painting: the minimap's colours, one tile to a pixel, stretched and smoothed.
       ctx.drawImage(this.placeholder, tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1, sx, sy, sw, sh);

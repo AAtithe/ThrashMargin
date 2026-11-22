@@ -1,3 +1,4 @@
+import { unpackState } from './pack';
 import { migrateAir } from './air';
 import { migrateNaval } from './naval';
 import { scaledFor } from './aiScale';
@@ -708,7 +709,8 @@ export function alarm(s: GameState, key: string, text: string, gap: number, tone
  * a battle in progress keeps loading. Returns a new object; the input is not modified.
  */
 export function migrateState(raw: unknown): GameState | null {
-  const s = raw as Partial<GameState> | null;
+  // A vast battle's save has its per-tile fields packed (pack.ts): unpacked before anything reads them.
+  const s = unpackState(raw) as Partial<GameState> | null;
   if (!s || typeof s !== 'object' || s.version !== 1) return null;
   if (typeof s.tiles !== 'string' || !Array.isArray(s.ore) || typeof s.explored !== 'string') return null;
   if (!Array.isArray(s.units) || !Array.isArray(s.buildings) || !Array.isArray(s.players)) return null;

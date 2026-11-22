@@ -49,7 +49,7 @@ export interface BattleStakes {
  * runs close to the 256 KB limit, so the biggest stakes (a capital with three or more sides) are
  * large too, which with four sides is already a 128-tile map. Pure.
  */
-export function battleMapSize(k: BattleStakes): MapSize {
+export function battleMapSize(k: BattleStakes): 'standard' | 'large' {
   if (k.capital || k.cityLevel >= BIG_CITY_LEVEL || k.sides >= 3) return 'large';
   return 'standard';
 }
