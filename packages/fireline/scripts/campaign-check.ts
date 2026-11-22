@@ -735,7 +735,8 @@ section('act two: progression and old saves', () => {
   // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
   // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play),
   // nor the Naval Yard (the naval war): no mission map has a sea.
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard']);
+  // round7:fortification: nor the Point Defence emplacement (the Fortification line, skirmish only).
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard', /* round7:fortification */ 'pointdefence']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
