@@ -3147,3 +3147,28 @@ again comes back the same with its permanent mark and without its fading one; wa
 builds up; Vast four sides opens and pans with the worker and with no Worker at all, held under budget,
 no page errors: 22/22. `npm run check`: all passed. `npm run check:ui -- fireline`: 32/32. Fireline
 tour: ok.
+
+### 2026-11-22: The computer spends what it banks (the Coast stalemate)
+
+The vast maps entry recorded one Coast battle unfinished at the 270-minute cap. The cause was not
+the ground: both commanders had one barracks and one factory (the build plan stops at the
+difficulty's factories, one on Normal), side 0 had harvested 579,000 credits to side 1's 333,000,
+and it held 247,000 of them unspent at minute 60. A 74% income lead bought nothing, so equal armies
+met at the causeways for four and a half hours.
+
+**The rule** (`aiScale.ts`, `surplusOn`): on a map larger than standard, never in a mission, a
+commander holding SURPLUS_CREDITS (6,000) or more appends to its build plan up to SURPLUS_FACTORIES
+(2) more factories and SURPLUS_BARRACKS (1) more barracks. Standard maps are untouched.
+
+**Measured.** Vast Coast, two sides, eight seeds, old code against new: old, every battle finished
+but ran 39.6 to 109.1 minutes, with the winner or loser holding 40,000 to 184,000 credits in five of
+the eight (one side lost while holding 184,000); new, all eight finished in 39.6 to 74.9 minutes with
+no side holding more than 2,061. The battle that stalled (seed v-2) now ends at 62.4 minutes.
+`ladder:fire --map random --size large`, 150 seeds: the new code's card (Hard beats Normal 73.0%,
+Normal beats Easy 97.7%, the mirror 47/53, nothing unfinished) is identical, battle for battle, to the
+old code's on the same five matches. Large battles end before anyone banks 6,000 credits, so the rule
+never fires there. Huge was not laddered; it sits between the two.
+
+**Harness** (`drive-vast.ts`, "Larger maps: surplus production"): off on standard maps however rich,
+off in missions, on from exactly 6,000; a commander handed 60,000 credits on a large map builds past
+its plan's factories and within the cap, and on a standard map keeps its one.
