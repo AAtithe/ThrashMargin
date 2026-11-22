@@ -110,3 +110,19 @@ export function stageDistance(s: GameState): number {
  */
 export const EXTRA_LINE_RESERVE = 1000;
 export const extraLine = (s: GameState, credits: number): boolean => !s.mission && credits >= EXTRA_LINE_RESERVE;
+
+/**
+ * Surplus production (2026-11-22). The build plan stops at the difficulty's factories (one on
+ * Normal), so a side earning far more than it can train banks the difference: in a vast Coast
+ * battle one commander held 300,000 credits at minute 90 against its rival's 1,000, with the same
+ * one barracks and one factory, and the two armies ground each other down at the causeways for 270
+ * minutes with no end. On a map larger than standard, a commander holding SURPLUS_CREDITS or more
+ * builds another factory, then another barracks, up to SURPLUS_FACTORIES and SURPLUS_BARRACKS more
+ * than its plan: money it is not spending becomes an army. Never in a campaign mission, and never
+ * on a standard map, whose battles were balanced as they are.
+ */
+export const SURPLUS_CREDITS = 6000;
+export const SURPLUS_FACTORIES = 2;
+export const SURPLUS_BARRACKS = 1;
+export const surplusOn = (s: GameState, credits: number): boolean => !s.mission && mapScale(s) > 1 && credits >= SURPLUS_CREDITS;
+

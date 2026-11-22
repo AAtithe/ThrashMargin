@@ -6,7 +6,7 @@
  * hour of game time or more); scripts/long-games.ts plays them.
  */
 import { processAction } from '../src/sim/actions';
-import { mapScale, scaledFor, VAST_SCALE_RATE } from '../src/sim/aiScale';
+import { mapScale, scaledFor, SURPLUS_BARRACKS, SURPLUS_CREDITS, SURPLUS_FACTORIES, surplusOn, VAST_SCALE_RATE } from '../src/sim/aiScale';
 import { placementProblem } from '../src/sim/commands';
 import { findPath, occupancy, passable } from '../src/sim/grid';
 import { RAVINE_BRIDGE_GAP, carveTile } from '../src/sim/hazards';
@@ -30,7 +30,7 @@ import {
   type MapSize,
   type SideMode,
 } from '../src/sim/rules';
-import { createInitialState, migrateState, normaliseSetup } from '../src/sim/state';
+import { countBuildings, createInitialState, migrateState, normaliseSetup } from '../src/sim/state';
 import type { GameState } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -252,6 +252,29 @@ function aiTests(ok: Ok): void {
   }
 }
 
+// ---- Surplus production ----------------------------------------------------------------------------
+
+function surplusTests(ok: Ok): void {
+  const std = newBattle('surplus-std', 'standard', 2, 'ffa', 'plains');
+  const large = newBattle('surplus-large', 'large', 2, 'ffa', 'plains');
+  ok(!surplusOn(std, 1e6), 'standard maps: no surplus production, however rich (balanced as they are)');
+  ok(surplusOn(large, SURPLUS_CREDITS) && !surplusOn(large, SURPLUS_CREDITS - 1), `larger maps: surplus production from ${SURPLUS_CREDITS} credits banked`);
+  ok(!surplusOn({ ...large, mission: {} as GameState['mission'] }, 1e6), 'never in a campaign mission');
+  // A commander handed a fortune builds more producers on a large map, and not on a standard one.
+  const rich = (s: GameState) => {
+    s = run(s, 6000);
+    s = copy(s);
+    s.players[1].credits = 60000;
+    return run(s, 3600);
+  };
+  const plan = DIFFICULTIES.normal.factories;
+  const a = rich(large);
+  ok(countBuildings(a, 1, 'factory') > plan, `large map, 60,000 credits banked: ${countBuildings(a, 1, 'factory')} factories, past the plan's ${plan}`);
+  ok(countBuildings(a, 1, 'factory') <= Math.max(1, plan) + SURPLUS_FACTORIES && countBuildings(a, 1, 'barracks') <= 1 + SURPLUS_BARRACKS, 'and never more than the surplus allows');
+  const b = rich(std);
+  ok(countBuildings(b, 1, 'factory') <= plan, `standard map, 60,000 credits banked: ${countBuildings(b, 1, 'factory')} factory, the plan's own`);
+}
+
 // ---- Replay and saves ----------------------------------------------------------------------------
 
 function replayTests(ok: Ok): void {
@@ -291,5 +314,6 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Vast maps: the new ground in play', groundTests],
   ['Vast maps: packed saves', packTests],
   ['Vast maps: the computer\'s numbers', aiTests],
+  ['Larger maps: surplus production', surplusTests],
   ['Vast maps: replay and saves', replayTests],
 ];
