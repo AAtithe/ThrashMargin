@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
+import { crewWanted, housed, staffed, territoryOn, unstaffed } from '../sim/territory';
 import { goodsFor } from '../sim/commands';
 import { alloyStore, fuelStore, hasGoods, industryOn } from '../sim/industry';
 import {
@@ -35,6 +36,7 @@ import {
   STANDARD_TECH,
   UNITS,
   SUPPLY_SERVE_RANGE,
+  CREW,
   TICKS_PER_SECOND,
   type Armor,
   type BuildingKind,
@@ -1278,6 +1280,7 @@ export function SelectionPanel({
               {(building.kind === 'barracks' || building.kind === 'factory') && (touch ? ' Tap the map to set where new units gather.' : ' Right-click the map to set where new units gather.')}
             </p>
             {supplyOn(state) && isProducer(building.kind) && <SupplyNote state={state} building={building} />}
+            {territoryOn(state) && CREW[building.kind] !== undefined && <CrewNote state={state} building={building} />}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="fl-d-sbtn"
@@ -1633,6 +1636,8 @@ function IndustryGauge({ state }: { state: GameState }) {
   const fCap = fuelStore(state, 0);
   const aCap = alloyStore(state, 0);
   const cut = cutOff(state, 0).length;
+  const terr = territoryOn(state);
+  const idle = terr ? unstaffed(state, 0).length : 0;
   return (
     <div
       className="fl-d-gauge fl-d-industry"
@@ -1647,6 +1652,11 @@ function IndustryGauge({ state }: { state: GameState }) {
             {cut} cut off
           </span>
         )}
+        {idle > 0 && (
+          <span className="fl-d-gauge-state" data-cut="1" data-testid="crew-short">
+            {idle} no crew
+          </span>
+        )}
       </span>
       <span className="fl-d-goods">
         <span data-full={fuel >= fCap ? '1' : '0'}>
@@ -1655,6 +1665,11 @@ function IndustryGauge({ state }: { state: GameState }) {
         <span data-full={alloys >= aCap ? '1' : '0'}>
           Alloys <span className="fl-d-goods-n" data-testid="alloys">{alloys}</span>/{aCap}
         </span>
+        {terr && (
+          <span title="Workers: crews wanted by your structures, against the workers your yards and Quarters house.">
+            Workers <span className="fl-d-goods-n" data-testid="workers">{crewWanted(state, 0)}</span>/{housed(state, 0)}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -1674,6 +1689,20 @@ function SupplyNote({ state, building }: { state: GameState; building: Building 
       : `Cut off: holding ${held} ${what} on site. A Depot within ${SUPPLY_SERVE_RANGE} tiles, linked to a yard, brings it home; lose this structure and it is lost.`;
   return (
     <p data-testid="supply-note" data-cut={ok ? '0' : '1'} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.4, color: ok ? UI.textSoft : UI.warn }}>
+      {text}
+    </p>
+  );
+}
+
+/** Territory and workforce: whether a structure of yours has its crew. */
+function CrewNote({ state, building }: { state: GameState; building: Building }) {
+  const ok = staffed(state, building);
+  const need = CREW[building.kind] ?? 0;
+  const text = ok
+    ? `Crewed: ${need} workers at work here.`
+    : `No crew: it needs ${need} workers and your housing is full. Build Quarters, or lose something less important, and it starts again.`;
+  return (
+    <p data-testid="crew-note" data-cut={ok ? '0' : '1'} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.4, color: ok ? UI.textSoft : UI.warn }}>
       {text}
     </p>
   );

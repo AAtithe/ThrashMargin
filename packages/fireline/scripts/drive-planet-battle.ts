@@ -84,7 +84,8 @@ const preRound6 = (s: GameState): GameState => {
   if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
   if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
   if (!s.setup) return { ...s, players };
-  const { factions, heroes, generals, generalPicks, industry, supply, ...setup } = s.setup;
+  const { factions, heroes, generals, generalPicks, industry, supply, territory, ...setup } = s.setup;
+  if (territory !== undefined && territory !== false) throw new Error('setup territory on');
   // Industry and supply lines (2026-11-21): off is the earlier battle exactly.
   if (industry !== undefined && industry !== false) throw new Error('setup industry on');
   if (supply !== undefined && supply !== false) throw new Error('setup supply lines on');

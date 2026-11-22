@@ -1707,6 +1707,13 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     case 'depot':
       drawDepot(ctx, w, h, team, pose);
       break;
+    // Territory and workforce (2026-11-21).
+    case 'watchtower':
+      drawWatchtower(ctx, w, h, team, pose);
+      break;
+    case 'quarters':
+      drawQuarters(ctx, w, h, team, pose);
+      break;
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -5997,7 +6004,11 @@ export function drawSupplyLines(ctx: Ctx, hubs: Building[], t: number): void {
 
 /** A cut-off producer's badge: an amber pill reading CUT, with what it holds on site. */
 export function drawCutBadge(ctx: Ctx, cx: number, top: number, held: number, kind: BuildingKind, t: number): void {
-  const text = held > 0 ? `CUT ${Math.floor(held)}${kind === 'fuelwell' ? ' fuel' : kind === 'refinery' ? ' cr' : ''}` : 'CUT';
+  drawBadge(ctx, cx, top, held > 0 ? `CUT ${Math.floor(held)}${kind === 'fuelwell' ? ' fuel' : kind === 'refinery' ? ' cr' : ''}` : 'CUT', t);
+}
+
+/** An amber warning pill over a structure (CUT, NO CREW). */
+export function drawBadge(ctx: Ctx, cx: number, top: number, text: string, t: number): void {
   ctx.save();
   ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
   const w = ctx.measureText(text).width + 12;
@@ -6015,3 +6026,102 @@ export function drawCutBadge(ctx: Ctx, cx: number, top: number, held: number, ki
   ctx.restore();
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Territory and workforce (2026-11-21, setup.territory)
+
+/** The Watchtower: a timber tower seen from above, a team pennant, and a gun that turns. */
+function drawWatchtower(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  // Four legs and a platform.
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(5, 7, w - 8, h - 8);
+  ctx.fillStyle = '#6b5236';
+  for (const [x, y] of [[4, 4], [w - 8, 4], [4, h - 8], [w - 8, h - 8]]) ctx.fillRect(x, y, 4, 4);
+  ctx.fillStyle = shade(ctx, 5, 5, w - 10, h - 10, '#a9875a', '#7a5f3b');
+  ctx.fillRect(5, 5, w - 10, h - 10);
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(5.5, 5.5, w - 11, h - 11);
+  ctx.strokeStyle = 'rgba(60,40,20,0.5)';
+  for (let i = 9; i < w - 5; i += 4) {
+    ctx.beginPath();
+    ctx.moveTo(i, 6);
+    ctx.lineTo(i, h - 6);
+    ctx.stroke();
+  }
+  // The gun, turning to its target.
+  const cx = w / 2;
+  const cy = h / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(p.turret);
+  ctx.fillStyle = '#2b2e2c';
+  ctx.fillRect(0, -1.2, 10, 2.4);
+  ctx.restore();
+  ctx.fillStyle = '#3c403d';
+  circle(ctx, cx, cy, 3.4);
+  ctx.fill();
+  // A pennant in the team colour.
+  ctx.fillStyle = team.main;
+  ctx.beginPath();
+  ctx.moveTo(w - 7, 2);
+  ctx.lineTo(w - 1, 4.5);
+  ctx.lineTo(w - 7, 7);
+  ctx.closePath();
+  ctx.fill();
+  if (p.sinceShot < 0.12) {
+    ctx.fillStyle = 'rgba(255,220,120,0.9)';
+    circle(ctx, cx + Math.cos(p.turret) * 11, cy + Math.sin(p.turret) * 11, 2);
+    ctx.fill();
+  }
+}
+
+/** The Quarters: two rows of huts with team roofs and lit windows. */
+function drawQuarters(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  for (let row = 0; row < 2; row++)
+    for (let col = 0; col < 2; col++) {
+      const x = 6 + col * ((w - 12) / 2);
+      const y = 7 + row * ((h - 14) / 2);
+      const hw = (w - 12) / 2 - 4;
+      const hh = (h - 14) / 2 - 5;
+      block(ctx, x, y, hw, hh, shade(ctx, x, y, hw, hh, team.light, team.dark), '#4a4d4b', 3);
+      ctx.fillStyle = on && (row + col) % 2 === 0 ? 'rgba(255,220,140,0.85)' : 'rgba(60,64,62,0.7)';
+      ctx.fillRect(x + hw / 2 - 2, y + hh - 4, 4, 3);
+    }
+}
+
+/** The borders of a territory grid inside the given tile window: a line wherever a side's tile meets another's. */
+export function drawBorders(ctx: Ctx, grid: Int8Array, mapW: number, tx0: number, ty0: number, tx1: number, ty1: number, colourOf: (owner: number) => string | null): void {
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  for (let y = ty0; y <= ty1; y++)
+    for (let x = tx0; x <= tx1; x++) {
+      const o = grid[x + y * mapW];
+      if (o < 0) continue;
+      const colour = colourOf(o);
+      if (!colour) continue;
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      if (y === 0 || grid[x + (y - 1) * mapW] !== o) {
+        ctx.moveTo(x * TILE, y * TILE);
+        ctx.lineTo((x + 1) * TILE, y * TILE);
+      }
+      if (grid[x + (y + 1) * mapW] !== o) {
+        ctx.moveTo(x * TILE, (y + 1) * TILE);
+        ctx.lineTo((x + 1) * TILE, (y + 1) * TILE);
+      }
+      if (x === 0 || grid[x - 1 + y * mapW] !== o) {
+        ctx.moveTo(x * TILE, y * TILE);
+        ctx.lineTo(x * TILE, (y + 1) * TILE);
+      }
+      if (x === mapW - 1 || grid[x + 1 + y * mapW] !== o) {
+        ctx.moveTo((x + 1) * TILE, y * TILE);
+        ctx.lineTo((x + 1) * TILE, (y + 1) * TILE);
+      }
+      ctx.stroke();
+    }
+  ctx.restore();
+}

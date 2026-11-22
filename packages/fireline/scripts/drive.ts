@@ -79,6 +79,7 @@ import { sections as heroesSections } from './drive-heroes';
 // round6:C. Generals (and the groundwork's per-side perks): its import (scripts/drive-generals.ts) goes on the line below.
 import { sections as generalsSections } from './drive-generals';
 import { sections as industrySections } from './drive-industry';
+import { sections as territorySections } from './drive-territory';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 
@@ -2801,6 +2802,8 @@ if (!CAMPAIGN_ONLY) {
     ...formationsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Industry (2026-11-21): its sections, from scripts/drive-industry.ts.
     ...industrySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Territory and workforce (2026-11-21): its sections, from scripts/drive-territory.ts.
+    ...territorySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

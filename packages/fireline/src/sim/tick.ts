@@ -1,5 +1,6 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
+import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
 import { enlistHeroes, heroesInPlay } from './heroes';
@@ -225,7 +226,13 @@ export function step(s: GameState): void {
   // Industry (2026-11-21): Fuel Wells pump and Foundries smelt. A no-op without setup.industry.
   // Supply lines (2026-11-21): producers cut off from every yard work for their own site, and what
   // they hold flows home once they are linked again. No-ops without setup.supply.
-  industryStep(s, ctx.power, supplyOn(s) ? new Set(sidesOf(s).flatMap(o => cutOff(s, o).map(b => b.id))) : undefined);
+  industryStep(
+    s,
+    ctx.power,
+    supplyOn(s) ? new Set(sidesOf(s).flatMap(o => cutOff(s, o).map(b => b.id))) : undefined,
+    // Territory and workforce (2026-11-21): a structure without its crew stops. A no-op without it.
+    territoryOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : undefined,
+  );
   supplyStep(s);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
@@ -371,7 +378,8 @@ function production(s: GameState, ctx: Ctx): void {
             spawnFromQueue(s, ctx, owner, cat, item, producer);
             return;
           }
-          if (sabotaged(s, producer)) return;
+          // Territory and workforce: a producer without its crew builds nothing, like one a Spy has stopped.
+          if (sabotaged(s, producer) || !staffed(s, producer)) return;
           item.progress = Math.min(total, item.progress + (assembly !== 1 ? rate * assembly : rate));
           if (item.progress >= total) spawnFromQueue(s, ctx, owner, cat, item, producer);
         });
@@ -1092,6 +1100,8 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
           if (b.owner !== u.owner || b.kind !== 'refinery' || b.hp <= 0) continue;
           const cut = sup && !supplied(s, b);
           if (cut && (b.held ?? 0) >= REFINERY_HOLD) continue;
+          // Territory and workforce: a refinery without its crew takes no ore.
+          if (!staffed(s, b)) continue;
           const dk = dockTile(s, b);
           const d = dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5) + (cut ? CUT_REFINERY_PENALTY : 0);
           if (d < bestD) {
@@ -1121,6 +1131,13 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       if (!ref || ref.hp <= 0) {
         h.phase = 'return';
         h.refinery = 0;
+        return;
+      }
+      // Territory and workforce: a refinery without its crew takes no ore; look for another.
+      if (territoryOn(s) && !staffed(s, ref)) {
+        h.phase = 'return';
+        h.refinery = 0;
+        halt(u);
         return;
       }
       const amount = Math.min(UNLOAD_PER_TICK, u.cargo);

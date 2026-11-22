@@ -32,7 +32,9 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
-import { depotSpot, economyPlan, industryPlanFor, wellFocus } from './aiEconomy';
+import { MAX_QUARTERS, depotSpot, depotToward, economyPlan, expansionTarget, industryPlanFor, unclaimedOre, wellFocus } from './aiEconomy';
+import { crewWanted, housed, territoryOn } from './territory';
+import { CREW } from './rules';
 import { isProducer, linkedHubs, servedBy, supplyOn } from './supply';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
 import { heroesNeedTechCentre, heroKeptBack, heroPlan } from './aiHeroes';
@@ -236,6 +238,10 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
 // round6:D. Formations and squads: the waves' formation moves (fireline-round6-design.md).
 import { doFormationMove } from './commands';
 
+/** Territory: most Watchtowers built to make room, and the kinds no Watchtower makes room for. */
+const ROOM_TOWERS = 4;
+const NOT_FOR_ROOM: BuildingKind[] = ['watchtower', 'wall', 'shipyard', 'fuelwell', 'depot'];
+
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
@@ -316,6 +322,19 @@ function commander(s: GameState, owner: Owner): void {
       if (countBuildings(s, owner, 'wall') < t.walls && countBuildings(s, owner, 'turret') >= d.turrets && wallSpot(s, owner, home, enemyHome))
         want = 'wall';
     }
+    // Territory and workforce: no room inside the borders for it, so a Watchtower to push them out first.
+    // Only for a structure the borders are what limit (a Naval Yard needs a shore, a Fuel Well a field,
+    // a Depot a link), and at most ROOM_TOWERS standing: uncapped, a commander whose Naval Yard could
+    // find no shore built thirteen (fireline-design.md).
+    if (
+      want &&
+      territoryOn(s) &&
+      !NOT_FOR_ROOM.includes(want) &&
+      countBuildings(s, owner, 'watchtower') < ROOM_TOWERS &&
+      unlocked(s, owner, 'watchtower') &&
+      !findSpot(s, owner, want, home, enemyHome)
+    )
+      want = 'watchtower';
     if (want) {
       if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
       else if (unlocked(s, owner, want)) {
@@ -995,6 +1014,11 @@ function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySp
   // Paced research (round 6): the Tech Centre is part of the plan, not an extra the army gate holds.
   if (kind === 'techcentre' && pacedTech(s)) return false;
   if (kind === 'refinery') return countBuildings(s, owner, 'refinery') >= d.refineries;
+  // Supply lines and territory: pushing out toward a field waits for the army, like the other extras
+  // (a commander that expanded first fielded a sixth of its opponent's army at minute 8). A Depot
+  // that reconnects something cut off is no extra.
+  if (kind === 'watchtower') return true;
+  if (kind === 'depot') return !depotSpot(s, owner);
   // round6:B begin. Heroes in free play: with heroes on, on Hard, the Tech Centre is the way to the
   // Academy and goes up in its turn (aiHeroes.ts, heroesNeedTechCentre).
   if (kind === 'techcentre' && heroesNeedTechCentre(s, aiDifficulty(s, owner))) return false;
@@ -1017,13 +1041,18 @@ function nextStructure(
   const pw = powerOf(s, owner);
   const headroom = pw.made - pw.used;
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
+  // Territory and workforce (2026-11-21): Quarters before a structure whose crew would not be housed.
+  const crewShort = (k: BuildingKind) => territoryOn(s) && crewWanted(s, owner) + (CREW[k] ?? 0) > housed(s, owner) && countBuildings(s, owner, 'quarters') < MAX_QUARTERS;
   const powerFor = (k: BuildingKind): BuildingKind => {
     if (!unlocked(s, owner, k)) return 'power';
+    if (k !== 'quarters' && crewShort(k)) return headroom + buildingSpec(s, owner, 'quarters').power < 10 ? 'power' : 'quarters';
     return headroom + buildingSpec(s, owner, k).power < 10 ? 'power' : k;
   };
   if (count('refinery') === 0) return powerFor('refinery');
   if (needRefineryForHauler && count('refinery') < 4) return powerFor('refinery');
   if (headroom < 25 && count('power') < 12) return 'power';
+  // Territory and workforce: anything standing without its crew is housed first.
+  if (territoryOn(s) && crewWanted(s, owner) > housed(s, owner) && count('quarters') < MAX_QUARTERS) return powerFor('quarters');
   // Supply lines (2026-11-21): a cut-off producer is reconnected before anything else. Never without them.
   if (depotSpot(s, owner) && unlocked(s, owner, 'depot')) return powerFor('depot');
   const t = advanced ? TACTICS[advanced] : null;
@@ -1074,10 +1103,19 @@ function nextStructure(
  * round so the base never walls itself in. Turrets go out toward the enemy; refineries toward ore.
  */
 function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
-  const spec = buildingSpec(s, owner, kind);
   // The naval war: a Naval Yard on the shore, and Generators toward it while it is out of reach.
   if (kind === 'shipyard') return navalSpot(s, owner, home);
-  if (kind === 'depot') return depotSpot(s, owner);
+  if (kind === 'depot') {
+    const fix = depotSpot(s, owner);
+    if (fix) return fix;
+    const target = expansionTarget(s, owner, home);
+    return target ? depotToward(s, owner, target) : null;
+  }
+  // Territory: a Watchtower toward the nearest ore outside the borders, else toward the enemy.
+  if (kind === 'watchtower') {
+    const ore = expansionTarget(s, owner, home) ?? unclaimedOre(s, owner, home);
+    return findSpotNear(s, owner, kind, ore ?? toward(home, enemyHome, 9));
+  }
   let focus = (kind === 'power' && creepFocus(s, owner)) || home;
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
@@ -1098,6 +1136,12 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     }
     if (best >= 0) focus = toward(home, { x: (best % s.mapW) + 0.5, y: ((best / s.mapW) | 0) + 0.5 }, Math.min(bestD * 0.6, 7));
   }
+  return findSpotNear(s, owner, kind, focus);
+}
+
+/** The legal spot for a structure nearest a focus point, keeping a one-tile lane free all round. */
+function findSpotNear(s: GameState, owner: Owner, kind: BuildingKind, focus: Pt): Pt | null {
+  const spec = buildingSpec(s, owner, kind);
   const occ = occupancy(s);
   const candidates: [number, number, number][] = [];
   const fx = Math.round(focus.x);
