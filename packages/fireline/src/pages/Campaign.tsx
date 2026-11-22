@@ -257,6 +257,7 @@ function CampaignMap({
   const shownNodes = shown.map(x => x.n);
   const view = theatreView(c, act, region?.id ?? (briefing ? regionOfMission(briefing.id)?.id : undefined));
   const engagementsShown = openEngagements(c, act);
+  const nextUp = missions.find((m, i) => nodes[i].state === 'open');
   // A region clicked on the map: its mission's briefing, its engagement's, or a note.
   const openRegion = (id: string) => {
     const r = regionById(id);
@@ -295,15 +296,37 @@ function CampaignMap({
               Heroes
             </button>
           </div>
-          <div className="fl-camp-progress">
-            <span>
-              {won} of {missions.length} missions won
+          <dl className="fl-camp-tally">
+            <div>
+              <dt>Missions</dt>
+              <dd>
+                {won}
+                <small>/{missions.length}</small>
+              </dd>
+            </div>
+            <div data-kind="stars">
+              <dt>Stars</dt>
+              <dd>
+                {nodes.reduce((a, n) => a + n.stars, 0)}
+                <small>★</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Regions</dt>
+              <dd>
+                {territory.held}
+                <small>/{territory.total}</small>
+              </dd>
+            </div>
+          </dl>
+          <div className="fl-camp-progress" data-menus="ledger">
+            <span className="fl-camp-territory" data-testid="territory">
+              Territory: {territory.held} of {territory.total} regions held
             </span>
-            <span data-testid="campaign-level">{CAMPAIGN_LEVEL[campaignLevel(c)].label}</span>
-            <span>{nodes.reduce((a, n) => a + n.stars, 0)} ★</span>
-          </div>
-          <div className="fl-camp-territory" data-testid="territory">
-            Territory: {territory.held} of {territory.total} regions held
+            <span>
+              <span className="fl-d-visually-hidden">{won} of {missions.length} missions won · </span>
+              Difficulty <b data-testid="campaign-level">{CAMPAIGN_LEVEL[campaignLevel(c)].label}</b>
+            </span>
           </div>
           {cs.battle && (
             <div className="fl-camp-inbattle" data-testid="battle-in-progress">
@@ -320,6 +343,36 @@ function CampaignMap({
                 )}
               </div>
             </div>
+          )}
+          {!cs.battle && nextUp && (
+            <section className="fl-camp-orders" aria-label="Your orders" data-testid="camp-orders">
+              <h3>Standing orders</h3>
+              <div className="fl-camp-orders-head">
+                <span className="fl-mission-no" aria-hidden="true">
+                  <small>OBJ</small>
+                  {nextUp.order}
+                </span>
+                <span>
+                  <strong>{nextUp.title}</strong>
+                  <em>
+                    Mission {nextUp.order} · {ACT_NAMES[campaignActOf(nextUp.order)].title}
+                  </em>
+                </span>
+              </div>
+              <p>{nextUp.summary}</p>
+              <button type="button" className="fl-camp-btn primary" onClick={() => setPanel({ briefing: nextUp.id })}>
+                Read the briefing →
+              </button>
+            </section>
+          )}
+          {shown.length > 0 && (
+            <ol className="fl-camp-track" aria-label={`${ACT_NAMES[act].title}: missions`}>
+              {shown.map(({ m, n }) => (
+                <li key={m.id} data-state={n.state} title={`Mission ${m.order}: ${n.state === 'locked' ? 'locked' : m.title}${n.state === 'won' ? `, ${n.stars} of ${n.maxStars} stars` : ''}`}>
+                  <span className="fl-mission-no">{m.order}</span>
+                </li>
+              ))}
+            </ol>
           )}
         </aside>
 
@@ -445,7 +498,36 @@ function CampaignMap({
         </Modal>
       )}
       {briefing && (
-        <Modal title={`Mission ${briefing.order}: ${briefing.title}`} onClose={() => setPanel(null)}>
+        <Modal
+          title={`Mission ${briefing.order}: ${briefing.title}`}
+          onClose={() => setPanel(null)}
+          variant="dossier"
+          heading={
+            <>
+              {briefing.title}
+              <small>
+                Mission {briefing.order} · {ACT_NAMES[campaignActOf(briefing.order)].title}
+              </small>
+            </>
+          }
+          seal={
+            <span className="fl-mission-no" aria-hidden="true">
+              <small>OBJ</small>
+              {briefing.order}
+            </span>
+          }
+          stamp={
+            c.missions[briefing.id]?.won ? (
+              <span className="fl-camp-stamp" data-kind="taken" aria-hidden="true">
+                Taken {'★'.repeat(c.missions[briefing.id]?.stars ?? 0)}
+              </span>
+            ) : (
+              <span className="fl-camp-stamp" data-kind="next" aria-hidden="true">
+                Open
+              </span>
+            )
+          }
+        >
           <Briefing spec={briefing} cs={cs} onDeploy={() => onDeploy(briefing)} onLevel={onLevel} />
         </Modal>
       )}
@@ -962,8 +1044,30 @@ function RegionPanel({
   const control = regionControl(c, r.id);
   const spec = engagementSpec(c, r.id);
   if (spec && control === 'open' && !engagementProblem(c, r.id)) {
+    const rec0 = c.engagements[r.id];
     return (
-      <Modal title={`Engagement: ${r.name}`} onClose={onClose}>
+      <Modal
+        title={`Engagement: ${r.name}`}
+        onClose={onClose}
+        variant="dossier"
+        heading={
+          <>
+            {r.name}
+            <small>Engagement · {r.kind === 'city' ? 'City' : 'Province'}</small>
+          </>
+        }
+        seal={
+          <span className="fl-mission-no" aria-hidden="true">
+            <small>ENG</small>
+            {r.kind === 'city' ? '◆' : '◇'}
+          </span>
+        }
+        stamp={
+          <span className="fl-camp-stamp" data-kind="next" aria-hidden="true">
+            {rec0 && !rec0.won ? 'Retry' : 'Open'}
+          </span>
+        }
+      >
         <Briefing spec={spec} cs={cs} region={r} onDeploy={() => onDeploy(spec)} onLevel={onLevel} />
       </Modal>
     );
@@ -980,7 +1084,7 @@ function RegionPanel({
   else if (control === 'enemy' && firstOfAct && !missionUnlocked(c, firstOfAct.id)) note = `Combine ground on the ${ACT_NAMES[r.act].place.replace(/^The /, '').toLowerCase()}. This front opens with Mission ${firstOfAct.order}, ${firstOfAct.title}.`;
   else note = `Combine ground. Take a region next to it first: nothing can reach ${r.name} until then.`;
   return (
-    <Modal title={r.name} onClose={onClose}>
+    <Modal title={r.name} onClose={onClose} variant="dossier" heading={<>{r.name}<small>{r.kind === 'city' ? 'City' : 'Province'} · {ACT_NAMES[r.act].place}</small></>}>
       <div className="fl-region-note" data-testid="region-note" data-control={control} data-region={r.id}>
         <span className="fl-tag" data-control={control}>
           {r.kind === 'city' ? 'City' : 'Province'} · {control === 'held' ? 'Held' : 'Combine ground'}
@@ -1138,7 +1242,27 @@ function DebriefObjective({ o, bonus = false }: { o: ObjectiveRuntime; bonus?: b
 
 // ---- A modal panel over the map ---------------------------------------------------------------
 
-function Modal({ title, onClose, wide = false, children }: { title: string; onClose: () => void; wide?: boolean; children: ReactNode }) {
+function Modal({
+  title,
+  onClose,
+  wide = false,
+  variant,
+  heading,
+  seal,
+  stamp,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  wide?: boolean;
+  /** 'dossier': the campaign's paper look, for briefings opened off the theatre map. */
+  variant?: 'dossier';
+  /** What the header shows in place of `title`, which stays the dialog's accessible name. */
+  heading?: ReactNode;
+  seal?: ReactNode;
+  stamp?: ReactNode;
+  children: ReactNode;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -1155,6 +1279,7 @@ function Modal({ title, onClose, wide = false, children }: { title: string; onCl
       <div
         ref={box}
         className="fl-modal"
+        data-variant={variant}
         style={{ maxWidth: wide ? 900 : 620 } as CSSProperties}
         role="dialog"
         aria-modal="true"
@@ -1163,7 +1288,9 @@ function Modal({ title, onClose, wide = false, children }: { title: string; onCl
         onClick={e => e.stopPropagation()}
       >
         <header>
-          <h2>{title}</h2>
+          {seal}
+          <h2>{heading ?? title}</h2>
+          {stamp}
           <button type="button" className="fl-camp-btn" onClick={onClose} aria-label="Close">
             ✕
           </button>

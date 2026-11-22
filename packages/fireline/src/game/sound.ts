@@ -46,7 +46,10 @@ export type SoundKind =
   | 'heal'
   | 'repair'
   | 'missileLaunch'
-  | 'missileImpact';
+  | 'missileImpact'
+  // Tier three and naval weapons.
+  | 'rail'
+  | 'torpedo';
 
 const PREF_KEY = 'fireline_sound';
 
@@ -82,7 +85,12 @@ const GAP: Record<SoundKind, number> = {
   repair: 500,
   missileLaunch: 1500,
   missileImpact: 1500,
+  rail: 110,
+  torpedo: 160,
 };
+
+/** Interface sounds: played at exact pitch, never detuned (see `jitter`). */
+const EXACT: ReadonlySet<SoundKind> = new Set<SoundKind>(['ready', 'queue', 'denied', 'order', 'select', 'sold', 'place', 'victory', 'defeat', 'alarm']);
 
 const MAX_VOICES = 24;
 
@@ -119,6 +127,11 @@ export class SoundEngine {
   private noise: AudioBuffer | null = null;
   private last = new Map<SoundKind, number>();
   private voices = 0;
+  /**
+   * Pitch multiplier for the sound being built: a few percent either way for battle sounds, so a
+   * firefight is not one blip repeated, and exactly 1 for interface sounds. Set per play().
+   */
+  private jitter = 1;
   prefs: SoundPrefs = loadPrefs();
   /** Plays per kind, for the browser checks (read in dev builds through window.__firelineSound). */
   readonly counts: Partial<Record<SoundKind, number>> = {};
@@ -167,10 +180,11 @@ export class SoundEngine {
   }
 
   /**
-   * Plays a sound. `pan` is -1 (left) to 1 (right); `gain` scales it, for distance. Returns whether
-   * it actually played (not throttled, not muted, audio unlocked).
+   * Plays a sound. `pan` is -1 (left) to 1 (right); `gain` scales it, for distance; `far` (0..1)
+   * muffles it with a low-pass filter, for a fight across the map. Returns whether it actually
+   * played (not throttled, not muted, audio unlocked).
    */
-  play(kind: SoundKind, pan = 0, gain = 1): boolean {
+  play(kind: SoundKind, pan = 0, gain = 1, far = 0): boolean {
     const ctx = this.ctx;
     if (!ctx || !this.master || this.prefs.muted || this.prefs.volume <= 0 || gain <= 0.02) return false;
     const now = performance.now();
@@ -181,25 +195,35 @@ export class SoundEngine {
 
     const out = ctx.createGain();
     out.gain.value = gain;
-    let node: AudioNode = out;
+    const chain: AudioNode[] = [out];
+    if (far > 0.05) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 18000 * Math.pow(1200 / 18000, Math.min(1, far));
+      lp.Q.value = 0.5;
+      chain[chain.length - 1].connect(lp);
+      chain.push(lp);
+    }
     if (pan !== 0 && typeof ctx.createStereoPanner === 'function') {
       const p = ctx.createStereoPanner();
       p.pan.value = Math.max(-1, Math.min(1, pan));
-      out.connect(p);
-      node = p;
+      chain[chain.length - 1].connect(p);
+      chain.push(p);
     }
-    node.connect(this.master);
+    chain[chain.length - 1].connect(this.master);
     const t = ctx.currentTime + 0.005;
+    this.jitter = EXACT.has(kind) ? 1 : 0.94 + Math.random() * 0.12;
     const dur = this.voice(kind, out, t);
+    this.jitter = 1;
     this.voices++;
     window.setTimeout(() => {
       this.voices--;
-      try {
-        out.disconnect();
-        if (node !== out) node.disconnect();
-      } catch {
-        /* already gone */
-      }
+      for (const n of chain)
+        try {
+          n.disconnect();
+        } catch {
+          /* already gone */
+        }
     }, (dur + 0.1) * 1000);
     return true;
   }
@@ -219,8 +243,8 @@ export class SoundEngine {
     src.playbackRate.value = 0.8 + Math.random() * 0.4;
     const f = ctx.createBiquadFilter();
     f.type = o.type;
-    f.frequency.setValueAtTime(o.freq, t);
-    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to, t + (o.attack ?? 0.005) + o.decay);
+    f.frequency.setValueAtTime(o.freq * this.jitter, t);
+    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to * this.jitter, t + (o.attack ?? 0.005) + o.decay);
     f.Q.value = o.q ?? 0.8;
     const g = ctx.createGain();
     this.env(g, t, o.peak, o.attack ?? 0.004, o.decay);
@@ -233,8 +257,9 @@ export class SoundEngine {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     osc.type = o.type;
-    osc.frequency.setValueAtTime(o.freq, t);
-    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + (o.attack ?? 0.005) + o.decay);
+    const j = this.jitter;
+    osc.frequency.setValueAtTime(o.freq * j, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to * j, t + (o.attack ?? 0.005) + o.decay);
     const g = ctx.createGain();
     this.env(g, t, o.peak, o.attack ?? 0.005, o.decay);
     osc.connect(g).connect(dest);
@@ -391,6 +416,17 @@ export class SoundEngine {
         this.noiseHit(out, t + 0.05, { type: 'bandpass', freq: 1500, to: 300, q: 0.8, peak: 0.35, decay: 1.4 });
         this.noiseHit(out, t + 0.9, { type: 'highpass', freq: 3000, peak: 0.08, decay: 1.2, attack: 0.2 });
         return 4;
+      case 'rail':
+        // A railgun: a hard electric crack, a falling whine, and the slug's low thump.
+        this.noiseHit(out, t, { type: 'highpass', freq: 4000, peak: 0.4, decay: 0.06 });
+        this.tone(out, t, { type: 'triangle', freq: 2400, to: 600, peak: 0.12, decay: 0.18 });
+        this.tone(out, t + 0.02, { type: 'sine', freq: 140, to: 50, peak: 0.45, decay: 0.18 });
+        return 0.3;
+      case 'torpedo':
+        // A muffled launch under the water: a slow swell of low, narrow noise.
+        this.noiseHit(out, t, { type: 'bandpass', freq: 300, to: 120, q: 1.6, peak: 0.5, decay: 0.6, attack: 0.05 });
+        this.tone(out, t, { type: 'sine', freq: 90, to: 55, peak: 0.25, decay: 0.5, attack: 0.04 });
+        return 0.75;
     }
   }
 }

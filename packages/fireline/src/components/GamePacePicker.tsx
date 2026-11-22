@@ -25,6 +25,10 @@ export default function GamePacePicker({ value, onPick }: { value: SkirmishSetup
     return `${MAP_SIZE_NAMES[z]}, ${n} by ${n} tiles${value.sides > 2 ? `, ${value.sides} sides` : ''}`;
   };
   const customised = !isPresetSetup(value);
+  // The glyphs compare the four cards with each other: map side against the largest, length against the longest.
+  const tilesOf = (id: GamePace) => MAP_SIZE_TILES[GAME_PACES[id].preset.size][value.sides];
+  const maxTiles = Math.max(...GAME_PACE_ORDER.map(tilesOf));
+  const maxMinutes = Math.max(...GAME_PACE_ORDER.map(id => GAME_PACES[id].minutes[1]));
   return (
     <>
       <div className="fl-sizes" role="radiogroup" aria-label="Game size">
@@ -38,6 +42,7 @@ export default function GamePacePicker({ value, onPick }: { value: SkirmishSetup
                 {checked && customised && <span className="fl-size-tag">Customised</span>}
               </span>
               <span className="fl-size-tagline">{spec.tagline}</span>
+              <SizeGlyph map={tilesOf(id) / maxTiles} length={spec.minutes[1] / maxMinutes} />
               <dl className="fl-size-facts">
                 <dt>Length</dt>
                 <dd>{`About ${spec.minutes[0]} to ${spec.minutes[1]} minutes`}</dd>
@@ -61,5 +66,22 @@ export default function GamePacePicker({ value, onPick }: { value: SkirmishSetup
       </div>
       <p className="fl-setup-note">Every size can be changed in Customise. The computer plays by the same numbers.</p>
     </>
+  );
+}
+
+/** A card's picture: the map as a square inside the largest map's frame, and the battle's length as a bar. */
+function SizeGlyph({ map, length }: { map: number; length: number }) {
+  const side = 30 * map;
+  const off = 1 + (30 - side) / 2;
+  return (
+    <span className="fl-size-glyph" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="40" height="40" focusable="false">
+        <rect className="fl-size-glyph-frame" x="1" y="1" width="30" height="30" />
+        <rect className="fl-size-glyph-map" x={off} y={off} width={side} height={side} />
+      </svg>
+      <span className="fl-size-glyph-len">
+        <span style={{ width: `${Math.round(length * 100)}%` }} />
+      </span>
+    </span>
   );
 }

@@ -57,6 +57,19 @@ import { drawGeneralAuras } from './art';
 type UnitPoseX = UnitPose & { hp?: number; firing?: boolean };
 type BuildingPoseX = BuildingPose & { hp?: number; working?: boolean };
 
+/**
+ * The fog's colours (canvas paint, like ART): remembered-but-unwatched ground under a cool slate,
+ * at FOG_MEMORY_A of 255, against ART.fog's near-black for ground never seen.
+ */
+const FOG_MEMORY: [number, number, number] = [22, 34, 48];
+const FOG_MEMORY_A = 108;
+/** Milliseconds a hit unit flashes, and how long its health bar's lost segment lingers and drains. */
+const HIT_FLASH_MS = 110;
+const GHOST_HOLD_MS = 260;
+const GHOST_DRAIN_MS = 520;
+/** Milliseconds a fresh selection ring takes to settle onto its unit. */
+const SELECT_SETTLE_MS = 170;
+
 /** Seconds after a shot that a unit still counts as firing, for its muzzle pose. */
 const FIRING_WINDOW = 0.15;
 /** How long, in ticks, a shot lights the ground, and the most such lights in one frame. */
@@ -225,9 +238,24 @@ export class Renderer {
   private fogA = new Uint8Array(0);
   private fogRaw = new Uint8Array(0);
   private fogRow = new Uint16Array(0);
+  /** Per tile, 0..255: how much of the fog there is never-seen ground rather than remembered ground. */
+  private fogMix = new Uint8Array(0);
   /** Whether motion is on (lib/motion.ts), read once a second: off holds the ore's glints still. */
   private sparkle = true;
   private paceAt = -Infinity;
+  /**
+   * Hit feedback, renderer-only: when (ms) each unit or structure last lost health, and the share
+   * of health it had before that run of hits, for the fading damage segment on its bar. Worked out
+   * once per state object (noteHits) and pruned there, so the maps cannot grow.
+   */
+  private hitFor: GameState | null = null;
+  private hitAt = new Map<number, number>();
+  private ghostHp = new Map<number, number>();
+  /** When (ms) each selected id was first drawn selected, for the selection ring's settle. */
+  private selAt = new Map<number, number>();
+  /** Per-frame slots of health bars already drawn, so bunched units' bars step clear of each other. */
+  private barSlots = new Float32Array(192);
+  private barCount = 0;
 
   /**
    * `mapType` picks the look of the ground (river banks, highland cliffs, canyon walls); when it is
@@ -283,10 +311,14 @@ export class Renderer {
 
 
   /**
-   * The fog's alpha per tile (255 unexplored, 120 explored but unwatched, 0 in sight), blurred
+   * The fog's alpha per tile (255 unexplored, FOG_MEMORY_A explored but unwatched, 0 in sight), blurred
    * with a 1-2-1 kernel each way so the edge spreads over two tiles and its corners round off.
    * A tile in sight stays mostly clear, so nothing the player can see is hidden by the
    * blur. Cached per state object, like the visibility it comes from.
+   *
+   * Alongside it, `fogMix`: the same blur of 'never seen' alone, which the fog loop uses to tint
+   * remembered ground a cool slate and keep near-black for ground nobody has scouted, so the two
+   * read apart rather than as two densities of night.
    */
   private fogAlpha(s: GameState, vis: Uint8Array): Uint8Array {
     if (this.fogFor === s) return this.fogA;
@@ -298,12 +330,13 @@ export class Renderer {
       this.fogA = new Uint8Array(n);
       this.fogRaw = new Uint8Array(n);
       this.fogRow = new Uint16Array(n);
+      this.fogMix = new Uint8Array(n);
     }
     const raw = this.fogRaw;
     const row = this.fogRow;
     const out = this.fogA;
     const ex = s.explored;
-    for (let k = 0; k < n; k++) raw[k] = ex.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : 120;
+    for (let k = 0; k < n; k++) raw[k] = ex.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : FOG_MEMORY_A;
     for (let y = 0; y < H; y++) {
       const o = y * W;
       for (let x = 0; x < W; x++) {
@@ -320,7 +353,126 @@ export class Renderer {
         out[o + x] = raw[o + x] === 0 ? Math.min(v, 72) : v;
       }
     }
+    // The never-seen share, blurred the same way (row is free again now).
+    const mix = this.fogMix;
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const c = raw[o + x] === 255 ? 255 : 0;
+        const l = x > 0 ? (raw[o + x - 1] === 255 ? 255 : 0) : c;
+        const r = x < W - 1 ? (raw[o + x + 1] === 255 ? 255 : 0) : c;
+        row[o + x] = l + 2 * c + r;
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      const up = y > 0 ? o - W : o;
+      const dn = y < H - 1 ? o + W : o;
+      for (let x = 0; x < W; x++) mix[o + x] = (row[up + x] + 2 * row[o + x] + row[dn + x]) >> 4;
+    }
     return out;
+  }
+
+  /**
+   * Who lost health between the previous state and this one: stamps hitAt and, when no damage
+   * segment is already trailing, the health share before the hit. Once per state object, O(units +
+   * structures); ids not hit for a while (and the dead) are pruned here.
+   */
+  private noteHits(cur: GameState, prev: GameState, now: number) {
+    if (this.hitFor === cur) return;
+    this.hitFor = cur;
+    const hitAt = this.hitAt;
+    const ghost = this.ghostHp;
+    for (const [id, at] of hitAt)
+      if (now - at > 1500) {
+        hitAt.delete(id);
+        ghost.delete(id);
+      }
+    if (prev === cur) return;
+    const mark = (id: number, before: number, after: number, max: number) => {
+      if (after >= before) return;
+      const at = hitAt.get(id);
+      // A fresh run of hits starts its segment at the health before this one; a hit landing while
+      // the last segment still shows keeps the higher start, so the segment covers both.
+      if (at === undefined || now - at > GHOST_HOLD_MS + GHOST_DRAIN_MS) ghost.set(id, before / max);
+      hitAt.set(id, now);
+    };
+    if (prev.units.length && cur.units.length) {
+      const before = new Map<number, number>();
+      for (const u of prev.units) before.set(u.id, u.hp);
+      for (const u of cur.units) {
+        const hp = before.get(u.id);
+        if (hp !== undefined) mark(u.id, hp, u.hp, maxHpOf(u));
+      }
+    }
+    if (prev.buildings.length && cur.buildings.length) {
+      const before = new Map<number, number>();
+      for (const b of prev.buildings) before.set(b.id, b.hp);
+      for (const b of cur.buildings) {
+        const hp = before.get(b.id);
+        if (hp !== undefined) mark(b.id, hp, b.hp, BUILDINGS[b.kind].hp);
+      }
+    }
+  }
+
+  /** 0..1, eased: how far a fresh selection ring has settled (1 at once with motion off). */
+  private settle(id: number, now: number): number {
+    if (!this.sparkle) return 1;
+    const at = this.selAt.get(id);
+    if (at === undefined) return 1;
+    const k = Math.min(1, (now - at) / SELECT_SETTLE_MS);
+    return 1 - (1 - k) * (1 - k) * (1 - k);
+  }
+
+  /** How far through its hit flash an id is (0 just hit, 1 or more done); Infinity when not hit. */
+  private flashOf(id: number, now: number): number {
+    const at = this.hitAt.get(id);
+    return at === undefined ? Infinity : (now - at) / HIT_FLASH_MS;
+  }
+
+  /** The top of the damage segment on an id's health bar, or `frac` when there is none. */
+  private ghostOf(id: number, frac: number, now: number): number {
+    const at = this.hitAt.get(id);
+    const g = this.ghostHp.get(id);
+    if (at === undefined || g === undefined || g <= frac) return frac;
+    const k = 1 - Math.max(0, now - at - GHOST_HOLD_MS) / GHOST_DRAIN_MS;
+    return k <= 0 ? frac : frac + (g - frac) * k;
+  }
+
+  /** Whether an id was hit in the last `ms` milliseconds. */
+  private hitWithin(id: number, now: number, ms: number): boolean {
+    const at = this.hitAt.get(id);
+    return at !== undefined && now - at < ms;
+  }
+
+  /**
+   * Where to put a unit's health bar so it does not lie on top of one already drawn this frame: a
+   * bar sharing a row and overlapping in x steps up 4px (at most twice). Slots are a reused
+   * Float32Array of (x, y, w) triples, so this allocates nothing.
+   */
+  private barY(x: number, y: number, w: number): number {
+    const s = this.barSlots;
+    let yy = y;
+    for (let pass = 0; pass < 3; pass++) {
+      let clash = false;
+      for (let i = 0; i < this.barCount; i++) {
+        const o = i * 3;
+        if (Math.abs(s[o + 1] - yy) < 3.5 && x < s[o] + s[o + 2] && s[o] < x + w) {
+          clash = true;
+          break;
+        }
+      }
+      if (!clash) break;
+      yy -= 4;
+    }
+    if (this.barCount * 3 + 3 <= s.length) {
+      const o = this.barCount * 3;
+      s[o] = x;
+      s[o + 1] = yy;
+      s[o + 2] = w;
+      this.barCount++;
+    }
+    return yy;
   }
 
   /** What side 0 (with its allies) can see right now. Cached per state object. */
@@ -348,6 +500,11 @@ export class Renderer {
       this.actFor = cur;
     }
     const act = this.act;
+    this.noteHits(cur, prev, now);
+    // Selection settle: stamp ids newly selected, forget ones no longer selected.
+    for (const id of ov.selected) if (!this.selAt.has(id)) this.selAt.set(id, now);
+    if (this.selAt.size > ov.selected.size) for (const id of this.selAt.keys()) if (!ov.selected.has(id)) this.selAt.delete(id);
+    this.barCount = 0;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#050707';
@@ -462,16 +619,27 @@ export class Renderer {
         if (aim !== undefined) bpose.turret = aim;
       } else if (b.kind === 'strikecommand') this.silo(cur, b, bpose, rt, act);
       drawBuilding(ctx, b.kind, b.owner, px, py, bpose);
+      // Hit: a warm wash over the footprint for a moment (drawBuilding is live vector work, so it
+      // is not drawn twice).
+      const hf = this.sparkle ? this.flashOf(b.id, now) : Infinity;
+      if (hf < 1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgba(255,236,200,${0.2 * (1 - hf)})`;
+        ctx.fillRect(px + 2, py + 2, spec.w * TILE - 4, spec.h * TILE - 4);
+        ctx.globalCompositeOperation = 'source-over';
+      }
       if (frac < 0.5 && Math.random() < dt * (frac < 0.25 ? 14 : 6)) {
         this.fx.smoke(px + Math.random() * spec.w * TILE, py + Math.random() * spec.h * TILE * 0.6, 1.6);
         if (frac < 0.25 && Math.random() < 0.6) this.fx.fire(px + TILE * 0.3 + Math.random() * (spec.w - 0.6) * TILE, py + Math.random() * spec.h * TILE * 0.7);
       }
       const selected = ov.selected.has(b.id);
+      const ghost = this.ghostOf(b.id, frac, now);
       if (selected || ov.hover === b.id) {
-        brackets(ctx, px - 2, py - 2, spec.w * TILE + 4, spec.h * TILE + 4, b.owner === 0 ? ART.select : ART.selectEnemy);
-        hpBar(ctx, px + 4, py - 7, spec.w * TILE - 8, frac);
-      } else if (frac < 1 && b.owner === 0) {
-        hpBar(ctx, px + 4, py - 6, spec.w * TILE - 8, frac, true);
+        const o = 2 + 6 * (1 - this.settle(b.id, now));
+        brackets(ctx, px - o, py - o, spec.w * TILE + o * 2, spec.h * TILE + o * 2, b.owner === 0 ? ART.select : ART.selectEnemy);
+        hpBar(ctx, px + 4, py - 7, spec.w * TILE - 8, frac, false, ghost);
+      } else if ((frac < 1 && b.owner === 0) || this.hitWithin(b.id, now, 1200)) {
+        hpBar(ctx, px + 4, py - 6, spec.w * TILE - 8, frac, true, ghost);
       }
       if (b.repairing) {
         ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 6);
@@ -530,22 +698,43 @@ export class Renderer {
       const r = UNITS[u.kind].category === 'infantry' ? 7 : u.kind === 'bastion' ? 22 : 15;
       ctx.drawImage(contact, x - r * 1.15 + 1.5, y - r * 0.72 + 2.5, r * 2.3, r * 1.44);
     }
-    for (const { u, x, y } of drawn) {
-      const spec = UNITS[u.kind];
-      const r = spec.category === 'infantry' ? 8 : u.kind === 'bastion' ? 20 : 14;
-      if (ov.selected.has(u.id) || ov.hover === u.id) {
-        // A faint pool of the selection colour on the ground, ringed.
-        const col = u.owner === 0 ? ART.select : ART.selectEnemy;
+    // Selection rings: a faint pool of the selection colour on the ground, ringed by four arcs
+    // with a dark edge under them, settling in from a little wider when first selected. Batched
+    // into one path per colour, so a hundred selected units cost a handful of strokes.
+    for (let pass = 0; pass < 2; pass++) {
+      const own = pass === 0;
+      const col = own ? ART.select : ART.selectEnemy;
+      let any = false;
+      for (const { u } of drawn)
+        if ((u.owner === 0) === own && (ov.selected.has(u.id) || ov.hover === u.id)) {
+          any = true;
+          break;
+        }
+      if (!any) continue;
+      const ring = (arcs: boolean, grow: number) => {
         ctx.beginPath();
-        ctx.ellipse(x, y + 2, r + 1, (r + 1) * 0.7, 0, 0, Math.PI * 2);
-        ctx.fillStyle = col;
-        ctx.globalAlpha = 0.13;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-      }
+        for (const { u, x, y } of drawn) {
+          if ((u.owner === 0) !== own || !(ov.selected.has(u.id) || ov.hover === u.id)) continue;
+          const spec = UNITS[u.kind];
+          const r0 = (spec.category === 'infantry' ? 8 : u.kind === 'bastion' ? 20 : 14) + 1;
+          const k = this.settle(u.id, now);
+          const r = r0 * (1 + 0.35 * (1 - k)) + grow;
+          ellipsePath(ctx, x, y + 2, r, r * 0.7, arcs);
+        }
+      };
+      ring(false, 0);
+      ctx.fillStyle = col;
+      ctx.globalAlpha = 0.13;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ring(true, 0.6);
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 2.8;
+      ctx.stroke();
+      ring(true, 0.6);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
     }
     for (const { u, x, y } of drawn) {
       const p = prevById.get(u.id) ?? u;
@@ -579,6 +768,15 @@ export class Renderer {
       const cloaked = (u.kind === 'spy' || !!spec.stealth) && u.owner === 0;
       if (cloaked) ctx.globalAlpha = 0.55;
       drawUnit(ctx, u.kind, u.owner, x, y, upose);
+      // Hit: the same stamp again, added on top for a moment, so the unit under fire flashes.
+      const hf = this.sparkle ? this.flashOf(u.id, now) : Infinity;
+      if (hf < 1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (cloaked ? 0.4 : 0.7) * (1 - hf);
+        drawUnit(ctx, u.kind, u.owner, x, y, upose);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
       if (cloaked) ctx.globalAlpha = 1;
       if (spec.category === 'vehicle' && moving) {
         this.scars?.track(u, x, y, this.fx, dt);
@@ -599,8 +797,9 @@ export class Renderer {
       const spec = UNITS[u.kind];
       const frac = u.hp / maxHpOf(u);
       const r = spec.category === 'infantry' ? 9 : u.kind === 'bastion' ? 20 : 14;
-      if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - r, y - r - 7, r * 2, frac);
-      else if (frac < 1) hpBar(ctx, x - r, y - r - 5, r * 2, frac, true);
+      const ghost = this.ghostOf(u.id, frac, now);
+      if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - r, this.barY(x - r, y - r - 8, r * 2), r * 2, frac, false, ghost);
+      else if (frac < 1 || this.hitWithin(u.id, now, 1200)) hpBar(ctx, x - r, this.barY(x - r, y - r - 6, r * 2), r * 2, frac, true, ghost);
       if (u.kind === 'hauler' && ov.selected.has(u.id)) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(x - r, y - r - 3, r * 2, 2.5);
@@ -619,7 +818,7 @@ export class Renderer {
 
     // 5b. Aircraft, in one pass over every ground unit: the shadow on the ground, then the craft
     // lifted above it with its rotor turning or a contrail behind it.
-    this.aircraft(ctx, cur, prevById, aloft, ov, alpha, t, dt);
+    this.aircraft(ctx, cur, prevById, aloft, ov, alpha, t, dt, now);
 
     // 6. Shells, grenades, rockets and missiles in flight.
     let byId: Map<number, Unit> | null = null;
@@ -731,11 +930,71 @@ export class Renderer {
           ctx.fillStyle = '#fff1b8';
           ctx.fillRect(x - 1, y - lift - 1, 2, 2);
         }
-      } else {
-        ctx.fillStyle = '#ffe9b0';
+      } else if (p.weapon === 'torpedo') {
+        // Running just under the surface: a dark shape along its heading and a wake behind it.
+        const ang = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
+        ctx.fillStyle = 'rgba(10,25,35,0.55)';
         ctx.beginPath();
-        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.ellipse(x, y, 4.5, 1.4, ang, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(225,245,248,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(ang) * 5, y + Math.sin(ang) * 5);
+        ctx.lineTo(x - Math.cos(ang) * (this.sparkle ? 14 : 7), y - Math.sin(ang) * (this.sparkle ? 14 : 7));
+        ctx.stroke();
+        if (this.sparkle && Math.random() < dt * 14) this.fx.wake(x - Math.cos(ang) * 6, y - Math.sin(ang) * 6, ang);
+      } else if (p.weapon === 'rail') {
+        // A rail slug: a hard white line from the gun to the slug, haloed, while it is in flight.
+        const x0 = p.fromX * TILE;
+        const y0 = p.fromY * TILE;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(140,220,255,0.35)';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(245,252,255,0.95)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(sprites().light, x - 6, y - 6, 12, 12);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        // A tank shell: a hot tracer with a tapering trail and a little light at its head. Under
+        // reduced motion the trail is shorter; the tracer itself stays, since it is information.
+        const f0 = Math.max(0, f - (this.sparkle ? 0.18 : 0.08));
+        let tx = (p.fromX + (p.toX - p.fromX) * f0) * TILE;
+        let ty = (p.fromY + (p.toY - p.fromY) * f0) * TILE;
+        const len = Math.hypot(x - tx, y - ty);
+        const most = this.sparkle ? 26 : 12;
+        if (len > most) {
+          tx = x + ((tx - x) * most) / len;
+          ty = y + ((ty - y) * most) / len;
+        }
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,170,70,0.35)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,240,200,0.95)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo((tx + x) / 2, (ty + y) / 2);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(sprites().light, x - 5, y - 5, 10, 10);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
       }
     }
 
@@ -754,7 +1013,13 @@ export class Renderer {
       if (!this.seen.has(e.id)) {
         this.seen.add(e.id);
         if (e.kind === 'boom' && (e.weapon === 'flak' || e.weapon === 'aamissile')) this.flakBurst(x, y, e.weapon === 'aamissile');
-        else if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
+        else if (e.kind === 'boom') {
+          this.burst(x, y, e.size, e.weapon);
+          if (e.size < 0.5 && e.weapon !== 'flame' && e.weapon !== 'artillery' && e.weapon !== 'missile' && e.weapon !== 'torpedo') {
+            const dir = shotInto(cur, e.x, e.y);
+            this.fx.impact(x, y, dir.x, dir.y);
+          }
+        }
         if (e.kind === 'bomb') this.burst(x, y, 1, 'bomb');
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
         if (e.kind === 'repair') for (let i = 0; i < 4; i++) this.fx.spark(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8);
@@ -866,14 +1131,35 @@ export class Renderer {
     this.fx.step(dt);
     this.fx.drawAir(ctx, inView);
 
-    // 9. Order pings.
+    // 9. Order pings: a target marker, two rings closing in one after the other round four short
+    // inward ticks. With motion off the marker holds still and fades.
     ov.pings = ov.pings.filter(p => now - p.at < 600);
     for (const p of ov.pings) {
       const f = (now - p.at) / 600;
-      ctx.strokeStyle = p.kind === 'attack' ? `rgba(255,110,90,${1 - f})` : `rgba(125,255,138,${1 - f})`;
+      const rgb = p.kind === 'attack' ? '255,110,90' : '125,255,138';
+      const px = p.x * TILE;
+      const py = p.y * TILE;
+      const a = 1 - f;
       ctx.lineWidth = 2;
+      for (let i = 0; i < 2; i++) {
+        const g = this.sparkle ? Math.min(1, Math.max(0, (now - p.at - i * 120) / 480)) : 0.6;
+        if (this.sparkle && now - p.at < i * 120) continue;
+        const R = 14 * (1 - g) + 4;
+        ctx.strokeStyle = `rgba(${rgb},${a * (i ? 0.55 : 1)})`;
+        ctx.beginPath();
+        ctx.ellipse(px, py, R, R * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const R = 9 + 5 * (this.sparkle ? 1 - f : 0.5);
+      ctx.strokeStyle = `rgba(${rgb},${a})`;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.ellipse(p.x * TILE, p.y * TILE, 12 * (1 - f) + 3, (12 * (1 - f) + 3) * 0.7, 0, 0, Math.PI * 2);
+      for (let i = 0; i < 4; i++) {
+        const c = Math.cos((i * Math.PI) / 2);
+        const sn = Math.sin((i * Math.PI) / 2) * 0.7;
+        ctx.moveTo(px + c * R, py + sn * R);
+        ctx.lineTo(px + c * (R - 4), py + sn * (R - 4));
+      }
       ctx.stroke();
     }
 
@@ -883,14 +1169,19 @@ export class Renderer {
     // The fog's own alpha is softened over a tile each way and cached per state (fogAlpha), so its
     // edge is a rounded gradient rather than a staircase of tiles. ('high' smoothing on the scale
     // looked no better and cost frames on a machine without a GPU.)
+    // Remembered ground is tinted a cool slate (FOG_MEMORY), never-seen ground keeps ART.fog's
+    // near-black, blended by fogMix so the boundary between them is as soft as the fog's own edge.
     const d = this.fogImg.data;
     const [fr, fg, fb] = ART.fog;
+    const [mr, mg, mb] = FOG_MEMORY;
     const shade = this.atmosphere.shade(t, cam, tx0, ty0, tx1, ty1);
     const fa = this.fogAlpha(cur, vis);
+    const fm = this.fogMix;
     for (let k = 0; k < MAP_W * MAP_H; k++) {
-      d[k * 4] = fr;
-      d[k * 4 + 1] = fg;
-      d[k * 4 + 2] = fb;
+      const m = fm[k];
+      d[k * 4] = mr + (((fr - mr) * m) >> 8);
+      d[k * 4 + 1] = mg + (((fg - mg) * m) >> 8);
+      d[k * 4 + 2] = mb + (((fb - mb) * m) >> 8);
       const a = fa[k];
       d[k * 4 + 3] = 255 - ((255 - a) * (255 - shade[k])) / 255;
     }
@@ -1012,7 +1303,11 @@ export class Renderer {
                 ? 'artillery'
                 : e.weapon === 'flame'
                   ? 'flame'
-                  : 'shell';
+                  : e.weapon === 'rail'
+                    ? 'rail'
+                    : e.weapon === 'torpedo'
+                      ? 'torpedo'
+                      : 'shell';
     } else if (e.kind === 'sold') kind = 'sold';
     else if (e.kind === 'boom' && e.weapon === 'missile') kind = 'missileImpact';
     else if (e.kind === 'boom' && e.weapon === 'flame') return;
@@ -1029,7 +1324,9 @@ export class Renderer {
     const inView = sx >= 0 && sy >= 0 && sx <= cam.w && sy <= cam.h;
     const dTiles = Math.hypot(sx - half, sy - cam.h / 2) / (TILE * cam.zoom);
     gain *= radio && (kind === 'missileLaunch' || kind === 'missileImpact') ? 1 : Math.max(0.12, Math.min(1, 1.15 - dTiles / 30)) * (inView ? 1 : 0.45);
-    sound.play(kind, pan, gain);
+    // Far fights are muffled as well as quieter; calls on the radio stay crisp.
+    const far = radio ? 0 : Math.min(1, Math.max(0, (dTiles - 6) / 24) * (inView ? 1 : 1.2));
+    sound.play(kind, pan, gain, far);
   }
 
   /** A flak or anti-air missile burst in the air: a few sparks and a little smoke, no scorch on the ground. */
@@ -1052,6 +1349,7 @@ export class Renderer {
     alpha: number,
     t: number,
     dt: number,
+    now: number,
   ) {
     const lift = AIR_LIFT * TILE;
     for (const { u, x, y } of aloft) {
@@ -1077,15 +1375,27 @@ export class Renderer {
         firing: sinceShot < FIRING_WINDOW,
       };
       if (ov.selected.has(u.id) || ov.hover === u.id) {
-        ctx.strokeStyle = u.owner === 0 ? ART.select : ART.selectEnemy;
-        ctx.lineWidth = 1.4;
+        const k = 1 + 0.35 * (1 - this.settle(u.id, now));
         ctx.beginPath();
-        ctx.ellipse(x, y - lift, 18, 13, 0, 0, Math.PI * 2);
+        ellipsePath(ctx, x, y - lift, 18 * k, 13 * k, true);
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = 2.8;
+        ctx.stroke();
+        ctx.strokeStyle = u.owner === 0 ? ART.select : ART.selectEnemy;
+        ctx.lineWidth = 1.6;
         ctx.stroke();
       }
       // Parked on its pad it sits low; in flight it rides AIR_LIFT above its shadow.
       const h = !moving && u.order.type === 'rearm' ? lift * 0.3 : lift;
       drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
+      const hf = this.sparkle ? this.flashOf(u.id, now) : Infinity;
+      if (hf < 1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.7 * (1 - hf);
+        drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
       if (UNITS[u.kind].airRole === 'bomb' && moving && Math.random() < dt * 30) {
         // Contrails from the outer engines.
         for (const side of [-1, 1]) {
@@ -1103,8 +1413,9 @@ export class Renderer {
     for (const { u, x, y } of aloft) {
       const frac = u.hp / maxHpOf(u);
       const top = y - lift - 20;
-      if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - 14, top, 28, frac);
-      else if (frac < 1) hpBar(ctx, x - 14, top + 2, 28, frac, true);
+      const ghost = this.ghostOf(u.id, frac, now);
+      if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - 14, top, 28, frac, false, ghost);
+      else if (frac < 1 || this.hitWithin(u.id, now, 1200)) hpBar(ctx, x - 14, top + 2, 28, frac, true, ghost);
       if (u.owner === 0 && ov.selected.has(u.id) && AIR_AMMO[u.kind]) {
         // Ammunition under the health bar.
         const share = (u.ammo ?? 0) / (AIR_AMMO[u.kind] ?? 1);
@@ -1408,16 +1719,44 @@ function brackets(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
 }
 
 /**
+ * An ellipse, whole or as four arcs of 60 degrees on the diagonals (a selection ring's
+ * ticks), added to the current path. Starts each piece with moveTo, so many can share one path.
+ */
+function ellipsePath(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, arcs: boolean) {
+  if (!arcs) {
+    ctx.moveTo(x + rx, y);
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    return;
+  }
+  const half = (30 * Math.PI) / 180;
+  for (let i = 0; i < 4; i++) {
+    const c = Math.PI / 4 + (i * Math.PI) / 2;
+    const a0 = c - half;
+    ctx.moveTo(x + Math.cos(a0) * rx, y + Math.sin(a0) * ry);
+    ctx.ellipse(x, y, rx, ry, 0, a0, c + half);
+  }
+}
+
+/**
  * A health bar: a dark case, the fill in good, middling or bad, a pale top edge on the fill so it
  * reads as lit like everything else, and a notch every quarter so a glance tells how much is gone.
  */
-function hpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, thin = false) {
+function hpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, thin = false, ghost = frac) {
   const h = thin ? 2 : 3.5;
   const f = Math.max(0, Math.min(1, frac));
+  // A soft drop shadow, then the dark case.
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(x, y + 1, w + 2, h + 2);
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
   ctx.fillRect(x, y, w, h);
+  // The health just lost, pale, draining down to the fill (see Renderer.ghostOf).
+  const g = Math.max(f, Math.min(1, ghost));
+  if (g > f + 0.002) {
+    ctx.fillStyle = 'rgba(255,240,220,0.85)';
+    ctx.fillRect(x + w * f, y, w * (g - f), h);
+  }
   ctx.fillStyle = f > 0.6 ? ART.hpGood : f > 0.3 ? ART.hpMid : ART.hpBad;
   ctx.fillRect(x, y, w * f, h);
   if (thin || w < 12) return;
@@ -1473,6 +1812,18 @@ function groupBadge(ctx: CanvasRenderingContext2D, x: number, y: number, digit: 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(digit), x, y + 4.8);
+}
+
+/** The direction (tiles, unnormalised) of the shot that landed at x, y: the newest muzzle aimed there. */
+const NO_DIR = { x: 0, y: 0 };
+function shotInto(s: GameState, x: number, y: number): { x: number; y: number } {
+  let best: Effect | null = null;
+  for (const e of s.effects) {
+    if (e.kind !== 'muzzle' || e.x2 === undefined || e.y2 === undefined) continue;
+    if (Math.abs(e.x2 - x) > 0.8 || Math.abs(e.y2 - y) > 0.8) continue;
+    if (!best || e.at > best.at) best = e;
+  }
+  return best ? { x: (best.x2 ?? best.x) - best.x, y: (best.y2 ?? best.y) - best.y } : NO_DIR;
 }
 
 /** Whether a Grenadier stands where a shot came from: its throw sounds unlike a howitzer. */
