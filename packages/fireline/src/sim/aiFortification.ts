@@ -7,19 +7,20 @@
  *  - Research: Reinforced concrete, then Hardened shelters, then a doctrine: Counter-battery when more
  *    than twice as much of the fire came from guns on the ground as from the air and support powers,
  *    and it has two Artillery or more to answer them with; Point Defence otherwise.
- *  - Point Defence emplacements while it is being shelled, up to two (Normal) or three (Hard), each
- *    beside the structure last hit, or the nearest core structure no emplacement yet covers.
+ *  - Point Defence emplacements while it is being shelled and the map still has ore, up to two
+ *    (Normal) or three (Hard), each beside the structure last hit, or the nearest core structure no
+ *    emplacement yet covers. Broke, it sells them (aiAir.ts, recover and lastStand).
  */
 import { dist } from './grid';
 import { doDoctrine, doctrineProblem } from './research';
-import { POINT_DEFENCE_RADIUS, UPGRADES, type BuildingKind, type Difficulty, type Owner, type UpgradeId } from './rules';
+import { PACED_ORE_FLOOR, POINT_DEFENCE_RADIUS, UPGRADES, type BuildingKind, type Difficulty, type Owner, type UpgradeId } from './rules';
 import { fortificationOn } from './fortify';
 import { countBuildings, paceOf } from './state';
 import { buildingSpecOf } from './specs';
 import type { GameState } from './types';
 
 /** Blasts on its structures before the commander turns to the line. */
-export const FORT_PRESSURE_MIN = 6;
+export const FORT_PRESSURE_MIN = 20;
 /** Ticks since the last blast within which it still counts as being shelled (for Point Defence). */
 export const FORT_RECENT = 900;
 /** Point Defence emplacements the commander keeps, by difficulty. */
@@ -68,8 +69,11 @@ export function fortificationNext(s: GameState, owner: Owner, diff: Difficulty):
 }
 
 /** True when the commander wants another Point Defence emplacement now. */
-export function wantsPointDefence(s: GameState, owner: Owner, diff: Difficulty): boolean {
+export function wantsPointDefence(s: GameState, owner: Owner, diff: Difficulty, ore: number): boolean {
   if (!commanderFortifies(s, diff) || !has(s, owner, 'pointdef')) return false;
+  // Not once the map's ore is running out: the last credits go on troops (the ladder found broke
+  // sides sitting behind emplacements they had bought late, neither able to finish the other).
+  if (ore < PACED_ORE_FLOOR) return false;
   const m = s.ai[owner];
   if (m.shellTick === undefined || s.tick - m.shellTick > FORT_RECENT) return false;
   const p = s.players[owner];

@@ -76,7 +76,7 @@ function play(s: GameState, until: number, each?: (s: GameState) => void): GameS
 const strip = (k: string, v: unknown) =>
   (k === 'pace' || k === 'size') && typeof v === 'string'
     ? undefined
-    : k === 'sites' && typeof v === 'boolean'
+    : (k === 'sites' || /* round7:fortification: the toggle, which no Quick battle researches */ k === 'fortification') && typeof v === 'boolean'
       ? undefined
       : // The naval war (main's 1608d33 and 62f30b6): every player's empty Naval queue, and the
         // computer's note that there is no sea to sail, are left out too.
@@ -522,7 +522,9 @@ function computer(ok: Ok): void {
 
   /** Side 1 at d, side 0 at d0 (default d), side 0's first attack scaled as the ladder does. */
   const battle = (seed: string, d: Difficulty, setup: Partial<SkirmishSetup>, d0: Difficulty = d): GameState => {
-    const s = createInitialState(seed, seed, { seed, difficulty: d, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', ...setup } });
+    // round7:fortification: these battles check round 6's paced lists, so the Fortification line is stated off
+    // (drive-fortification.ts checks the commander with it on).
+    const s = createInitialState(seed, seed, { seed, difficulty: d, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', fortification: false, ...setup } });
     s.autopilotDifficulty = d0;
     s.ai[0].nextAttack = difficultyForPace(d0, s.setup!.pace).firstAttack;
     return s;

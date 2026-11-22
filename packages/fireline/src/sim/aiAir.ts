@@ -283,7 +283,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // it. Short of the price, the commander notes what it is saving for (the hold in ai.ts reads it).
   const paced = pacedResearch(s);
   // round7:fortification begin. Point Defence while being shelled, once the doctrine is researched.
-  if (!crisis && wantsPointDefence(s, owner, diff)) queueStructure(s, owner, 'pointdefence');
+  if (!crisis && wantsPointDefence(s, owner, diff, ore)) queueStructure(s, owner, 'pointdefence');
   // round7:fortification end.
   if (paced) {
     delete mem.researchFor;
@@ -390,7 +390,7 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
   if (armed > 0 || p.queues.building.length) return;
   if (p.credits < 300) {
     const flying = s.units.some(u => u.owner === owner && isAir(u));
-    const spare = s.buildings.find(b => b.owner === owner && (b.kind === 'researchlab' || b.kind === 'flakcannon' || (b.kind === 'helipad' && !flying)));
+    const spare = s.buildings.find(b => b.owner === owner && (b.kind === 'researchlab' || b.kind === 'flakcannon' || /* round7:fortification */ b.kind === 'pointdefence' || (b.kind === 'helipad' && !flying)));
     if (spare) {
       doSell(s, owner, spare.id);
       return;
@@ -422,6 +422,8 @@ function recover(s: GameState, owner: Owner, armed: number): void {
     ['helipad', !flying],
     ['shipyard', !sailing],
     ['flakcannon', true],
+    // round7:fortification: a Point Defence emplacement wins nothing back.
+    ['pointdefence', true],
     ['techcentre', true],
     ['strikecommand', true],
     ['repairbay', true],

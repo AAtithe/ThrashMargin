@@ -134,7 +134,7 @@ Epic paces only; Easy never.
 - Fire on its structures is counted while the line is in play on Long or Epic (`notePressure`,
   from `hurt()`): blasts from guns on the ground (Artillery, a Missile Carrier, a Battleship) and from
   above (bombs, the barrage, the missile strike), with the tick and place of the last.
-- Once six blasts have landed, the line goes ahead of its paced list: Reinforced concrete, then
+- Once twenty blasts have landed, the line goes ahead of its paced list: Reinforced concrete, then
   Hardened shelters, then the doctrine, adopted as it goes. Counter-battery when more than twice as
   much fire came from the ground as from above and it has two Artillery or more to answer with;
   Point Defence otherwise.

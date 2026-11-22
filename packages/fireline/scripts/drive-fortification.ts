@@ -593,14 +593,15 @@ function replayAndAi(ok: Ok): void {
   s.ai[1].shellTick = s.tick;
   s.ai[1].shellX = 20;
   s.ai[1].shellY = 20;
-  ok(wantsPointDefence(s, 1, 'hard') && !wantsPointDefence(s, 1, 'easy'), 'shelled, with the doctrine: wants an emplacement');
+  ok(wantsPointDefence(s, 1, 'hard', 50000) && !wantsPointDefence(s, 1, 'easy', 50000), 'shelled, with the doctrine: wants an emplacement');
+  ok(!wantsPointDefence(s, 1, 'hard', 1000), 'but not once the map\'s ore is running out');
   const f = pointDefenceFocus(s, 1);
   ok(!!f && f.x === 20 && f.y === 20, 'placed beside the structure last hit');
   for (let i = 0; i < 3; i++) addBuilding(s, 1, 'pointdefence', 30 + 3 * i, 30, -100);
-  ok(!wantsPointDefence(s, 1, 'hard'), 'Hard keeps three emplacements at most');
+  ok(!wantsPointDefence(s, 1, 'hard', 50000), 'Hard keeps three emplacements at most');
   const old = copy(s);
   old.tick += 2000;
-  ok(!wantsPointDefence(old, 1, 'normal'), 'no longer being shelled: no more');
+  ok(!wantsPointDefence(old, 1, 'normal', 50000), 'no longer being shelled: no more');
 
   // Whole battles: Hard against Normal on Long with the line, the computer on both sides.
   let researched = 0;
