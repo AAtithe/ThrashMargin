@@ -626,18 +626,22 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Fortification: replay, saves and the computer', replayAndAi],
 ];
 
-// Run on its own: npx tsx scripts/drive-fortification.ts
+// Run on its own: npx tsx scripts/drive-fortification.ts [--verbose] [part of a section's name]
 if (process.argv[1] && process.argv[1].endsWith('drive-fortification.ts')) {
+  const verbose = process.argv.includes('--verbose');
+  const only = process.argv.slice(2).find(a => !a.startsWith('--'));
   let n = 0;
   let failed = 0;
   const ok: Ok = (cond, what) => {
     n++;
+    if (verbose && cond) console.log(`  ok ${what}`);
     if (!cond) {
       failed++;
       console.log(`  FAIL ${what}`);
     }
   };
   for (const [name, fn] of sections) {
+    if (only && !name.includes(only)) continue;
     const t0 = Date.now();
     console.log(name);
     fn(ok);
