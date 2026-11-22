@@ -152,7 +152,7 @@ export function startIndustry(s: GameState): void {
  * One tick of industry: every Fuel Well pumps and every Foundry smelts, on its own beat (its id
  * offsets it), half as often for a side short of power. `low[owner]` is true for a side short of power.
  */
-export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: ReadonlySet<number> = NO_CUT): void {
+export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: ReadonlySet<number> = NO_CUT, idle: ReadonlySet<number> = NO_CUT): void {
   if (!industryOn(s)) return;
   for (const b of s.buildings) {
     if (b.hp <= 0 || (b.kind !== 'fuelwell' && b.kind !== 'foundry')) continue;
@@ -160,6 +160,8 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
     if (!p) continue;
     const beat = (b.kind === 'fuelwell' ? FUEL_WELL_TICKS : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1);
     if ((s.tick + b.id) % beat !== 0) continue;
+    // Territory and workforce: without its crew it does nothing at all.
+    if (idle.has(b.id)) continue;
     // Supply lines (supply.ts): a cut-off well pumps into its own tank, a cut-off Foundry stops.
     const isCut = cut.has(b.id);
     if (b.kind === 'fuelwell') {

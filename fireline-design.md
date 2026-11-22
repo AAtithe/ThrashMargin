@@ -2765,3 +2765,68 @@ a skirmish, so the panel is not in it; the touch guard is what covers it). `npm 
 fireline`: 27/27. `npm run check`: "All checks passed" (Fireline drive 401,690 assertions, campaign-check
 7,699, drive:planet 35,255). Left open: a tablet keeps the desktop's small Hide and Show
 (`fireline-improvements.md`).
+
+### 2026-11-21: Territory and workforce (phase 3 of the economy)
+
+The player asked for phase 3 once phases 1 and 2 had merged (pull request 55).
+
+- **The toggle.** `setup.territory` ("Territory and workforce", in the customise step under Supply
+  lines, disabled until Industry and Supply lines are both on; in the orders summary when they are).
+  `normaliseSetup` turns it off without supply lines; absent on older setups. Phases 1 and 2 alone
+  play exactly as before. Nothing new is stored in a save: territory and crews are computed from the
+  structures standing (`src/sim/territory.ts`).
+- **Territory.** Command Yards (11 tiles), Field Yards (9), Watchtowers (8) and Depots (5) claim the
+  ground round their centres (`CLAIM_RADIUS`). Each tile goes to the side of the nearest claim; a tie
+  between sides is nobody's. A structure may be placed only where every tile of its footprint is
+  yours, in place of the build radius. A Forward Base Truck still deploys anywhere (its placement
+  was always `anywhere`) and claims ground round it. The grid is remembered against a key of every
+  claim, so placement can ask hundreds of times a decision without recomputing it.
+- **Workforce.** Command Yards house 12 workers, Field Yards 6, Quarters 8 (`HOUSING`). Refinery 3,
+  Fuel Well 2, Foundry 3, War Factory 4, Barracks 2, Helipad 2, Naval Yard 3 (`CREW`) need a crew,
+  assigned in that order (`CREW_ORDER`, economy first), lowest id first within a kind. Without one a
+  structure stops: a producer builds nothing (the same check as a Spy's sabotage), a Fuel Well or
+  Foundry does nothing, and a Refinery takes no ore (its haulers look for another).
+- **New structures.** Watchtower (1x1, 450, -5 power, needs a Barracks, a light machine gun) and
+  Quarters (2x2, 350, -5 power). Art: a timber tower with a team pennant and a turning gun; two rows
+  of huts with team roofs and lit windows.
+- **Screen.** Your borders as a dashed blue line, the enemy's in red over ground you have seen,
+  allies' in green; a NO CREW badge over a structure without its crew; "Workers wanted/housed" and
+  an "N no crew" chip in the Industry gauge; a crew note in the selection panel; the placement ghost
+  refuses ground outside your borders with "Outside your territory". How to play has a Territory and
+  workforce section, every number read from `rules.ts`.
+- **The computer.** Quarters before any structure whose crew would not be housed, and at once when
+  something stands without one. A Watchtower when the structure it wants has no room inside its
+  borders. And, with supply lines or territory, when no field it may use is left for a Fuel Well, it
+  pushes out one step toward the nearest rich field: a Watchtower when the field is outside its
+  borders, a Depot when it is outside its supply (`expansionStep`, `aiEconomy.ts`). This last also
+  changes phase 2 play, closing the gap phase 2's entry named (the computer never pushing its lines
+  out).
+- **Tuning: the opponent that would not expand, then expanded too much.** The first read found
+  battles undecided far more often than usual. In them the home field had run out, no Fuel Well could
+  stand inside the borders and the supply, so there was no fuel, no alloys and no vehicles, and both
+  sides ground on with infantry until the map was mined out. The push-out step fixed that, then
+  overspent: in one battle 7 Watchtowers and 5 Depots, about 5,600 credits, and at minute 8 the
+  new commander fielded a sixth of the old one's army (the old commander, which ignores the whole
+  economy, won 73%). Three limits followed: expanding is an extra that waits for the army at home,
+  like the Tech Centre; at most 3 Watchtowers and 3 Depots for it; and only toward a field one step
+  beyond its current claims.
+- **Ladder** (`--territory`, 150 seeds, seat 0 wins; classic / supply lines / territory): Hard v
+  Normal 47% / 42% / 41%; Normal v Hard 15% / 12% / 15%; new Normal v previous Normal 65% / 71% /
+  49%. Supply lines alone, measured again after the push-out step: Hard v Normal 37%, Normal v Hard
+  17%, new v previous Normal 61%, Normal v Normal 41%. Every row within the noise 150 seeds allow.
+  Read plainly: with territory on, using the economy now breaks even against ignoring it; it no
+  longer loses (25% before the limits), but it does not yet win. That is the open tuning item.
+- **Checks.** `scripts/drive-territory.ts`, six sections in `npm run drive` (31 assertions): the
+  setup, borders (a claim's reach, a Watchtower pushing out, the nearer claim winning, a tie being
+  nobody's, ground given up when a claim falls), building inside the borders and outside, crews
+  (economy first, a Barracks without one training nothing and training again once housed, a
+  Refinery without one turning its hauler away), four whole battles (Quarters built, something idle
+  under 10% of the time, every battle decided or mined out) and replays. The supply-lines battle test
+  plays `sup-e` in place of `sup-c`: with the computer pushing its lines out, `sup-c` became two
+  turtled bases neither side could break, still undecided at 100 minutes; the ladder shows such
+  battles at 0 to 3 in 150, before and after. The hand-kept lists of setup fields and menu endings
+  name the new ones, and the build-window tour (pull request 55) already expected them absent with
+  the toggle off. `npm run check` all passed bar that seed (now passing), `check:ui fireline` 32 of
+  32, the Fireline tour ok. In Chromium: a battle ten minutes in with dashed borders, a Watchtower
+  and Depot out toward a field, NO CREW over a War Factory and Barracks once a Quarters was removed,
+  and the gauge reading "2 no crew" and "Workers 17/12"; no console errors.

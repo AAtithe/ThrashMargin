@@ -35,6 +35,10 @@ import {
   SUPPLY_SERVE_RANGE,
   SUPPLY_TICKS,
   WELL_HOLD,
+  CLAIM_RADIUS,
+  CREW,
+  CREW_ORDER,
+  HOUSING,
 } from '../sim/rules';
 // round6:B. Heroes in free play: its panel's numbers.
 import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
@@ -320,6 +324,8 @@ export default function HowToPlay() {
         <IndustryPanel />
         {/* Supply lines (2026-11-21): its panel goes on the line below. */}
         <SupplyPanel />
+        {/* Territory and workforce (2026-11-21): its panel goes on the line below. */}
+        <TerritoryPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -553,6 +559,7 @@ const SECTIONS = [
   'Generals',
   'Industry',
   'Supply lines',
+  'Territory and workforce',
   'Formations and groups',
   'Campaign',
   'War for the Planet',
@@ -677,6 +684,36 @@ function IndustryPanel() {
           {INDUSTRY_START_FUEL} fuel.
         </li>
         <li>The computer builds the same chain right after its first War Factory: one Fuel Well and one Foundry, at every level.</li>
+      </ul>
+    </Section>
+  );
+}
+
+// Territory and workforce (2026-11-21): the panel, from the same numbers the battle reads.
+function TerritoryPanel() {
+  const name = (k: string) => BUILDINGS[k as keyof typeof BUILDINGS].name;
+  return (
+    <Section title="Territory and workforce">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Territory and workforce</strong> in the lobby (it needs Industry and Supply lines). Your borders show as a
+          dashed blue line, the enemy's in red where you have seen them.
+        </li>
+        <li>
+          Ground is claimed by {Object.entries(CLAIM_RADIUS).map(([k, r]) => `a ${name(k)} (${r} tiles)`).join(', ')}. Where claims
+          meet, each tile goes to the nearest claim, so a Watchtower near the enemy pushes their border back. You may build only where
+          every tile of the footprint is yours; a Forward Base Truck still deploys anywhere and claims ground round it.
+        </li>
+        <li>
+          Workers live in {Object.entries(HOUSING).map(([k, n]) => `a ${name(k)} (${n})`).join(', ')}. Structures need a crew to work:{' '}
+          {CREW_ORDER.map(k => `${name(k)} ${CREW[k]}`).join(', ')}. Crews go out in that order, so your economy is staffed first; a
+          structure without a crew shows NO CREW and stops until workers are housed for it. The Industry gauge shows workers wanted
+          against workers housed.
+        </li>
+        <li>
+          The computer plays by the same rules: it builds Quarters before it runs short, and a Watchtower, or a Depot, toward the next
+          rich field when its own runs out. Its Quarters and Watchtowers are worth hunting.
+        </li>
       </ul>
     </Section>
   );

@@ -65,6 +65,13 @@ import { GeneralsSetup } from './Generals';
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
 
+/** What the Territory and workforce field says. */
+function territoryNote(setup: SkirmishSetup): string {
+  if (!setup.industry || !setup.supply) return 'Needs Industry and Supply lines on.';
+  if (!setup.territory) return 'Off: build anywhere near your structures; every structure works.';
+  return 'On: you build only inside your borders, which your yards, Depots and Watchtowers claim, and the nearer claim wins where borders meet. Refineries, Fuel Wells, Foundries, Barracks, War Factories, Helipads and Naval Yards need workers from your yards and Quarters; without a crew they stop.';
+}
+
 /** What the Supply lines field says. */
 function supplyNote(setup: SkirmishSetup): string {
   if (!setup.industry) return 'Needs Industry on.';
@@ -147,6 +154,7 @@ export function readStoredSetup(): SkirmishSetup {
       generalPicks: r6.generalPicks,
       industry: r.industry === true,
       supply: r.industry === true && r.supply === true,
+      territory: r.industry === true && r.supply === true && r.territory === true,
     };
   } catch {
     return FIRST_SETUP;
@@ -477,6 +485,26 @@ export default function SkirmishSetupPanel({
               ))}
             </div>
             <p className="fl-setup-note">{supplyNote(value)}</p>
+          </div>
+          {/* Territory and workforce (2026-11-21): phase 3, needs supply lines (src/sim/territory.ts). */}
+          <div className="fl-setup-field" data-testid="territory-field">
+            <Label>Territory and workforce</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Territory and workforce">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!value.industry && !!value.supply && !!value.territory === on}
+                  disabled={!(value.industry && value.supply) && on}
+                  data-testid={`territory-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ territory: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{territoryNote(value)}</p>
           </div>
         </div>
       </SetupStep>

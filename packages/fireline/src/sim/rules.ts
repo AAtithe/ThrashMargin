@@ -182,6 +182,9 @@ export type BuildingKind =
   | 'foundry'
   // Supply lines (2026-11-21, setup.supply): the Depot.
   | 'depot'
+  // Territory and workforce (2026-11-21, setup.territory): the Watchtower and the Quarters.
+  | 'watchtower'
+  | 'quarters'
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -1077,7 +1080,35 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: [],
     blurb:
       'Supply lines on only. Relays supply: it links to a Command Yard, Field Yard or Depot within 12 tiles, and supplies every Refinery, Fuel Well and Foundry within 8 tiles. Lose one and everything beyond it is cut off.',
+  },  // Territory and workforce (2026-11-21): refused by techAllowed unless setup.territory is on (territory.ts).
+  watchtower: {
+    name: 'Watchtower',
+    w: 1,
+    h: 1,
+    cost: 450,
+    buildTicks: 60,
+    hp: 500,
+    power: -5,
+    sight: 8,
+    weapon: { kind: 'bullet', damage: 8, range: 5, cooldown: 12 },
+    requires: ['barracks'],
+    blurb:
+      'Territory on only. Claims the ground within 8 tiles for you, pushing your borders out so you can build further afield. A light machine gun. Lose it and the ground it held may pass to the enemy.',
   },
+  quarters: {
+    name: 'Quarters',
+    w: 2,
+    h: 2,
+    cost: 350,
+    buildTicks: 70,
+    hp: 500,
+    power: -5,
+    sight: 4,
+    requires: [],
+    blurb:
+      'Territory on only. Houses 8 workers. Refineries, Fuel Wells, Foundries, Barracks, War Factories, Helipads and Naval Yards each need a crew to work; without one they stop.',
+  },
+
 
 };
 
@@ -1114,6 +1145,9 @@ export const BUILD_MENU: BuildingKind[] = [
   'foundry',
   // Supply lines (2026-11-21): last, so turning it on moves no item already listed.
   'depot',
+  // Territory and workforce (2026-11-21): likewise.
+  'quarters',
+  'watchtower',
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1550,6 +1584,13 @@ export interface SkirmishSetup {
    * of Depots. Needs industry on (normaliseSetup turns it off without). Absent: off.
    */
   supply?: boolean;
+  /**
+   * Territory and workforce (2026-11-21, phase 3 of the economy; territory.ts): structures may be
+   * built only inside your borders, which your yards, Depots and Watchtowers claim; and production
+   * structures need a crew from your housing to work. Needs supply lines (normaliseSetup turns it off
+   * without). Absent: off.
+   */
+  territory?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1573,6 +1614,7 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   generalPicks: [null, null],
   industry: false,
   supply: false,
+  territory: false,
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1595,6 +1637,7 @@ export const LEGACY_SETUP: SkirmishSetup = {
   generalPicks: [null, null],
   industry: false,
   supply: false,
+  territory: false,
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -2500,3 +2543,14 @@ export const SUPPLY_FLOW_GOODS = 5;
 /** Most a cut-off Refinery holds in credits (its haulers then wait), and a cut-off Fuel Well in fuel (it then stops). */
 export const REFINERY_HOLD = 1500;
 export const WELL_HOLD = 50;
+
+// ---------------------------------------------------------------------------------------------
+// Territory and workforce (2026-11-21, setup.territory; fireline-design.md). Logic in territory.ts.
+
+/** How far each kind of structure claims ground, in tiles from its centre. Anything else claims none. */
+export const CLAIM_RADIUS: Partial<Record<BuildingKind, number>> = { hq: 11, fieldyard: 9, watchtower: 8, depot: 5 };
+/** Workers each kind houses. */
+export const HOUSING: Partial<Record<BuildingKind, number>> = { hq: 12, fieldyard: 6, quarters: 8 };
+/** Workers each kind needs to work, and the order crews are assigned in (economy first). */
+export const CREW: Partial<Record<BuildingKind, number>> = { refinery: 3, fuelwell: 2, foundry: 3, barracks: 2, factory: 4, helipad: 2, shipyard: 3 };
+export const CREW_ORDER: BuildingKind[] = ['refinery', 'fuelwell', 'foundry', 'factory', 'barracks', 'helipad', 'shipyard'];

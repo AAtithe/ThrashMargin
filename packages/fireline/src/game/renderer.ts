@@ -1,7 +1,10 @@
 import { dockTile } from '../sim/grid';
 import { centreOf, cutOff, isProducer, linkedHubs, supplyOn } from '../sim/supply';
 import { SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE } from '../sim/rules';
-import { drawCutBadge, drawSupplyLines } from './art';
+import { drawBadge, drawBorders, drawCutBadge, drawSupplyLines } from './art';
+import { territoryGrid, territoryOn, unstaffed } from '../sim/territory';
+import { isAlly } from '../sim/sides';
+import type { Owner } from '../sim/rules';
 import { alloyStore, fuelStore, industryOn, wellDry } from '../sim/industry';
 import { FOUNDRY_ALLOYS, FOUNDRY_CREDITS, FOUNDRY_FUEL, FOUNDRY_RESERVE } from '../sim/rules';
 import { cargoMaxOf } from '../sim/loadout';
@@ -382,6 +385,15 @@ export class Renderer {
       this.sparkle = currentPace() !== 'off';
     }
     drawOreField(ctx, cur.ore, explored, MAP_W, tx0, ty0, tx1, ty1, t, this.sparkle);
+    // Territory and workforce (2026-11-21): your borders, and the enemy's where you have seen them.
+    if (territoryOn(cur)) {
+      const grid = territoryGrid(cur);
+      const seen = new Int8Array(grid.length);
+      for (let k = 0; k < grid.length; k++) seen[k] = grid[k] === 0 || (grid[k] > 0 && explored.charCodeAt(k) === 49) ? grid[k] : -1;
+      drawBorders(ctx, seen, MAP_W, Math.max(0, tx0), Math.max(0, ty0), Math.min(MAP_W - 1, tx1), Math.min(cur.mapH - 1, ty1), o =>
+        o === 0 ? 'rgba(120,210,255,0.6)' : isAlly(cur, 0, o as Owner) ? 'rgba(150,230,170,0.5)' : 'rgba(255,120,95,0.55)',
+      );
+    }
 
     // 4. Structures, back to front.
     const low = sidesOf(cur).map(o => powerOf(cur, o).low);
@@ -418,6 +430,7 @@ export class Renderer {
     // to the hub serving it, and the producers that are cut off, marked after the structures.
     const supplyHubs = supplyOn(cur) ? linkedHubs(cur, 0) : null;
     const cutIds = new Set(supplyHubs ? cutOff(cur, 0).map(b => b.id) : []);
+    const idleIds = new Set(territoryOn(cur) ? unstaffed(cur, 0).map(b => b.id) : []);
     if (supplyHubs) drawSupplyLines(ctx, supplyHubs, t);
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
@@ -463,6 +476,7 @@ export class Renderer {
         ctx.globalAlpha = 1;
       }
       if (cutIds.has(b.id)) drawCutBadge(ctx, px + (spec.w * TILE) / 2, py - 4, b.held ?? 0, b.kind, t);
+      else if (idleIds.has(b.id)) drawBadge(ctx, px + (spec.w * TILE) / 2, py - 4, 'NO CREW', t);
       if (b.chargeAt !== undefined && b.chargeAt + 1 > rt) {
         const left = Math.max(0, Math.min(1, (b.chargeAt - rt) / CHARGE_FUSE));
         drawChargeOnBuilding(ctx, px, py, spec.w * TILE, spec.h * TILE, left, t);

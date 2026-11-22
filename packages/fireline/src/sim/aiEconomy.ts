@@ -11,9 +11,10 @@
 import { doSell, placementProblem } from './commands';
 import { dist, occupancy } from './grid';
 import { centreOf, cutOff, linkedHubs, supplyOn } from './supply';
+import { NO_OWNER, territoryGrid, territoryOn } from './territory';
 import { industryOn, wellDry } from './industry';
 import { isStructure } from './state';
-import { FUEL_WELL_MIN_ORE, FUEL_WELL_REACH, SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, type BuildingKind, type Owner } from './rules';
+import { CLAIM_RADIUS, FUEL_WELL_MIN_ORE, FUEL_WELL_REACH, SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, type BuildingKind, type Owner } from './rules';
 import type { GameState } from './types';
 
 type Pt = { x: number; y: number };
@@ -30,7 +31,15 @@ export function industryPlanFor(s: GameState, owner: Owner): [BuildingKind, numb
   // could never place held up every structure behind it.
   const wells = s.buildings.some(b => b.owner === owner && b.kind === 'fuelwell');
   const anchor = s.buildings.find(b => b.owner === owner && b.kind === 'hq') ?? s.buildings.find(b => b.owner === owner && isStructure(b));
-  const wellWanted = wells || (!!anchor && wellFocus(s, owner, { x: anchor.x + 1.5, y: anchor.y + 1.5 }) !== null);
+  const home = anchor ? { x: anchor.x + 1.5, y: anchor.y + 1.5 } : null;
+  const wellWanted = wells || (!!home && wellFocus(s, owner, home) !== null);
+  // Supply lines and territory: no field it may use, so push its lines toward the nearest rich one,
+  // a Watchtower where the field is outside its borders, a Depot where it is outside its supply.
+  // Without this, a commander whose home field ran out never had fuel again (fireline-design.md).
+  if (!wellWanted && home) {
+    const step = expansionStep(s, owner, home);
+    if (step) return [[step, countOwn(s, owner, step) + 1], ['foundry', 1]];
+  }
   // One of each at every level. Hard once built two of each: the second well drained the field its
   // haulers lived on and the second Foundry turned its income into stock, and in seat 0, without the
   // computer seat's income bonus, it won 15% against Normal (fireline-design.md, 2026-11-21).
@@ -49,6 +58,8 @@ export function wellFocus(s: GameState, owner: Owner, home: Pt): Pt | null {
   const own = s.buildings.filter(b => b.owner === owner && isStructure(b));
   // Supply lines: only fields a well could stand by and still be supplied.
   const hubs = supplyOn(s) ? linkedHubs(s, owner).map(centreOf) : null;
+  // Territory: only fields inside its borders.
+  const grid = territoryOn(s) ? territoryGrid(s) : null;
   let best: Pt | null = null;
   let bestScore = -Infinity;
   const r = FUEL_WELL_REACH;
@@ -58,6 +69,7 @@ export function wellFocus(s: GameState, owner: Owner, home: Pt): Pt | null {
     const y = (k / s.mapW) | 0;
     if (!own.some(b => Math.abs(b.x + 1 - x) <= WELL_SEARCH && Math.abs(b.y + 1 - y) <= WELL_SEARCH)) continue;
     if (hubs && !hubs.some(h => (h.x - x - 0.5) ** 2 + (h.y - y - 0.5) ** 2 <= (SUPPLY_SERVE_RANGE + 1) ** 2)) continue;
+    if (grid && grid[k] !== owner) continue;
     let n = 0;
     for (let ty = Math.max(0, y - r); ty <= Math.min(s.mapH - 1, y + r); ty++)
       for (let tx = Math.max(0, x - r); tx <= Math.min(s.mapW - 1, x + r); tx++) n += s.ore[tx + ty * s.mapW];
@@ -126,4 +138,109 @@ export function depotSpot(s: GameState, owner: Owner): Pt | null {
     if (step) return step;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Territory and workforce (2026-11-21, setup.territory; territory.ts).
+
+/** Most Quarters the computer builds. */
+export const MAX_QUARTERS = 8;
+
+/** The ore tile nearest home that lies outside this side's borders (where a Watchtower should push), or null. */
+export function unclaimedOre(s: GameState, owner: Owner, home: Pt): Pt | null {
+  if (!territoryOn(s)) return null;
+  const grid = territoryGrid(s);
+  let best: Pt | null = null;
+  let bestD = Infinity;
+  for (let k = 0; k < s.ore.length; k++) {
+    if (s.ore[k] <= 0 || grid[k] === owner || (grid[k] !== NO_OWNER && grid[k] !== owner)) continue;
+    const x = (k % s.mapW) + 0.5;
+    const y = ((k / s.mapW) | 0) + 0.5;
+    const d = dist(home.x, home.y, x, y);
+    if (d < bestD) {
+      bestD = d;
+      best = { x, y };
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pushing out toward a field (supply lines and territory).
+
+/** Most Watchtowers the computer builds, and how far from home it looks for a field to push toward. */
+const MAX_TOWERS = 3;
+const MAX_EXPANSION_DEPOTS = 3;
+const EXPAND_REACH = 40;
+/** A field more than this far beyond its own nearest claim or hub is too far to push toward in one step. */
+const EXPAND_STEP = 10;
+
+const countOwn = (s: GameState, owner: Owner, kind: BuildingKind): number => s.buildings.filter(b => b.owner === owner && b.kind === kind).length;
+
+/**
+ * The nearest field to home rich enough for a well (twice FUEL_WELL_MIN_ORE within a well's reach),
+ * within EXPAND_REACH and not inside another side's borders. Null when there is none.
+ */
+export function expansionTarget(s: GameState, owner: Owner, home: Pt): Pt | null {
+  if (!supplyOn(s)) return null;
+  const grid = territoryOn(s) ? territoryGrid(s) : null;
+  const r = FUEL_WELL_REACH;
+  let best: Pt | null = null;
+  let bestD = Infinity;
+  for (let k = 0; k < s.ore.length; k++) {
+    if (s.ore[k] <= 0) continue;
+    if (grid && grid[k] !== owner && grid[k] !== NO_OWNER) continue;
+    const x = k % s.mapW;
+    const y = (k / s.mapW) | 0;
+    const d = dist(home.x, home.y, x + 0.5, y + 0.5);
+    if (d >= bestD || d > EXPAND_REACH) continue;
+    let n = 0;
+    for (let ty = Math.max(0, y - r); ty <= Math.min(s.mapH - 1, y + r); ty++)
+      for (let tx = Math.max(0, x - r); tx <= Math.min(s.mapW - 1, x + r); tx++) n += s.ore[tx + ty * s.mapW];
+    if (n < FUEL_WELL_MIN_ORE * 2) continue;
+    bestD = d;
+    best = { x: x + 0.5, y: y + 0.5 };
+  }
+  return best;
+}
+
+/** What to build next to reach the expansion target: a Watchtower, a Depot, or null (nothing to do, or at the cap). */
+export function expansionStep(s: GameState, owner: Owner, home: Pt): 'watchtower' | 'depot' | null {
+  const target = expansionTarget(s, owner, home);
+  if (!target) return null;
+  const k = Math.floor(target.x) + Math.floor(target.y) * s.mapW;
+  const hubs = linkedHubs(s, owner).map(centreOf);
+  if (territoryOn(s) && territoryGrid(s)[k] !== owner) {
+    // One step only: the field must lie within a Watchtower's claim of ground it can already build on.
+    const claims = s.buildings.filter(b => b.owner === owner && b.hp > 0 && CLAIM_RADIUS[b.kind]).map(b => ({ c: centreOf(b), r: CLAIM_RADIUS[b.kind]! }));
+    if (!claims.some(({ c, r }) => dist(c.x, c.y, target.x, target.y) <= r + EXPAND_STEP)) return null;
+    return countOwn(s, owner, 'watchtower') < MAX_TOWERS ? 'watchtower' : null;
+  }
+  if (!hubs.some(h => (h.x - target.x) ** 2 + (h.y - target.y) ** 2 <= (SUPPLY_SERVE_RANGE + 1) ** 2)) {
+    if (!hubs.some(h => dist(h.x, h.y, target.x, target.y) <= SUPPLY_LINK_RANGE + SUPPLY_SERVE_RANGE)) return null;
+    return countOwn(s, owner, 'depot') < MAX_EXPANSION_DEPOTS ? 'depot' : null;
+  }
+  return null;
+}
+
+/** A Depot spot toward the expansion target: legal, linked, nearest the target. Null when none. */
+export function depotToward(s: GameState, owner: Owner, target: Pt): Pt | null {
+  const hubs = linkedHubs(s, owner).map(centreOf);
+  if (!hubs.length) return null;
+  const occ = occupancy(s);
+  let best: Pt | null = null;
+  let bestD = Infinity;
+  for (const h of hubs)
+    for (let y = Math.floor(h.y - SUPPLY_LINK_RANGE); y <= Math.ceil(h.y + SUPPLY_LINK_RANGE); y++)
+      for (let x = Math.floor(h.x - SUPPLY_LINK_RANGE); x <= Math.ceil(h.x + SUPPLY_LINK_RANGE); x++) {
+        if (x < 0 || y < 0 || x > s.mapW - 2 || y > s.mapH - 2) continue;
+        const c = { x: x + 1, y: y + 1 };
+        if ((c.x - h.x) ** 2 + (c.y - h.y) ** 2 > (SUPPLY_LINK_RANGE - 0.5) ** 2) continue;
+        const d = dist(c.x, c.y, target.x, target.y);
+        if (d >= bestD) continue;
+        if (placementProblem(s, owner, 'depot', x, y, occ)) continue;
+        bestD = d;
+        best = { x, y };
+      }
+  return best;
 }

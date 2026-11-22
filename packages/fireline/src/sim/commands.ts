@@ -1,4 +1,5 @@
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
+import { territoryOn, territoryProblem } from './territory';
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
 import { airRoom, canHit, canSendHome, isAir, sendHome } from './air';
@@ -199,6 +200,8 @@ export function placementProblem(
     if (sea) return sea;
   }
   if (opts.anywhere) return null;
+  // Territory and workforce (2026-11-21): inside your borders, in place of the build radius.
+  if (territoryOn(s)) return territoryProblem(s, owner, kind, x, y);
   // Near something we already own (walls do not count: they cannot creep a base across the map).
   // A Field Yard reaches further than the rest (its own buildRadius).
   const near = s.buildings.some(b => {
