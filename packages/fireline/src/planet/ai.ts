@@ -45,9 +45,14 @@ import { atWar, garrisonTotal, stanceOf, treatyBetween } from './state';
 import { armyPath, suppliedRegions } from './supply';
 import { hopsBetween, routeCap, routeCost, routeProblem } from './trade';
 import type { PlanetAction } from './turn';
-import { NEUTRAL, RESOURCES, type ArmyKind, type CoreUnit, type FactionId, type PlanetState, type RegionId, type Stock, type Temperament, type TreatyDraft } from './types';
+import { NEUTRAL, RESOURCES, type ArmyKind, type CoreUnit, type FactionId, type PlanetState, type RegionId, type Stock, type SupplyState, type Temperament, type TreatyDraft } from './types';
+import { attackEdge, linksOn } from './links';
+import { AI_DESPERATE_REGIONS } from './rules';
 
 const sameMods = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((m, i) => m === b[i]);
+
+/** Battle rules 3 (link 11): value added to a target for the supply of the region the attack is made from. */
+const SUPPLY_PREFERENCE: Record<SupplyState, number> = { cut: -6, short: -2, supplied: 0, depot: 2 };
 
 /** Strength of every at-war faction (and, with `neutrals`, independents) next to region r. */
 function adjacentEnemy(s: PlanetState, f: FactionId, r: RegionId, neutrals: boolean): number {
@@ -410,11 +415,25 @@ function attackOrMove(s: PlanetState, f: FactionId, T: TemperamentSpec, temperam
     if (i === army.region || armyPath(s, f, i)) stands.push(i);
   });
   let best: { target: RegionId; from: RegionId; value: number } | null = null;
+  // Battle rules 3 (round 7, link 11): the strength an attack from `from` brings counts its supply,
+  // its neighbours' support and a depot's wave; a cut-off region is no place to attack from unless
+  // the faction is down to its last regions; and a better supplied staging region is preferred.
+  const v3 = linksOn(s);
+  const desperate = v3 && s.regions.filter(r => r.owner === f).length <= AI_DESPERATE_REGIONS;
+  const cost = { ore: 0, fuel: 2 + Math.ceil(armyCounts(units).vehicles / 4), alloys: credits / 250, food: 0 };
+  const edgeOf = (from: RegionId, target: RegionId) => {
+    if (!v3) return { A, extra: 0 };
+    const e = attackEdge(s, f, from, target, cost);
+    if (e.supply === 'cut' && !desperate) return null;
+    const a = units.length ? strengthOf(units) + (credits * e.creditShare) / AI_CREDITS_PER_POINT + e.bonus : 0;
+    return { A: a, extra: SUPPLY_PREFERENCE[e.supply] + Math.min(3, e.bonus / 4) };
+  };
   if (A > 0) {
     for (const from of stands) {
       for (const target of attackTargetsFrom(s, f, from)) {
-        if (A / defenceEstimate(s, target) < ratioOf(target)) continue;
-        const value = valueOf(target);
+        const edge = edgeOf(from, target);
+        if (!edge || edge.A / defenceEstimate(s, target) < ratioOf(target)) continue;
+        const value = valueOf(target) + edge.extra;
         if (!best || value > best.value || (value === best.value && (target < best.target || (target === best.target && from === army.region)))) best = { target, from, value };
       }
     }

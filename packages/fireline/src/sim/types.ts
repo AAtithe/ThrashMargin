@@ -534,6 +534,12 @@ export interface PlanetBattle {
    * in a skirmish (syncSkirmishPowers leaves them be). Absent: none.
    */
   perkPowers?: SupportPower[];
+  // round7:planet begin. Battle rules 3 (fireline-round7-planet.md): the war's links into the battle.
+  /** Support powers from the war's neighbouring regions, by seat: kept without their structure; `uses` absent: unlimited. */
+  support?: { seat: Owner; power: SupportPower; uses?: number }[];
+  /** Reinforcement waves still to arrive: the seat, the tick, and the garrison's unit kinds. */
+  reinforce?: { seat: Owner; at: number; units: UnitKind[] }[];
+  // round7:planet end
 }
 
 /**

@@ -6,8 +6,8 @@
 
 import { seedFromString, stream } from '../sim/rng';
 import { heroLevelFor } from '../sim/rules';
-import { DEFENCE_TERRAIN, QUICK_DIFFICULTY, STRUCTURE_VALUE, unitValue, vetMul } from './rules';
-import type { BattleReport, BattleSetup, BattleUnit, CityBuildingId } from './types';
+import { DEFENCE_TERRAIN, QUICK_DIFFICULTY, QUICK_WOUND_SHARE, REINFORCE_VALUE, STRUCTURE_VALUE, SUPPORT_VALUE, WALL_VALUE, isVehicle, unitValue, vetMul } from './rules';
+import type { BattleReport, BattleSetup, BattleUnit, CityBuildingId, ReportLinks } from './types';
 
 /** Strength each hero level is worth. */
 const HERO_LEVEL_VALUE = 6;
@@ -26,10 +26,17 @@ export function sideStrength(setup: BattleSetup, seat: number): number {
   const side = setup.sides[seat];
   if (!side) return 0;
   let v = 0;
-  for (const u of side.units) v += unitValue(u.kind) * vetMul(u.kills);
+  // Battle rules 3 (round 7): health on arrival, support powers, the wave and prepared defences count.
+  const links = setup.links;
+  for (const u of side.units) v += unitValue(u.kind) * vetMul(u.kills) * (links && u.hp !== undefined ? Math.max(0, Math.min(100, u.hp)) / 100 : 1);
   for (const h of side.heroes) v += HERO_LEVEL_VALUE * heroLevelFor(Math.max(0, h.xp));
   v += Math.max(0, side.credits) / CREDITS_PER_POINT;
   for (const b of side.structures) v += STRUCTURE_VALUE[b] ?? 1;
+  if (links) {
+    for (const g of links.support) if (g.seat === seat) v += g.uses === undefined ? SUPPORT_VALUE[g.power].unlimited : SUPPORT_VALUE[g.power].perUse * g.uses;
+    if (side.role === 'attacker' && links.reinforce) for (const k of links.reinforce.units) v += unitValue(k) * REINFORCE_VALUE;
+    if (seat === setup.defenderSeat) v += links.walls * WALL_VALUE;
+  }
   const anyHuman = setup.sides.some(x => x.human);
   const diff = anyHuman && !side.human ? QUICK_DIFFICULTY[setup.difficulty] ?? 1 : 1;
   return v * (1 + UPGRADE_SHARE * side.upgrades.length) * diff;
@@ -104,6 +111,29 @@ export function quickResolve(setup: BattleSetup): BattleReport {
     if (lost > 0) cityDamage[b] = Math.min(L, lost);
   }
 
+  // Battle rules 3 (round 7): the wave's survivors join the attacker's, and some surviving vehicles
+  // come out wounded. Dice from streams of their own, so the draws above are those of every older war.
+  let links: ReportLinks | undefined;
+  if (setup.links) {
+    const atk = setup.sides.findIndex(x => x.role === 'attacker');
+    const wave = setup.links.reinforce;
+    if (wave && atk >= 0) {
+      const wr = stream(seedFromString(setup.seedText + ':wave'));
+      const share = lossShare(setup.sides[atk].team);
+      for (const k of wave.units) if (!(wr.float() < share)) survivors[atk].push({ kind: k, kills: 0, core: null });
+    }
+    const hurt = stream(seedFromString(setup.seedText + ':wounds'));
+    links = {
+      built: [],
+      credits: setup.sides.map(() => 0),
+      harvested: setup.sides.map(() => 0),
+      wounded: setup.sides.map((side, i) => {
+        const share = lossShare(side.team) * QUICK_WOUND_SHARE;
+        return survivors[i].filter(u => u.core !== null && isVehicle(u.kind) && hurt.float() < share).map(u => u.core as number);
+      }),
+    };
+  }
+
   return {
     battleId: setup.battleId,
     winner: attackersWon ? 'attacker' : 'defender',
@@ -116,5 +146,6 @@ export function quickResolve(setup: BattleSetup): BattleReport {
     })),
     cityDamage,
     cityLevelLost: attackersWon ? 1 : 0,
+    ...(links ? { links } : {}),
   };
 }

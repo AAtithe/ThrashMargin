@@ -118,6 +118,9 @@ import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './
 import { auraWeapon, generalsStep, inAura } from './generals';
 import { lostAboard, transportStep } from './transport';
 import { canReach, isShip, launchTile, navalStep } from './naval';
+// round7:planet begin
+import { planetReinforce } from './planetLinks';
+// round7:planet end
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
 function crossDomain(u: Unit, t: Target): boolean {
@@ -220,6 +223,9 @@ export function step(s: GameState): void {
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
   // round5:D end.
+  // round7:planet begin. A planet battle on battle rules 3: reinforcement waves arrive. A no-op otherwise.
+  planetReinforce(s);
+  // round7:planet end
   charges(s);
   landProjectiles(s, ctx);
   separate(s, ctx);
