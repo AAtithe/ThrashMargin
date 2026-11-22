@@ -72,7 +72,10 @@ const round6Off = (s: GameState): boolean => {
   }
 };
 const preRound6 = (s: GameState): GameState => {
-  if (s.sidePerks !== undefined) throw new Error('a battle gained perks for another side');
+  // Round 7 (battle rules 3, link 1): a planet battle's attacker may harvest at a reduced rate, which
+  // for seats 1 to 3 lives in sidePerks. Allowed only as a harvest rate on otherwise default perks.
+  const harvestOnly = (p: object) => Object.entries(p).every(([k, v]) => (k === 'harvestMul' ? v > 0 && v <= 1 : v === (k === 'extraStartCredits' ? 0 : 1)));
+  if (s.sidePerks !== undefined && !(s.planet && Object.values(s.sidePerks).every(p => p && harvestOnly(p)))) throw new Error('a battle gained perks for another side');
   if (s.squads !== undefined) throw new Error('a battle formed a squad');
   const players = s.players.map(p => {
     if (p.faction !== undefined && p.faction !== 'meridian') throw new Error(`side ${p.owner} fields ${p.faction}`);
@@ -1108,14 +1111,16 @@ function mapSizeTests(ok: Ok): void {
     }
   }
 
-  // New wars are on battle rules 2 and size every setup by its stakes; a war without battleRules
-  // (one saved before larger maps) makes exactly the same setups without a map size.
+  // New wars are on battle rules 3 (round 7), which sizes the map as 2 does. A war on battle rules 2
+  // sizes every setup by its stakes; a war without battleRules (one saved before larger maps) makes
+  // exactly the same setups without a map size.
   const fresh = newPlanetState({ seedText: 'maps-fresh', preset: 'short', difficulty: 'normal', commander: 'Tester', createdAt: 0 });
-  ok(fresh.battleRules === 2, 'a new war is on battle rules 2');
+  ok(fresh.battleRules === 3, 'a new war is on battle rules 3');
   const seen = new Set<string>();
   let compared = 0;
   for (let k = 0; k < 12; k++) {
     const w = openWar(`maps-war-${k}`, k % 3 === 1 ? [[0, 2]] : k % 3 === 2 ? [[0, 2], [1, 3]] : []);
+    w.battleRules = 2;
     const old: PlanetState = copy(w);
     delete old.battleRules;
     for (const f of w.factions)
@@ -1222,14 +1227,14 @@ function mapSizeTests(ok: Ok): void {
     ok(hash(run.w) === OLD_WAR_HASHES[`${preset}War`], `${preset} war on battle rules 1: the war byte-identical after 25 turns`);
   }
 
-  // New saves: a war on battle rules 2 replays byte-identically, a large battle builds and runs the
+  // New saves: a war on battle rules 3 replays byte-identically, a large battle builds and runs the
   // same twice, and a save holding a large pending battle migrates to itself.
   for (const preset of ['short', 'long'] as const) {
     const mk = () => warWithSetups(newPlanetState({ seedText: `newhash-${preset}`, preset, difficulty: 'normal', commander: 'Tester', createdAt: 0 }), 25, st => st.mapSize === 'large');
     const a = mk();
     const b = mk();
-    ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 2 replays byte-identically`);
-    ok(a.w.battleRules === 2 && a.built.length > 0, `${preset} war on battle rules 2 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
+    ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 3 replays byte-identically`);
+    ok(a.w.battleRules === 3 && a.built.length > 0, `${preset} war on battle rules 3 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
   }
   const big = { ...craftSetup(1), mapSize: 'large' as const };
   const r1 = processAction(buildPlanetBattle(big, ids(1), { autopilot: true }), { type: 'tick', n: 600 });
