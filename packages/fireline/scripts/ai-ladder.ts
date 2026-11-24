@@ -33,6 +33,7 @@
  *   tsx scripts/ai-ladder.ts --map random --industry   industry on (2026-11-21): fuel, alloys, Fuel Wells and Foundries
  *   tsx scripts/ai-ladder.ts --map random --industry --supply   and supply lines (Depots; needs --industry)
  *   tsx scripts/ai-ladder.ts --map random --industry --supply --territory   and territory and workforce (needs --supply)
+ *   tsx scripts/ai-ladder.ts --map random --structure-upgrades --strategic   round 7: structure upgrades and strategic structures
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -139,6 +140,11 @@ if (SUPPLY && !INDUSTRY) throw new Error('--supply needs --industry');
 /** Territory and workforce (2026-11-21): needs supply lines. */
 const TERRITORY = args.includes('--territory');
 if (TERRITORY && !SUPPLY) throw new Error('--territory needs --supply');
+// round7:structures begin. Structure upgrades and strategic structures (advanced tech only).
+const UPGRADES7 = args.includes('--structure-upgrades');
+const STRATEGIC7 = args.includes('--strategic');
+if ((UPGRADES7 || STRATEGIC7) && LEGACY) throw new Error('--structure-upgrades and --strategic need a --map other than legacy');
+// round7:structures end.
 if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
@@ -164,6 +170,8 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(INDUSTRY ? { industry: true } : {}),
     ...(SUPPLY ? { supply: true } : {}),
     ...(TERRITORY ? { territory: true } : {}),
+    ...(UPGRADES7 ? { structureUpgrades: true } : {}),
+    ...(STRATEGIC7 ? { strategicBuildings: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -277,7 +285,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -298,6 +306,8 @@ if (workerAt >= 0) {
           ...(INDUSTRY ? ['--industry'] : []),
           ...(SUPPLY ? ['--supply'] : []),
           ...(TERRITORY ? ['--territory'] : []),
+          ...(UPGRADES7 ? ['--structure-upgrades'] : []),
+          ...(STRATEGIC7 ? ['--strategic'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );
