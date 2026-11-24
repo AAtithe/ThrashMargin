@@ -531,13 +531,17 @@ function leadsOf(x: Ctx): { tick: number; side: number }[] {
   const leaderAt = (i: number) => {
     let best = 0;
     for (let o = 1; o < x.n; o++) if (strength(o, i) > strength(best, i)) best = o;
+    // A level reading is nobody's lead (-1), so equal opening forces never read as a lead.
+    for (let o = 0; o < x.n; o++) if (o !== best && strength(o, i) === strength(best, i)) return -1;
     return best;
   };
   const leads: { tick: number; side: number }[] = [];
   // The opening skirmishes of riflemen are not a lead: the reading starts at three minutes.
   const from = d.ticks.findIndex(t => t >= 3 * 60 * TICKS_PER_SECOND);
-  for (let i = Math.max(0, from); i < d.ticks.length; i++) {
+  if (from < 0) return leads;
+  for (let i = from; i < d.ticks.length; i++) {
     const l = leaderAt(i);
+    if (l < 0) continue;
     if (leads.length && leads[leads.length - 1].side === l) continue;
     // A lead counts once it holds for three samples, a minute and a half (or to the last sample).
     if (leads.length && [1, 2].some(k => i + k < d.ticks.length && leaderAt(i + k) !== l)) continue;
@@ -547,7 +551,10 @@ function leadsOf(x: Ctx): { tick: number; side: number }[] {
 }
 
 function headlineOf(x: Ctx, leads: { tick: number; side: number }[]): string {
-  if (!leads.length) return 'The battle was too short to read.';
+  if (!leads.length) {
+    const t = x.d.ticks;
+    return t.length && t[t.length - 1] >= 3 * 60 * TICKS_PER_SECOND ? 'No side held a clear lead on army and structures.' : 'Too early to read: the first lead is counted from the third minute.';
+  }
   const Who = (o: number) => (o === 0 ? 'You' : x.name(o));
   const who = (o: number) => (o === 0 ? 'you' : x.name(o));
   const going = x.c.winner === null;

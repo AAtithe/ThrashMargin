@@ -379,7 +379,7 @@ function rulesTests(ok: Ok): void {
   const flat = level();
   const r0 = turningPoints(deepFreeze(flat), ctx(flat));
   ok(r0.findings.length === 0, `a level battle has no turning points (${r0.findings.map(f => f.rule).join()})`);
-  ok(/led on army and structures from the start/.test(r0.headline), 'its headline says who led from the start');
+  ok(/No side held a clear lead/.test(r0.headline), `a level battle's headline says nobody led (${r0.headline})`);
 
   // Income: you fall a third behind from 22:00, after losing your second Refinery at 21:30.
   {

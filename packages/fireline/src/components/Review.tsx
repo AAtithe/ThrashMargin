@@ -233,7 +233,7 @@ function Chart({ title, unit, lines, d, marks, percent = false }: { title: strin
   const [hover, setHover] = useState<number | null>(null);
   const ticks = d.ticks;
   const end = Math.max(ticks[ticks.length - 1] ?? 1, 1);
-  const top = percent ? 100 : niceTop(Math.max(1, ...lines.flatMap(l => l.values)));
+  const top = percent ? 100 : niceTop(Math.max(4, ...lines.flatMap(l => l.values)));
   const x = (t: number) => PAD.l + (t / end) * (W - PAD.l - PAD.r);
   const y = (v: number) => H - PAD.b - (v / top) * (H - PAD.t - PAD.b);
   // Minutes along the bottom: every 5, 10 or 15 so there are at most seven labels.
