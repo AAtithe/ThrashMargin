@@ -89,6 +89,9 @@ import { sections as reviewSections } from './drive-review';
 // round7:review end.
 // round7:fortification. The Fortification line, counter-battery and Point Defence (scripts/drive-fortification.ts).
 import { sections as fortificationSections } from './drive-fortification';
+// round7:adaptive begin. The adaptive commander: its sections (scripts/drive-adaptive.ts).
+import { sections as adaptiveSections } from './drive-adaptive';
+// round7:adaptive end.
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2821,6 +2824,9 @@ if (!CAMPAIGN_ONLY) {
     // round7:structures begin. Structure upgrades and strategic structures, from scripts/drive-structures.ts.
     ...structuresSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round7:structures end.
+    // round7:adaptive begin. The adaptive commander: its sections, from scripts/drive-adaptive.ts.
+    ...adaptiveSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:adaptive end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

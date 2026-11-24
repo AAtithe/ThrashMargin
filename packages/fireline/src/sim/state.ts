@@ -167,7 +167,10 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const structureUpgrades = tech === 'advanced' && r.structureUpgrades === true;
   const strategicBuildings = tech === 'advanced' && r.strategicBuildings === true;
   // round7:structures end.
-  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, structureUpgrades, strategicBuildings };
+  // round7:adaptive begin. The adaptive commander: on only when exactly true, else the base's (off for a base without it).
+  const adaptive = typeof r.adaptive === 'boolean' ? r.adaptive : (base.adaptive ?? false);
+  // round7:adaptive end.
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, structureUpgrades, strategicBuildings, adaptive };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */

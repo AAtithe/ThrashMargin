@@ -89,6 +89,14 @@ function industryNote(setup: SkirmishSetup): string {
 
 /** What the Neutral sites field says each side gets at this map size. */
 // round6:B begin. Heroes in free play: the Heroes field's note.
+// round7:adaptive begin
+/** What the Adaptive commander field does, for the note under it. */
+function adaptiveNote(setup: SkirmishSetup): string {
+  if (setup.adaptive === false) return 'The computer keeps to its usual play, whatever you field.';
+  return 'On Normal and Hard the computer remembers what its scouts have seen of your forces, shifts its army toward what beats them, and changes its line of attack when you keep stopping it in the same place. Easy keeps to its usual play.';
+}
+// round7:adaptive end
+
 function heroesNote(setup: SkirmishSetup): string {
   if (setup.tech !== 'advanced') return 'Advanced tech only.';
   if (!setup.heroes) return 'The Spy, Commando, Engineer and Ace stay in the campaign.';
@@ -170,6 +178,9 @@ export function readStoredSetup(): SkirmishSetup {
       // round7:structures: on unless the player turned them off (a setup stored before them reads as on, the lobby's default).
       structureUpgrades: r.structureUpgrades !== false,
       strategicBuildings: r.strategicBuildings !== false,
+      // round7:adaptive begin. On unless the player turned it off.
+      adaptive: r.adaptive !== false,
+      // round7:adaptive end.
     };
   } catch {
     return FIRST_SETUP;
@@ -432,6 +443,26 @@ export default function SkirmishSetupPanel({
         {/* round7:structures begin. Structure upgrades and strategic structures (greyed on standard tech). */}
         <StructuresSetup value={value} set={set} />
         {/* round7:structures end. */}
+        {/* round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): Off, On. */}
+        <div className="fl-setup-field">
+          <Label>Adaptive commander</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Adaptive commander">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={(value.adaptive !== false) === on}
+                data-testid={`adaptive-${on ? 'on' : 'off'}`}
+                onClick={() => set({ adaptive: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{adaptiveNote(value)}</p>
+        </div>
+        {/* round7:adaptive end. */}
       </SetupStep>
 
       <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">

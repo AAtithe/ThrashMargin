@@ -454,7 +454,58 @@ export interface AiMemory {
   /** The last tick enemy artillery was seen within reach of home: the Bunker is manned until it has been quiet a while. */
   pressureAt?: number;
   // round7:structures end.
+  // round7:adaptive begin. The adaptive commander (aiAdapt.ts, fireline-round7-adaptive.md): what it
+  // has seen of its enemies and the plan it follows. Absent: the commander has not adapted (the
+  // setup's `adaptive` is off, Easy, a mission, or a save from before round 7).
+  adapt?: AdaptMemory;
+  // round7:adaptive end.
 }
+
+// round7:adaptive begin. The adaptive commander's memory (aiAdapt.ts).
+/** The strategic plan an adaptive commander follows. */
+export type AdaptPlan = 'direct' | 'flank' | 'raid' | 'expand' | 'siege';
+/** An enemy unit the commander has seen: id, owner, composition class (ADAPT_CLASSES), worth in credits, tick last seen, where. */
+export interface AdaptSighting {
+  id: number;
+  o: number;
+  c: number;
+  v: number;
+  t: number;
+  x: number;
+  y: number;
+}
+/** An enemy structure the commander has seen: id, owner, kind, tick last seen, its centre. */
+export interface AdaptSite {
+  id: number;
+  o: number;
+  k: string;
+  t: number;
+  x: number;
+  y: number;
+}
+export interface AdaptMemory {
+  /** Tick of the last look round (every ADAPT_SAMPLE ticks). */
+  at: number;
+  /** Enemy units seen, newest sighting kept per unit; they fade with age and are forgotten when old. */
+  seen: AdaptSighting[];
+  /** Enemy structures seen. */
+  sites: AdaptSite[];
+  /** The composition it is answering, per class (ADAPT_CLASSES), moved gradually toward what it has seen. */
+  lean: number[];
+  plan: AdaptPlan;
+  /** Tick the plan last changed. */
+  planAt: number;
+  /** The second staging point for a flank (tile centre), worked out when the plan turns to it; null for none. */
+  flank: [number, number] | null;
+  /** Where its recent waves were broken: x, y, tick; oldest first, at most four. */
+  breaks: [number, number, number][];
+  /** The wave's phase at the last decision, and where its middle was while it attacked. */
+  phase: number;
+  waveAt: [number, number];
+  /** The last change it let side 0 read in the log, so the same news is never repeated. */
+  told: string;
+}
+// round7:adaptive end.
 
 export interface GameState {
   version: 1;
