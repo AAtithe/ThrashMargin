@@ -70,6 +70,9 @@ import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
+// round7:planet begin
+import { migratePlanetLinks, supportHeld } from './planetLinks';
+// round7:planet end
 
 export { startOf };
 // Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
@@ -221,6 +224,9 @@ export function syncSkirmishPowers(s: GameState): void {
       if (has === held) continue;
       // A planet battle: side 0's perk powers stay without their structure.
       if (!has && owner === 0 && s.planet?.perkPowers?.includes(power)) continue;
+      // round7:planet begin. A planet battle: any seat's support powers from the war stay too.
+      if (!has && supportHeld(s, owner, power)) continue;
+      // round7:planet end
       side = { ...side };
       if (has) side[power] = POWERS[power].cooldown;
       else delete side[power];
@@ -865,6 +871,9 @@ function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
     out.fallen = fallen;
   }
   if (Array.isArray(p.perkPowers)) out.perkPowers = p.perkPowers.filter((x, i, all) => x in POWERS && all.indexOf(x) === i);
+  // round7:planet begin. Battle rules 3: support powers and reinforcement waves, kept when well formed.
+  migratePlanetLinks(p, out, n);
+  // round7:planet end
   return out;
 }
 

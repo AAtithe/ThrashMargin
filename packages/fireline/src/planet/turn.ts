@@ -35,6 +35,8 @@ import {
 } from './rules';
 import { aliveFaction, allied, atWar, deepClone, garrisonTotal, isArmyKind, isInt, kindIndex, regionsOf } from './state';
 import { suppliedRegions, armyPath } from './supply';
+import { isDecisive, lossShare, ownedNeighbours } from './links';
+import { DECISIVE_TRUST, REPAIR_COST, RETURN_CREDITS_PER_ORE, RETURN_MAX } from './rules';
 import { exchangeFlows, pruneRoutes, routeCost, routeProblem } from './trade';
 import { eliminate, victoryCheck } from './victory';
 import {
@@ -172,8 +174,30 @@ export function reportProblem(s: PlanetState, pb: PendingBattle, rep: unknown, h
   if (!r.cityDamage || typeof r.cityDamage !== 'object') return bad;
   for (const [k, v] of Object.entries(r.cityDamage)) if (!isCityBuilding(k) || !isInt(v, 0, 3)) return bad;
   if (r.cityLevelLost !== 0 && r.cityLevelLost !== 1) return bad;
+  // Battle rules 3 (round 7): what the battle sends back, only with a setup that has links.
+  if (r.links !== undefined) {
+    if (!setup.links) return bad;
+    const L = r.links;
+    if (!L || typeof L !== 'object') return bad;
+    const n = setup.sides.length;
+    if (!Array.isArray(L.built) || L.built.length > 3 || L.built.some((b, i) => !SEEDABLE.includes(b) || L.built.indexOf(b) !== i)) return bad;
+    if (!Array.isArray(L.credits) || L.credits.length !== n || !L.credits.every(v => isInt(v, 0, 1e6))) return bad;
+    if (!Array.isArray(L.harvested) || L.harvested.length !== n || !L.harvested.every(v => isInt(v, 0, 1e6))) return bad;
+    if (!Array.isArray(L.wounded) || L.wounded.length !== n) return bad;
+    for (let i = 0; i < n; i++) {
+      const w = L.wounded[i];
+      if (!Array.isArray(w) || w.length > REPORT_SURVIVORS_MAX) return bad;
+      for (let k = 0; k < w.length; k++) {
+        const u = r.sides[i].survivors.find(x => x.core === w[k]);
+        if (!isInt(w[k], 0, 999) || w.indexOf(w[k]) !== k || !u || !isVehicle(u.kind)) return bad;
+      }
+    }
+  }
   return null;
 }
+
+/** The city buildings a battle's structures may seed (link 5). */
+const SEEDABLE: CityBuildingId[] = ['refinery', 'factory', 'institute'];
 
 // ---- Problems (section 10) --------------------------------------------------------------------
 
@@ -492,6 +516,32 @@ function takeContingents(d: PlanetState, setup: BattleSetup): void {
   }
 }
 
+/** Battle rules 3 (link 1): a depot's reinforcement wave leaves the staging garrison when the battle is made. */
+function takeWave(d: PlanetState, setup: BattleSetup): void {
+  const w = setup.links?.reinforce;
+  if (!w) return;
+  const g = d.regions[setup.links!.from].garrison;
+  for (const k of w.units) if (g[kindIndex(k)] > 0) g[kindIndex(k)]--;
+}
+
+/** Battle rules 3: what the war brings to the player's attack, for the journal. */
+function marchText(setup: BattleSetup): string {
+  const l = setup.links!;
+  const supply = { cut: 'Cut off: half the credits', short: 'Short of supply: fewer credits', supplied: 'Supplied', depot: 'Supplied from a depot' }[l.supply];
+  const parts = [supply];
+  if (l.reinforce) parts.push(`${l.reinforce.units.length} reinforcements to follow`);
+  const own = l.support.filter(g => g.seat === setup.sides.findIndex(x => x.role === 'attacker')).length;
+  if (own) parts.push(`${own} support power${own === 1 ? '' : 's'} from nearby regions`);
+  return `${parts.join('; ')}.`;
+}
+
+/** The wave goes back to its garrison (the battle was called off, or ended before it arrived). */
+function returnWave(d: PlanetState, setup: BattleSetup, attacker: FactionId): void {
+  const w = setup.links?.reinforce;
+  if (!w || d.regions[setup.links!.from].owner !== attacker) return;
+  addToGarrison(d, setup.links!.from, w.units);
+}
+
 /** A faction allied with the defender loses trust in the attacker (section 8.3). */
 function attackTrust(d: PlanetState, attacker: FactionId, defender: number): void {
   if (defender === NEUTRAL) return;
@@ -505,6 +555,7 @@ function makeBattle(d: PlanetState, attacker: FactionId, target: RegionId, credi
   pay(d.factions[attacker].stock, attackCost(d, attacker, credits));
   d.nextId++;
   takeContingents(d, setup);
+  takeWave(d, setup);
   attackTrust(d, attacker, setup.sides[setup.defenderSeat].faction);
   return { id: setup.battleId, kind, region: target, attacker, defender: d.regions[target].owner, setup, fighting: false };
 }
@@ -523,7 +574,7 @@ function attack(d: PlanetState, actor: FactionId, target: RegionId, credits: num
   army.attacked = true;
   if (actor === 0 || defender === 0) {
     d.pending.push(pb);
-    if (actor === 0) note(d, `The field army marches on ${pb.setup.regionName}.`, 'info', 0);
+    if (actor === 0) note(d, `The field army marches on ${pb.setup.regionName}.${pb.setup.links ? ` ${marchText(pb.setup)}` : ''}`, 'info', 0);
     else note(d, `${d.factions[actor].name} attacks ${pb.setup.regionName}.`, 'bad', 0);
     return;
   }
@@ -555,10 +606,12 @@ function applyReport(d: PlanetState, pb: PendingBattle, rep: BattleReport): void
     if (!army || !fought.size) return;
     const back = new Map<number, number>();
     for (const u of out?.survivors ?? []) if (u.core !== null) back.set(u.core, u.kills);
+    // Battle rules 3 (link 7): vehicles that came out below half health are wounded until repaired.
+    const hurt = new Set<number>(setup.links && rep.links ? rep.links.wounded[i] ?? [] : []);
     army.units = army.units.flatMap((u, slot) => {
       if (!fought.has(slot)) return [u];
       const kills = back.get(slot);
-      return kills === undefined ? [] : [{ kind: u.kind, kills: Math.max(u.kills, Math.min(999, Math.floor(kills))) }];
+      return kills === undefined ? [] : [{ kind: u.kind, kills: Math.max(u.kills, Math.min(999, Math.floor(kills))), ...(u.w || hurt.has(slot) ? { w: 1 as const } : {}) }];
     });
   });
 
@@ -590,6 +643,8 @@ function applyReport(d: PlanetState, pb: PendingBattle, rep: BattleReport): void
     addToGarrison(d, r, nonCore[defSeat]);
   }
   settleCity(d, r);
+  // Round 7: battle rules 3 sends the battle back into the war (links 5 to 8).
+  if (setup.links) battleIntoWar(d, pb, rep, nonCore[atkSeat]);
 
   // Heroes (the player's only).
   const human = setup.sides.findIndex(x => x.faction === 0 && x.role !== 'ally');
@@ -638,8 +693,139 @@ function applyReport(d: PlanetState, pb: PendingBattle, rep: BattleReport): void
   d.pending = d.pending.filter(p => {
     const ok = d.regions[p.region].owner === p.defender && d.factions[p.attacker].alive;
     if (!ok) note(d, `The attack on ${p.setup.regionName} is called off.`, 'info', 0);
+    if (!ok && d.factions[p.attacker].alive) returnWave(d, p.setup, p.attacker);
     return ok;
   });
+}
+
+/**
+ * Battle rules 3 (round 7): what a battle sends back to the war, after the region is settled.
+ * Link 5: the attacker's structures built in battle seed the captured city (one Mk each, within
+ * what the city may hold). Link 6: the winners' unspent credits and harvested ore return as ore
+ * (fought and simulated battles only). Link 7: the attacker's other survivors (troops trained in
+ * the battle, the wave) join the captured garrison and then the field army, or after a defeat fall
+ * back with the army and then into the staging garrison; a wave that never arrived goes home.
+ * Link 8: a decisive result moves trust and shakes the loser's regions next door.
+ */
+function battleIntoWar(d: PlanetState, pb: PendingBattle, rep: BattleReport, extra: ArmyKind[]): void {
+  const setup = pb.setup;
+  const links = setup.links!;
+  const r = setup.region;
+  const reg = d.regions[r];
+  const attackerWon = rep.winner === 'attacker';
+  const atkSeat = setup.sides.findIndex(x => x.role === 'attacker');
+  const attacker = setup.sides[atkSeat].faction as FactionId;
+  const defender = setup.sides[setup.defenderSeat].faction;
+  const m = planetMapOf(d);
+  const city = m.regions[r].city;
+  const player = attacker === 0 || defender === 0;
+  const said: string[] = [];
+  const back = rep.links;
+  const fought = rep.how === 'fought' || rep.how === 'simulated' || rep.how === 'retreat';
+  const waveArrived = !!links.reinforce && (!fought || rep.ticks >= links.reinforce.at);
+
+  // Link 7: the wave that never arrived goes home.
+  if (links.reinforce && !waveArrived) {
+    returnWave(d, setup, attacker);
+    if (attacker === 0) said.push('the reinforcements that never arrived return to their garrison');
+  }
+
+  // Link 5: structures built in battle seed the captured city.
+  if (attackerWon && back) {
+    const seeded: string[] = [];
+    for (const b of back.built) {
+      if (!SEEDABLE.includes(b) || buildBlock(d, r, b)) continue;
+      const mk = (reg.city.b[b] ?? 0) + 1;
+      reg.city.b[b] = mk as 1 | 2 | 3;
+      seeded.push(`${buildingName(b, mk)} Mk ${mk}`);
+    }
+    if (seeded.length && player) said.push(`what was built in the battle stands: ${seeded.join(', ')}`);
+  }
+
+  // Link 7: the attacker's survivors outside the field army.
+  const army = d.factions[attacker].army;
+  if (extra.length) {
+    let rest: ArmyKind[] = [];
+    if (attackerWon) {
+      // addToGarrison has already placed them up to the cap; the ones it dropped follow the army.
+      const left = [...reg.garrison];
+      for (const k of extra) {
+        const i = kindIndex(k);
+        if (left[i] > 0) left[i]--;
+        else rest.push(k);
+      }
+    } else rest = [...extra];
+    let joined = 0;
+    if (army && d.factions[attacker].alive) {
+      const room = Math.max(0, armyCapOf(d, attacker) - army.units.length);
+      for (const k of rest.splice(0, room)) {
+        army.units.push({ kind: k, kills: 0 });
+        joined++;
+      }
+    }
+    let home = 0;
+    if (!attackerWon && rest.length && d.regions[links.from].owner === attacker) {
+      const before = garrisonTotal(d.regions[links.from].garrison);
+      addToGarrison(d, links.from, rest);
+      home = garrisonTotal(d.regions[links.from].garrison) - before;
+    }
+    if (attacker === 0 && (joined || home)) {
+      const parts = [joined ? `${joined} join the field army` : '', home ? `${home} fall back to the garrison` : ''].filter(Boolean);
+      said.push(`of the troops raised in the battle, ${parts.join(' and ')}`);
+    }
+  }
+
+  // Link 6: the winners' unspent credits and harvested ore come home as ore.
+  if (back && (rep.how === 'fought' || rep.how === 'simulated')) {
+    setup.sides.forEach((side, i) => {
+      if (side.faction === NEUTRAL || !d.factions[side.faction].alive) return;
+      if ((side.team === 0) !== attackerWon) return;
+      const ore = Math.min(RETURN_MAX, Math.floor((back.credits[i] ?? 0) / RETURN_CREDITS_PER_ORE) + Math.floor((back.harvested[i] ?? 0) / RETURN_CREDITS_PER_ORE));
+      if (ore <= 0) return;
+      d.factions[side.faction].stock.ore += ore;
+      if (side.faction === 0) said.push(`${ore} ore comes home from the battle's unspent credits and harvest`);
+    });
+  }
+
+  // Link 8: morale and diplomacy after a decisive result.
+  const winSeat = attackerWon ? atkSeat : setup.defenderSeat;
+  const loseSeat = attackerWon ? setup.defenderSeat : atkSeat;
+  const winner = setup.sides[winSeat].faction;
+  const loser = setup.sides[loseSeat].faction;
+  const share = lossShare(setup, loseSeat, rep.sides[loseSeat]?.survivors ?? [], waveArrived);
+  if (isDecisive(share)) {
+    const moved: string[] = [];
+    for (const f of d.factions) {
+      if (!f.alive) continue;
+      if (winner !== NEUTRAL && f.id !== winner && allied(d, f.id, winner)) {
+        shiftTrust(d, f.id, winner, DECISIVE_TRUST);
+        if (winner === 0) moved.push(`${f.name} +${DECISIVE_TRUST}`);
+      }
+      if (loser !== NEUTRAL && f.id !== loser && allied(d, f.id, loser)) {
+        shiftTrust(d, f.id, loser, -DECISIVE_TRUST);
+        if (loser === 0) moved.push(`${f.name} -${DECISIVE_TRUST}`);
+      }
+    }
+    const shaken = loser !== NEUTRAL && d.factions[loser].alive ? ownedNeighbours(d, loser, r) : [];
+    for (const i of shaken) d.regions[i].shaken = d.turn + 1;
+    if (player) {
+      const pct = Math.round(share * 100);
+      const names = shaken.map(i => m.regions[i].city);
+      const trust = moved.length ? `; trust: ${moved.join(', ')}` : '';
+      said.push(
+        loser === 0
+          ? `a heavy defeat (${pct}% of the army's value lost)${names.length ? `, and ${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} shaken until the end of next turn` : ''}${trust}`
+          : `a decisive result (${pct}% of the enemy's value lost)${names.length ? `, and ${names.join(', ')} ${names.length === 1 ? 'is' : 'are'} shaken` : ''}${trust}`,
+      );
+    }
+  }
+
+  if (said.length) {
+    // A journal line stays well under the 400 characters a save keeps: later parts give way.
+    let text = said[0];
+    for (const part of said.slice(1)) if (text.length + part.length < 340) text += `; ${part}`;
+    note(d, `${city}: ${text[0].toUpperCase()}${text.slice(1)}.`, 'info', 0);
+  }
 }
 
 // ---- End of turn (sections 2 and 6.6) ---------------------------------------------------------
@@ -733,6 +919,8 @@ function production(d: PlanetState): void {
       }
     }
   }
+  // Round 7, battle rules 3 (link 7): workshops repair wounded vehicles while the stock allows.
+  if (d.battleRules === 3) for (const f of alive) repairArmy(d, f);
   // 6: research.
   for (const f of alive) {
     const r = d.factions[f].research;
@@ -783,6 +971,8 @@ function production(d: PlanetState): void {
     settleCity(d, r);
     note(d, `${m.regions[r].city}, cut off for ${d.options.surrenderTurns} turns, surrenders to ${d.factions[to].name}.`, f === 0 ? 'bad' : to === 0 ? 'good' : 'info', f === 0 || to === 0 ? 0 : f);
   }
+  // Round 7 (link 8): a region stops being shaken after the turn it was shaken through.
+  for (const reg of d.regions) if (reg.shaken !== undefined && reg.shaken <= d.turn) delete reg.shaken;
   // 9: treaty expiry. 10: trust drift and offers.
   expireTreaties(d);
   trustDrift(d);
@@ -797,6 +987,25 @@ function production(d: PlanetState): void {
 }
 
 const UPGRADE_NAME = (id: UpgradeId): string => UPGRADES[id]?.name ?? id;
+
+/** Repairs f's wounded vehicles in slot order, each for REPAIR_COST, while the stock covers it. */
+function repairArmy(d: PlanetState, f: FactionId): void {
+  const army = d.factions[f].army;
+  if (!army) return;
+  const st = d.factions[f].stock;
+  let fixed = 0;
+  let left = 0;
+  for (const u of army.units) {
+    if (!u.w) continue;
+    if (canAfford(st, REPAIR_COST)) {
+      pay(st, REPAIR_COST);
+      delete u.w;
+      fixed++;
+    } else left++;
+  }
+  if (f === 0 && (fixed || left))
+    note(d, `Workshops repair ${fixed} wounded vehicle${fixed === 1 ? '' : 's'}${left ? `; ${left} wait${left === 1 ? 's' : ''} for ore and alloys` : ''}.`, left ? 'bad' : 'info', 0);
+}
 
 function unpaid(d: PlanetState, t: PlanetState['treaties'][number], payer: FactionId, payee: FactionId): void {
   d.treaties = d.treaties.filter(x => x !== t);

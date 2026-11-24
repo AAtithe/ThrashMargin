@@ -44,6 +44,11 @@ import {
   CITY_BUILDINGS,
   NEUTRAL,
   RESOURCES,
+  SUPPLY_STATES,
+  type ArmyKind,
+  type SetupLinks,
+  type SupplyState,
+  type SupportGrant,
   type BattleSetup,
   type BattleSide,
   type BattleUnit,
@@ -186,7 +191,8 @@ function cleanRegion(raw: unknown, factions: number): RegionState {
   };
   const g = Array.isArray(r.garrison) ? r.garrison : [];
   const garrison = ARMY_KINDS.map((_, i) => count(g[i], 0, 999));
-  return { owner, city, garrison, cut: count(r.cut, 0, 999) };
+  // Round 7: `shaken` only when it is a turn number; absent on every older war's regions.
+  return { owner, city, garrison, cut: count(r.cut, 0, 999), ...(isInt(r.shaken, 0, 1e6) ? { shaken: r.shaken } : {}) };
 }
 
 function cleanCoreUnits(raw: unknown, max: number): CoreUnit[] {
@@ -194,7 +200,7 @@ function cleanCoreUnits(raw: unknown, max: number): CoreUnit[] {
   const out: CoreUnit[] = [];
   for (const u of raw) {
     if (out.length >= max) break;
-    if (isObj(u) && isArmyKind(u.kind)) out.push({ kind: u.kind, kills: count(u.kills, 0, 999) });
+    if (isObj(u) && isArmyKind(u.kind)) out.push({ kind: u.kind, kills: count(u.kills, 0, 999), ...(u.w === 1 ? { w: 1 as const } : {}) });
   }
   return out;
 }
@@ -370,7 +376,8 @@ function cleanBattleUnits(raw: unknown): BattleUnit[] | null {
       if (!isInt(u.core, 0, 999) || cores.has(u.core)) return null;
       cores.add(u.core);
     }
-    out.push({ kind: u.kind, kills: u.kills, core: u.core as number | null });
+    // Round 7: health on arrival, kept when a whole per cent below full.
+    out.push({ kind: u.kind, kills: u.kills, core: u.core as number | null, ...(isInt(u.hp, 1, 99) ? { hp: u.hp } : {}) });
   }
   return out;
 }
@@ -458,7 +465,7 @@ function cleanSetup(raw: unknown, F: number, regions: number): BattleSetup | nul
   const perks = cleanPerks(r.perks);
   if (perks === undefined) return null;
   if (!Array.isArray(r.powers) || !r.powers.every(isPower)) return null;
-  return {
+  const out: BattleSetup = {
     battleId: r.battleId,
     turn: r.turn,
     region: r.region,
@@ -477,7 +484,50 @@ function cleanSetup(raw: unknown, F: number, regions: number): BattleSetup | nul
     // Section 9.7: absent (a standard map) on every setup made before larger maps, and kept so.
     ...(r.mapSize === 'large' || r.mapSize === 'huge' ? { mapSize: r.mapSize } : {}),
   };
+  // Round 7: the war's links, all or nothing (a malformed one makes the whole setup untrustworthy).
+  if (r.links !== undefined) {
+    const links = cleanLinks(r.links, sides.length, regions);
+    if (!links) return null;
+    out.links = links;
+  }
+  return out;
 }
+
+/** A setup's battle rules 3 links, checked whole; null when any part is malformed. */
+function cleanLinks(raw: unknown, seats: number, regions: number): SetupLinks | null {
+  if (!isObj(raw)) return null;
+  const r = raw;
+  if (!isInt(r.from, 0, regions - 1) || !SUPPLY_STATES.includes(r.supply as SupplyState) || typeof r.defCut !== 'boolean') return null;
+  if (!isInt(r.creditsLost, 0, 1e6) || !isInt(r.defCreditsLost, 0, 1e6) || !isInt(r.trickle, 0, 100) || !isInt(r.walls, 0, 99)) return null;
+  if (!Array.isArray(r.support) || r.support.length > 8) return null;
+  const support: SupportGrant[] = [];
+  for (const g of r.support) {
+    if (!isObj(g) || !isInt(g.seat, 0, seats - 1) || !isSupportPower(g.power) || !isInt(g.from, 0, regions - 1)) return null;
+    if (g.uses !== undefined && !isInt(g.uses, 1, 9)) return null;
+    if (!SUPPORT_WHY.includes(g.why as SupportGrant['why'])) return null;
+    support.push({ seat: g.seat, power: g.power, ...(g.uses !== undefined ? { uses: g.uses as number } : {}), from: g.from, why: g.why as SupportGrant['why'] });
+  }
+  let reinforce: SetupLinks['reinforce'] = null;
+  if (r.reinforce !== null) {
+    const w = r.reinforce;
+    if (!isObj(w) || !isInt(w.at, 1, 1e7) || !Array.isArray(w.units) || w.units.length < 1 || w.units.length > 12 || !w.units.every(isArmyKind)) return null;
+    reinforce = { at: w.at, units: (w.units as ArmyKind[]).slice() };
+  }
+  return {
+    from: r.from,
+    supply: r.supply as SupplyState,
+    defCut: r.defCut,
+    creditsLost: r.creditsLost,
+    defCreditsLost: r.defCreditsLost,
+    trickle: r.trickle,
+    support,
+    reinforce,
+    walls: r.walls,
+  };
+}
+
+const SUPPORT_WHY: SupportGrant['why'][] = ['institute', 'fortifications', 'artillery', 'airfield'];
+const isSupportPower = (p: unknown): p is SupportGrant['power'] => p === 'recon' || p === 'barrage' || p === 'missile';
 
 function cleanPending(raw: unknown, F: number, regions: number): PendingBattle[] {
   if (!Array.isArray(raw)) return [];
@@ -608,8 +658,9 @@ export function migratePlanetState(raw: unknown): PlanetState | null {
     nextId,
     journal: cleanJournal(r.journal, F),
     result,
-    // Section 9.7: a war saved without it is on battle rules 1 (standard maps) for good.
-    ...(r.battleRules === 2 ? { battleRules: 2 as const } : {}),
+    // Section 9.7: a war saved without it is on battle rules 1 (standard maps) for good; round 7's
+    // version 3 is kept as it is, and never added to an older war.
+    ...(r.battleRules === 2 || r.battleRules === 3 ? { battleRules: r.battleRules } : {}),
   };
 }
 

@@ -42,6 +42,9 @@ import { computerSides, isAlly, isEnemy, sidesOf, startOf } from './sides';
 import { addBuilding, addUnit, isStructure, log, newAiMemory, setupOf, updateExplored } from './state';
 // round6:B. Heroes in free play: the revive cooldown for a skirmish hero that falls.
 import { HERO_REVIVE_TICKS, TICKS_PER_SECOND } from './rules';
+// round7:planet begin
+import { spendSupport } from './planetLinks';
+// round7:planet end
 import { buildingSpecOf, perksFor, unitSpecOf } from './specs';
 import type {
   Building,
@@ -688,6 +691,9 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
   const powers: NonNullable<GameState['powers']> = s.powers ? s.powers : sidesOf(s).map(() => ({}));
   powers[owner] = { ...powers[owner], [power]: Math.max(1, Math.round(POWERS[power].cooldown * mul)) };
   s.powers = powers;
+  // round7:planet begin. A planet battle's limited support power loses a use.
+  spendSupport(s, owner, power);
+  // round7:planet end
   const say = (text: string) => owner === 0 && log(s, text, 'good');
   if (power === 'recon') {
     // s.recon is what side 0 sees. The computer (side 1 in a skirmish) already sees the whole
