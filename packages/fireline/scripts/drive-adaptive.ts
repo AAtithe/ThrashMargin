@@ -26,6 +26,7 @@ import {
   ADAPT_MIN_FACTOR,
   ADAPT_SAMPLE,
   ADAPT_TUNING,
+  TURTLE_DEFENCES,
   adaptMix,
   adaptObserve,
   adaptStage,
@@ -459,12 +460,20 @@ function plans(ok: Ok): void {
     else ok(p2 === 'flank' && s.ai[1].adapt!.flank === null, 'normal: broken on the flank too: a fresh flank (Normal never raids the economy)');
   }
 
-  // Turtling: four defences and little else seen.
+  // Turtling: more defences than an ordinary base and little else seen. An ordinary base's few: no siege.
   for (const diff of ['normal', 'hard'] as const) {
+    const ordinary = newBattle(`adapt-turtle-${diff}`, diff, { map: 'plains', tech: 'advanced', adaptive: true });
+    const g0 = startOf(ordinary, 0);
+    addUnit(ordinary, 1, 'buggy', g0.x + 1.5, g0.y + (g0.y > ordinary.mapH / 2 ? -7 : 9));
+    for (let i = 0; i < TURTLE_DEFENCES - 2; i++) addBuilding(ordinary, 0, 'turret', g0.x - 4 + i * 2, g0.y + (g0.y > ordinary.mapH / 2 ? -4 : 5), -100);
+    ordinary.tick = 3000;
+    adaptObserve(ordinary, 1);
+    ok(ordinary.ai[1].adapt!.plan === 'direct' && ordinary.ai[1].adapt!.lean[ADAPT_CLASSES.indexOf('static')] === 0, `${diff}: an ordinary base's ${TURTLE_DEFENCES - 2} defences are not a turtle, and not answered`);
     const s = newBattle(`adapt-turtle-${diff}`, diff, { map: 'plains', tech: 'advanced', adaptive: true });
     const h0 = startOf(s, 0);
     const scout = addUnit(s, 1, 'buggy', h0.x + 1.5, h0.y + (h0.y > s.mapH / 2 ? -7 : 9));
-    for (let i = 0; i < 5; i++) addBuilding(s, 0, 'turret', h0.x - 4 + i * 2, h0.y + (h0.y > s.mapH / 2 ? -4 : 5), -100);
+    const dy = h0.y > s.mapH / 2 ? -1 : 1;
+    for (let i = 0; i < 10; i++) addBuilding(s, 0, 'turret', h0.x - 4 + (i % 5) * 2, h0.y + dy * (4 + Math.floor(i / 5) * 2) + (dy > 0 ? 1 : 0), -100);
     s.tick = 3000;
     adaptObserve(s, 1);
     ok(s.ai[1].adapt!.plan === 'siege', `${diff}: a ring of defences and little else: the plan is a siege`);

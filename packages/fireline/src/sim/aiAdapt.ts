@@ -58,9 +58,11 @@ const SAME_PLACE = 12;
 /** The share of the mix any one kind may reach (or its share before adapting, if that was higher). */
 export const ADAPT_MAX_SHARE = 0.5;
 /** A kind's weight never falls below this share of what it was before adapting. */
-export const ADAPT_MIN_FACTOR = 0.4;
+export const ADAPT_MIN_FACTOR = 0.5;
 /** A kind's weight never rises above this many times what it was before adapting. */
-export const ADAPT_MAX_FACTOR = 3;
+export const ADAPT_MAX_FACTOR = 2.5;
+/** Defences seen at or above which an enemy is turtling (an ordinary Hard base has six). */
+export const TURTLE_DEFENCES = 8;
 /** Shortest gap between two lines in side 0's log about this commander's changes (five minutes). */
 const TELL_GAP = 3000;
 
@@ -302,6 +304,14 @@ export function adaptObserve(s: GameState, owner: Owner): void {
   // Tech signals: a Helipad means aircraft are coming, a Tech Centre heavy armour, whether or not
   // they have been seen yet: a floor under the lean, small, so a signal alone never turns the mix.
   const target = sum.shares.slice();
+  // Defences: every base has a few (Hard builds six), so they only count as something to answer
+  // once there are more than an ordinary base holds (TURTLE_DEFENCES): a turtle. Measured: answering
+  // an ordinary base's turrets put the mix into siege guns for the whole battle and lost games.
+  if (sum.defences < TURTLE_DEFENCES) {
+    const rest = 1 - target[STATIC];
+    target[STATIC] = 0;
+    if (rest > 0) for (let i = 0; i < target.length; i++) target[i] /= rest;
+  }
   if (sum.tech.helipad) target[AIR] = Math.max(target[AIR], 0.15);
   if (sum.tech.techcentre) target[HEAVY] = Math.max(target[HEAVY], 0.15);
   const lean = mem.lean.map((v, i) => Math.round((v + (Math.min(1, target[i]) - v) * t.rate) * 1000) / 1000);
@@ -339,7 +349,7 @@ function clusteredBreaks(s: GameState, mem: AdaptMemory, since = -Infinity): { x
 function choosePlan(s: GameState, mem: AdaptMemory, sum: AdaptSummary, t: AdaptTuning): { plan: AdaptPlan; refresh: boolean } {
   const allowed = (p: AdaptPlan) => t.plans.includes(p);
   // Turtling: a ring of defences and little else. Tech up and mass siege before going in.
-  if (allowed('siege') && sum.defences >= 4 && sum.shares[STATIC] >= 0.35) return { plan: 'siege', refresh: false };
+  if (allowed('siege') && sum.defences >= TURTLE_DEFENCES && sum.shares[STATIC] >= 0.35) return { plan: 'siege', refresh: false };
   if (mem.plan === 'flank' || mem.plan === 'raid') {
     // Broken twice again since the plan began. From a flank: Hard goes for the economy, Normal
     // tries the other side. From a raid that still broke: back to the start.
@@ -426,7 +436,7 @@ export function adaptMix(s: GameState, owner: Owner, choices: [UnitKind, number]
 }
 
 /** How hard the matchup score pushes a weight (a factor of e^(GAIN * strength * score)). */
-const GAIN = 0.6;
+const GAIN = 0.4;
 
 /** The pure core of adaptMix, exported for the harness. `open` says which kinds can be trained. */
 export function mixFor(
