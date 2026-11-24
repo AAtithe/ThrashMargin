@@ -3015,3 +3015,61 @@ on the two wide tablets, plus the desktop at 1440 and at 1000 wide, before and a
 `node scripts/tours/run.mjs fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok.
 `npm run check:ui -- fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All
 checks passed" (Fireline drive 401,825 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-24: Round 7, strategy for long desktop games
+
+The aim of this round: long games on a desktop (Long and Epic sizes, large and huge maps) that train
+strategic thinking. Each addition had to create a decision with a cost, not only more content. Five
+workstreams were built in parallel and integrated here; each has its own build log with its numbers
+and measurements:
+
+| Workstream | Build log | Setup field | On by default |
+|---|---|---|---|
+| After-action review | `fireline-round7-review.md` | none (every new battle records) | yes |
+| Fortification line, counter-battery, Point Defence | `fireline-round7-fortification.md` | `fortification` | new advanced lines skirmishes |
+| Structure upgrades, strategic structures | `fireline-round7-structures.md` | `structureUpgrades`, `strategicBuildings` | new advanced skirmishes |
+| Adaptive commander | `fireline-round7-adaptive.md` | `adaptive` | new skirmishes (Normal and Hard play it) |
+| War for the Planet linked to its battles | `fireline-round7-planet.md` | battle rules 3 | new wars |
+
+Every new field reads as off when absent, so every save from before this round, every campaign
+mission and every older war plays exactly as before (the recorded hashes in `drive-size.ts` and
+`drive-planet-battle.ts` still hold). A war on battle rules 3 turns all four battle-side features on
+in its battles (`buildPlanetBattle`); an older war's battles keep all four off.
+
+**Tactical pause.** Pausing no longer covers the battlefield: a banner says the battle is holding,
+and orders, selections, queues, the build window and placements all work while time stands still.
+The banner also offers the review so far.
+
+**Integration notes.**
+
+- Two workstreams started from an older main (before industry, supply lines and territory) and were
+  merged by hand: the building lists, the setup's field order, the menu and the lobby.
+- Both structure workstreams put their new items last in the build menu. The order is now the economy's
+  five, then Point Defence, then the strategic four (Bunker, Supply Cache, Decoy, Intelligence Centre).
+  No structure from before round 7 changed its key, which is what the menu-order checks now assert.
+- Full health of a structure is `structureMaxHp`, which reads `buildingSpecOf`, so a structure's level
+  and Reinforced concrete stack. An enemy Decoy shows the health of what it passes for.
+- The review headline read a level start as a lead, and read the opening before the third minute.
+  A level sample is now nobody's lead, and a battle under three minutes says it is too early to read.
+
+**What the measurements say, and what they do not.**
+
+- Fortification (Long, Normal mirror, 150 seeds): win split and median length within noise of the line
+  off; 1 battle in 150 unfinished after the computer's spending on emplacements was tuned. The computer
+  never chose Counter-battery; it is mainly the player's tool, since the computer sees the whole map.
+- Structures (Long, Hard against Normal, 150 seeds each seat): every row within noise, difficulty order
+  kept, battles 2 to 4 minutes longer, no stalls.
+- Adaptive commander (Long, 150 seeds each seat): it does not yet beat the fixed commander. Normal
+  adaptive won 45.7% (interval 40 to 51%); the Hard mirror cannot be read, because the computer's Hard
+  income bonus applies only to computer seats, so seat 1 wins about 97% of Hard mirrors whoever adapts.
+  It is on by default because it changes how the computer plays (flanks, raids, counter-building, a
+  log line when the player can see it), which is its purpose for a player learning not to rely on one
+  opening; the measurement that would test that purpose (a scripted fixed opening against it) is still
+  to be built.
+- War for the Planet (ladder at default seeds and holdout, before and after battle rules 3): every
+  target holds; the computer's Normal win rate fell, most in Short holdout (48.7% to 38.7%).
+
+**Open.** Neutral sites stay off in planet battles, so link 6's capture bonus has nothing to read.
+No harness section stages a bomber against a Decoy. The planet AI values support from neighbouring
+regions but does not build for it. The adaptive commander's matchup table must be regenerated with
+`scripts/adapt-matchups.ts` after any unit stat change.
