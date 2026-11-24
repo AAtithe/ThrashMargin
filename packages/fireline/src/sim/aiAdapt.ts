@@ -95,6 +95,13 @@ export function setAdaptiveOverride(owner: Owner, on: boolean | null): void {
   overrides[owner] = on;
 }
 
+/** For the ladder's ablations only: which halves adapt (the mix, the plans). Both, unless a script says otherwise. */
+const parts = { mix: true, plans: true };
+export function setAdaptiveParts(mix: boolean, plans: boolean): void {
+  parts.mix = mix;
+  parts.plans = plans;
+}
+
 // ---- When it runs -----------------------------------------------------------------------------
 
 function difficultyOf(s: GameState, owner: Owner): Difficulty {
@@ -413,7 +420,7 @@ export function classScores(kind: UnitKind): number[] {
  * more), so the army never becomes one kind. Off, or with nothing seen: the list itself, unchanged.
  */
 export function adaptMix(s: GameState, owner: Owner, choices: [UnitKind, number][], slot: 'vehicle' | 'infantry'): [UnitKind, number][] {
-  if (!adaptiveOn(s, owner)) return choices;
+  if (!adaptiveOn(s, owner) || !parts.mix) return choices;
   const mem = memoryOf(s, owner);
   return mixFor(choices, mem.lean, tuningOf(s, owner).strength, slot, k => techAllowed(s, owner, k) && unlocked(s, owner, k));
 }
@@ -504,7 +511,7 @@ export function adaptShare(s: GameState, owner: Owner, a: UnitKind, b: UnitKind,
  * on open ground the army can walk to. Off, or with no such place: `stage` itself.
  */
 export function adaptStage(s: GameState, owner: Owner, stage: { x: number; y: number }, home: { x: number; y: number }, enemyHome: { x: number; y: number }): { x: number; y: number } {
-  if (!adaptiveOn(s, owner)) return stage;
+  if (!adaptiveOn(s, owner) || !parts.plans) return stage;
   const mem = memoryOf(s, owner);
   if (mem.plan !== 'flank' && mem.plan !== 'raid') return stage;
   if (mem.flank) return { x: mem.flank[0], y: mem.flank[1] };
@@ -603,7 +610,7 @@ function walkFrom(s: GameState, occ: Int32Array, p: { x: number; y: number }): U
  * expansion it has seen. Only what it has seen: with nothing remembered, the ordinary choice.
  */
 export function adaptTarget(s: GameState, owner: Owner, fallback: { x: number; y: number }, from: { x: number; y: number }): { x: number; y: number } {
-  if (!adaptiveOn(s, owner)) return fallback;
+  if (!adaptiveOn(s, owner) || !parts.plans) return fallback;
   const mem = memoryOf(s, owner);
   if (mem.plan !== 'raid' && mem.plan !== 'expand') return fallback;
   const list = mem.plan === 'expand' ? summarise(s, owner, mem).expansions : mem.sites.filter(r => r.k === 'refinery' || r.k === 'fieldyard');
@@ -621,7 +628,7 @@ export function adaptTarget(s: GameState, owner: Owner, fallback: { x: number; y
 
 /** The size a wave waits for: larger while the plan is a siege (the overdue rule still sends it, so it never stalls). */
 export function adaptWaveSize(s: GameState, owner: Owner, size: number, cap: number): number {
-  if (!adaptiveOn(s, owner)) return size;
+  if (!adaptiveOn(s, owner) || !parts.plans) return size;
   const mem = memoryOf(s, owner);
   if (mem.plan !== 'siege') return size;
   return Math.min(cap + tuningOf(s, owner).siegeWave, size + tuningOf(s, owner).siegeWave);

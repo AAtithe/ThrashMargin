@@ -74,7 +74,9 @@ import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
 // round7:adaptive
-import { setAdaptiveOverride } from '../src/sim/aiAdapt';
+import { setAdaptiveOverride, setAdaptiveParts } from '../src/sim/aiAdapt';
+// round7:adaptive: ablations, ADAPT_PARTS=mix or ADAPT_PARTS=plans adapts only that half (default both).
+if (process.env.ADAPT_PARTS) setAdaptiveParts(process.env.ADAPT_PARTS.includes('mix'), process.env.ADAPT_PARTS.includes('plans'));
 import { scaledFor } from '../src/sim/aiScale';
 import { DIFFICULTIES, FACTIONS, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type Faction, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
