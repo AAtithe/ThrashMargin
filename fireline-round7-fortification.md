@@ -138,13 +138,15 @@ Epic paces only; Easy never.
   Hardened shelters, then the doctrine, adopted as it goes. Counter-battery when more than twice as
   much fire came from the ground as from above and it has two Artillery or more to answer with;
   Point Defence otherwise.
-- With Point Defence researched and fire landing in the last 90 seconds, it builds emplacements up to
+- With Point Defence researched, fire landing in the last 90 seconds and more than 12,000 ore left on
+  the map, it builds emplacements up to
   two (Normal) or three (Hard), each beside the structure last hit, or else beside the first core
   structure (Command Yard, War Factory, refinery, Lab, Tech Centre, Generator, Barracks) none covers.
+  Broke, it sells them, beside the Lab and the Flak Cannon.
 
 ## Harness
 
-`scripts/drive-fortification.ts`, wired into drive.ts (and runnable alone). 174 assertions, about a
+`scripts/drive-fortification.ts`, wired into drive.ts (and runnable alone). 175 assertions, about a
 minute (most of it one whole Long battle):
 
 - the setup: presets, normalisation, every mission and six planet battles stating it off, old saves
@@ -167,13 +169,17 @@ minute (most of it one whole Long battle):
   shell, and Guard artillery turning on the revealed battery ahead of a nearer rifleman;
 - replay: a scene with emplacements, batteries and a barrage played twice byte-identically, and
   saved and loaded mid-battle;
-- the computer: who fortifies, the order, the branch rule, the emplacement cap and placement, and a
-  whole Long battle in which it turns to the line under fire.
+- the computer: who fortifies, the order, the branch rule, the emplacement cap, placement and the ore
+  floor, and a whole Long battle in which it turns to the line under fire.
 
 Changed elsewhere: drive-lines.ts counts 25 upgrades (21 and the line's four);
 drive-planet-battle.ts's `preSize` leaves `fortification` out of the recorded skirmish hashes after
 checking it is on exactly where it can apply (no hashed battle is Long or Epic, so nobody researches
-it); campaign-check.ts asserts every mission states it off and counts Point Defence as skirmish-only.
+it); campaign-check.ts asserts every mission states it off and counts Point Defence as skirmish-only;
+drive-planet-battle.ts's `preNaval` (planet battle hashes) checks the toggle is off and leaves it out;
+drive-size.ts's pre-round-6 hashes leave the toggle out, and its paced-list battles state it off (they
+check round 6's lists exactly); drive-factions.ts knows Point Defence closes the Structures list past
+every hotkey, so it may move one place when the Academy joins the list.
 
 `scripts/ai-ladder.ts --fortification` turns the line on (every ladder setup now states it, off
 without the flag) and adds a table: how far each difficulty took the line, emplacements a side, and
@@ -181,7 +187,38 @@ shots brought down a side.
 
 ## Ladder
 
-LADDER_RESULTS
+The brief's full card (`--map random --pace long --seeds 150 --jobs 2`, eleven matches, against the
+same without `--fortification`) was out of reach: the machine was shared with four other builders at a
+load of 12 to 17 on four cores, and a Long battle took about 30 seconds of one core, so the card would
+have run for most of a day each way. The Normal mirror carries the question that matters (does the
+line make games stall?), so it was run at 150 seeds each way, `--match new:normal,new:normal`. Without
+the flag every ladder setup now states the line off, so "before" is the game as it was.
+
+| Long, Normal mirror, 150 seeds | Side 0 wins | Side 1 wins | Unfinished (cap 150 min) | Avg min | Median min | Mk II / Mk III |
+|---|---|---|---|---|---|---|
+| Line off (before) | 74 (49%) | 76 (51%) | 0 | 27.9 | 25.9 | 92% / 81% |
+| Line on, first tuning | 65 (43%) | 80 (53%) | 5 | 28.9 | 26.0 | 86% / 72% |
+| Line on, as shipped | 72 (48%) | 77 (51%) | 1 | 29.9 | 26.8 | 91% / 75% |
+
+Fortification, line on, as shipped (300 Normal sides): 73% research Mk I, 60% Mk II, 42% adopt Point
+Defence and finish it, 0% Counter-battery (the Normal commander rarely fields two Artillery while being
+shelled mostly from the ground); 0.58 emplacements standing at most a side, 0.9 shots brought down a
+side. First tuning: 84% / 71% / 0% / 52%, 0.79 emplacements, 1.3 shots down.
+
+What was tuned and why. The first ladder left 5 of 150 battles unfinished at the 150 minute cap, against
+none without the line. Played out, every one was the same: the map's ore gone, both sides broke with a
+few hundred credits, no troops that could finish the other, and two Point Defence emplacements standing
+on each side that had cost 2,400 credits and 120 power and won nothing back. It was not turtling behind
+the emplacements (they brought down about one shot a battle); it was credits spent late on structures.
+Three changes to the commander, none to the rules: it waits for twenty blasts on its structures before
+turning to the line (six before), it builds emplacements only while the map still has more than
+PACED_ORE_FLOOR (12,000) of ore, and it sells them when broke (`recover` and `lastStand` in aiAir.ts,
+beside the Lab and the Flak Cannon). After: 1 of 150 unfinished, the win split back to 48/51, and the
+median 0.9 minutes longer than without the line, inside the noise. Point Defence itself (60%, 3 seconds,
+4 tiles, 1,200 credits) was left as specified: one emplacement against a real bombardment stops a shot
+in six or seven, which is the cost-for-time trade it was meant to be, not a wall.
+
+Win-rate differences of a few points at 150 seeds are noise (about plus or minus 8 points).
 
 ## Known gaps
 
