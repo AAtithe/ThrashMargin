@@ -622,7 +622,7 @@ import { techText } from '../src/components/SkirmishSetup';
 /** Keys the battle screen gives other jobs (its key table): no build key may be one of them. */
 const RESERVED_KEYS = ['o', 'p', 'a', 's', 'g', 'h', 'm', 'f', 'z', 'x', 'c', 'v', '0', '.', ' ', '`', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 /** The Structures past the fourteenth on advanced tech, clicked or tapped in the build window (the key table says so). */
-const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'shipyard', 'academy'];
+const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'shipyard', 'academy', /* round7:fortification */ 'pointdefence'];
 
 function buildKeys(ok: Ok): void {
   ok(new Set(BUILD_KEYS).size === BUILD_KEYS.length, `the ${BUILD_KEYS.length} build keys are all different`);
@@ -645,7 +645,8 @@ function buildKeys(ok: Ok): void {
       if (tab !== 'building') ok(list.length <= BUILD_KEYS.length, `${f}, ${tab}: every unit has a key (${list.length} items)`);
       // An everyday item keeps its key whether or not the recruits are listed.
       const before = menuFor(tab, plain);
-      ok(before.every((k, i) => RECRUITS.includes(k) || list[i] === k), `${f}, ${tab}: turning Heroes and Generals on moves no key already in use`);
+      // round7:fortification: Point Defence closes the list, past every key, so it may move when the Academy joins.
+      ok(before.every((k, i) => RECRUITS.includes(k) || k === 'pointdefence' || list[i] === k), `${f}, ${tab}: turning Heroes and Generals on moves no key already in use`);
     }
     ok(RECRUITS.every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
   }
@@ -791,8 +792,9 @@ function navalWarBothArmies(ok: Ok): void {
     ok(menuOf(f, 'naval').join() === NAVY.join(), `${f}: the Naval list is the five ships, in order, and nothing else`);
     ok(NAVY.every(k => factionAllows(f, k) && unitSpecFor(f, k) === UNITS[k]), `${f}: every ship at the catalogue's exact numbers`);
     ok(factionAllows(f, 'shipyard') && buildingSpecFor(f, 'shipyard') === BUILDINGS.shipyard, `${f}: the Naval Yard at the catalogue's exact numbers`);
-    const list = menuOf(f, 'building');
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list[list.length - 1] === 'academy',
+    // round7:fortification: the Point Defence emplacement closes the list after the Academy.
+    const list = menuOf(f, 'building').filter(k => k !== 'pointdefence');
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list[list.length - 1] === 'academy' && menuOf(f, 'building').slice(-1)[0] === 'pointdefence',
       `${f}: the Structures list ends Fortress, Naval Yard, Academy (${list.slice(-3).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');
