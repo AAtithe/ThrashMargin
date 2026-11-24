@@ -79,6 +79,11 @@ import { GeneralNote } from '../components/Generals';
 // round7:fortification. The Fortification line: the sixth line, structures' full health, Point Defence.
 import { BATTLE_LINES, POINT_DEFENCE_CHANCE, POINT_DEFENCE_COOLDOWN, POINT_DEFENCE_RADIUS, upgradeLineOf, type BattleLineId } from '../sim/rules';
 import { linesFor, structureMaxHp } from '../sim/fortify';
+// round7:structures begin.
+import { IntelPanel, StructureNotes } from './StructurePanel';
+import { structureStatRows } from './structureStats';
+import { apparentHp, apparentKind, apparentSpecOf } from '../sim/structures';
+// round7:structures end.
 
 /** A tab of the build window: a build list, or Research once a Research Lab stands. */
 export type Tab = Category | 'research';
@@ -323,6 +328,9 @@ export function statsOf(
   if (kind === 'repairbay')
     rows.push({ label: 'Repairs', value: `Vehicles within ${REPAIR_BAY_RANGE} tile: ${REPAIR_BAY_HP} hp every ${secs(REPAIR_BAY_TICKS)}, paid as it goes` });
   if (b?.wall) rows.push({ label: 'Note', value: 'Blocks movement. Does not extend the build area or count as a structure.' });
+  // round7:structures begin. The four strategic structures, and the levels a structure can rise to.
+  rows.push(...structureStatRows(kind, state));
+  // round7:structures end.
   const grants = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).find(([, k]) => k === kind);
   if (grants) rows.push({ label: 'Grants', value: `${POWERS[grants[0]].name} (skirmish, advanced tech)` });
   if (spec.requires.length) rows.push({ label: 'Needs', value: spec.requires.map(r => BUILDINGS[r].name).join(', ') });
@@ -543,6 +551,8 @@ export function BuildPanel({
 
       {/* Industry (2026-11-21): fuel and alloys in store, against what this side may hold. */}
       {industryOn(state) && <IndustryGauge state={state} />}
+      {/* round7:structures: every enemy's research and production, while an Intelligence Centre of yours works. */}
+      <IntelPanel state={state} />
 
       {!compact && (
         <section className="fl-d-block" aria-label="Radar">
@@ -1277,7 +1287,8 @@ export function SelectionPanel({
     );
   }
   if (building) {
-    const spec = buildingSpecOf(state, building);
+    // round7:structures: an enemy Decoy shows as what it passes for (apparentSpecOf; the spec itself otherwise).
+    const spec = building.owner === 0 ? buildingSpecOf(state, building) : apparentSpecOf(state, building, 0);
     const mine = building.owner === 0;
     // round7:fortification: full health is Reinforced concrete's where the side has it.
     const fullHp = structureMaxHp(state, building);
@@ -1285,15 +1296,16 @@ export function SelectionPanel({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(building.kind)}>
+          <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(mine ? building.kind : apparentKind(state, building, 0))}>
             {mine ? '' : 'Enemy '}
             {spec.name}
           </strong>
           <span style={{ fontFamily: FONT.mono, fontSize: '0.72rem', color: UI.textSoft }}>
-            {Math.ceil(building.hp)}/{fullHp}
+            {/* round7:structures + fortification: an enemy Decoy shows its disguise's health; full health is concrete's and the level's. */}
+            {Math.ceil(mine ? building.hp : apparentHp(state, building, 0))}/{mine || building.kind !== 'decoy' ? fullHp : spec.hp}
           </span>
         </div>
-        <Bar frac={building.hp / fullHp} />
+        <Bar frac={(mine ? building.hp : apparentHp(state, building, 0)) / (mine || building.kind !== 'decoy' ? fullHp : spec.hp)} />
         {tipCard}
         {mine && (
           <>
@@ -1303,6 +1315,8 @@ export function SelectionPanel({
             </p>
             {supplyOn(state) && isProducer(building.kind) && <SupplyNote state={state} building={building} />}
             {territoryOn(state) && CREW[building.kind] !== undefined && <CrewNote state={state} building={building} />}
+            {/* round7:structures: its level and the next, a Bunker's garrison, a Cache being taken, a Decoy's look. */}
+            <StructureNotes state={state} building={building} dispatch={dispatch} touch={touch} />
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="fl-d-sbtn"

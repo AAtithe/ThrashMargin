@@ -38,6 +38,12 @@ import { sprites } from './fx/sprites';
 import { Water } from './fx/water';
 import { drawOreField } from './fx/ore';
 import { contactShadow, footprint, SKIRT } from './fx/ground';
+// round7:structures begin.
+import { drawLevelChevrons, drawOwnDecoy, drawUpgradeBar } from './art';
+import { apparentKind, nextLevelOf } from '../sim/structures';
+import { buildingSpecOf } from '../sim/specs';
+import { BUNKER_SLOTS, DECOY_DEFAULT } from '../sim/rules';
+// round7:structures end.
 import { currentPace } from '../lib/motion';
 import { sound, type SoundKind } from './sound';
 import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
@@ -442,6 +448,7 @@ export class Renderer {
       const py = b.y * TILE;
       if (!inView(px + (spec.w * TILE) / 2, py + (spec.h * TILE) / 2, 120)) continue;
       const w = spec.weapon;
+      // round7: structureMaxHp reads buildingSpecOf, so a level and Reinforced concrete both count.
       const frac = b.hp / /* round7:fortification */ structureMaxHp(cur, b);
       const bpose: BuildingPoseX = {
         t,
@@ -458,7 +465,30 @@ export class Renderer {
         bpose.working = aim !== undefined;
         if (aim !== undefined) bpose.turret = aim;
       } else if (b.kind === 'strikecommand') this.silo(cur, b, bpose, rt, act);
+      // round7:structures begin. A Bunker's slits flash while its garrison fights; a Decoy is drawn as
+      // what it passes for (to you, half seen through and outlined; to an enemy, as the real thing).
+      if (b.kind === 'bunker') bpose.working = !!b.garrison?.some(g => g.engage);
+      if (b.kind === 'decoy') {
+        const look = apparentKind(cur, b, 0);
+        if (b.owner === 0) drawOwnDecoy(ctx, b.disguise ?? DECOY_DEFAULT, b.owner, px, py, { ...bpose, turret: -Math.PI / 4, sinceShot: 9 }, t);
+        else drawBuilding(ctx, look, b.owner, px, py, look === 'decoy' ? bpose : { ...bpose, hp: frac, turret: -Math.PI / 4, sinceShot: 9 });
+      } else
+      // round7:structures end.
       drawBuilding(ctx, b.kind, b.owner, px, py, bpose);
+      // round7:structures begin. A structure's level, work under way, a Bunker's garrison, a Cache being taken.
+      if (b.level) drawLevelChevrons(ctx, px, py, b.level);
+      if (b.upgrade) {
+        const total = nextLevelOf(b)?.ticks ?? 1;
+        drawUpgradeBar(ctx, px + 4, py + spec.h * TILE - 6, spec.w * TILE - 8, b.upgrade.progress / total);
+      }
+      if (b.kind === 'bunker' && b.owner === 0 && b.garrison?.length) drawBadge(ctx, px + (spec.w * TILE) / 2, py + spec.h * TILE + 8, `${b.garrison.length}/${BUNKER_SLOTS}`, t);
+      if (b.capture) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(px - 1, py + spec.h * TILE + 1, spec.w * TILE + 2, 5);
+        ctx.fillStyle = b.owner === 0 ? ART.hpBad : ART.select;
+        ctx.fillRect(px, py + spec.h * TILE + 2, spec.w * TILE * b.capture.progress, 3);
+      }
+      // round7:structures end.
       if (frac < 0.5 && Math.random() < dt * (frac < 0.25 ? 14 : 6)) {
         this.fx.smoke(px + Math.random() * spec.w * TILE, py + Math.random() * spec.h * TILE * 0.6, 1.6);
         if (frac < 0.25 && Math.random() < 0.6) this.fx.fire(px + TILE * 0.3 + Math.random() * (spec.w - 0.6) * TILE, py + Math.random() * spec.h * TILE * 0.7);

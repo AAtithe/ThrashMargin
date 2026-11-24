@@ -50,6 +50,9 @@ import type { HeroKind } from './rules';
 import { generalQueueable } from './generals';
 // round7:fortification. The Fortification line (fireline-round7-fortification.md).
 import { structureMaxHp } from './fortify';
+// round7:structures begin.
+import { bunkerSold, cacheNearTroops, doCancelUpgrade, isOutpost, noCrew, strategicQueueProblem } from './structures';
+// round7:structures end.
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -95,6 +98,9 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
   // Industry: the alloys and fuel part of the price must be in store too.
   if (!hasGoods(p, goodsFor(s, owner, kind))) return false;
+  // round7:structures begin. Supply Caches: at most CACHE_MAX held and queued.
+  if (kind === 'supplycache' && strategicQueueProblem(s, owner, kind)) return false;
+  // round7:structures end.
   // Vehicles: the price includes the current loadout's modules (development lines only).
   if (category === 'vehicle') return p.credits >= queueCostFor(s, owner, kind as UnitKind);
   return p.credits >= costFor(s, owner, kind);
@@ -205,12 +211,17 @@ export function placementProblem(
     if (sea) return sea;
   }
   if (opts.anywhere) return null;
+  // round7:structures begin. A Supply Cache may also go down beside any of your ground troops, borders or not.
+  if (kind === 'supplycache' && cacheNearTroops(s, owner, x, y)) return null;
+  // round7:structures end.
   // Territory and workforce (2026-11-21): inside your borders, in place of the build radius.
   if (territoryOn(s)) return territoryProblem(s, owner, kind, x, y);
   // Near something we already own (walls do not count: they cannot creep a base across the map).
   // A Field Yard reaches further than the rest (its own buildRadius).
   const near = s.buildings.some(b => {
     if (b.owner !== owner || !isStructure(b)) return false;
+    // round7:structures: an outpost (a Supply Cache or a Decoy) extends no base.
+    if (isOutpost(b)) return false;
     const bs = buildingSpecOf(s, b);
     const gapX = Math.max(0, b.x - (x + spec.w - 1), x - (b.x + bs.w - 1));
     const gapY = Math.max(0, b.y - (y + spec.h - 1), y - (b.y + bs.h - 1));
@@ -245,6 +256,10 @@ export function canSell(s: GameState, owner: Owner, id: number): boolean {
 
 export function doSell(s: GameState, owner: Owner, id: number): void {
   const b = s.buildings.find(x => x.id === id)!;
+  // round7:structures begin. A Bunker's garrison walks out first; an upgrade under way is paid back.
+  if (b.garrison) bunkerSold(s, b);
+  if (b.upgrade) doCancelUpgrade(s, owner, id);
+  // round7:structures end.
   const spec = buildingSpecOf(s, b);
   const refund = Math.floor((spec.cost * SELL_RETURN * (b.hp / /* round7:fortification */ structureMaxHp(s, b))) / 10) * 10;
   s.players[owner].credits += refund;
@@ -265,7 +280,8 @@ export function doSell(s: GameState, owner: Owner, id: number): void {
 export function spawnSurvivors(s: GameState, b: Building, occ: Int32Array): number {
   const spec = BUILDINGS[b.kind];
   // Sandbags have no crew.
-  const want = spec.wall ? 0 : survivorsFor(spec.w, spec.h);
+  // round7:structures: nor have the outposts, and a Bunker's garrison walks out instead of a crew.
+  const want = spec.wall || noCrew(b.kind) ? 0 : survivorsFor(spec.w, spec.h);
   const taken = new Set<number>();
   const MAP_W = s.mapW;
   for (const u of s.units) if (u.hp > 0 && !isAir(u)) taken.add(Math.floor(u.y) * MAP_W + Math.floor(u.x));
@@ -339,6 +355,8 @@ function give(u: Unit, o: QueuedOrder, queue: boolean): void {
   // infantryman's walk to a Troop Carrier.
   if (u.scramble) delete u.scramble;
   if (u.boarding) delete u.boarding;
+  // round7:structures: and its walk to a Bunker.
+  if (u.entering) delete u.entering;
 }
 
 /**

@@ -110,6 +110,11 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       heroes: false,
       generals: false,
       generalPicks: setup.sides.map(() => null),
+      // round7:structures begin. Structure upgrades and strategic structures stated off (another
+      // workstream turns them on for planet wars); off is a planet battle exactly as before.
+      structureUpgrades: false,
+      strategicBuildings: false,
+      // round7:structures end.
     },
     teams: setup.sides.map(x => x.team),
   });

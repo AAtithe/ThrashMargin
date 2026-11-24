@@ -96,6 +96,10 @@ export interface Unit {
   drop?: true;
   /** Infantry only: the Troop Carrier it is walking to, to climb in when it is close. */
   boarding?: number;
+  // round7:structures begin.
+  /** Infantry only: the Fortified Bunker it is walking to, to go in when it is close. */
+  entering?: number;
+  // round7:structures end.
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
   // round5:C end.
   // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).
@@ -169,6 +173,21 @@ export interface Building {
   // round6:C end.
   /** Supply lines: what a cut-off Refinery (credits) or Fuel Well (fuel) holds on site. Absent: nothing. */
   held?: number;
+  // round7:structures begin. Structure upgrades and strategic structures: optional Building fields.
+  /** Structure upgrades: the level reached, 2 or more (STRUCTURE_LEVELS). Absent: level 1. */
+  level?: number;
+  /**
+   * Structure upgrades: the work toward the next level, already paid for (credits, and alloys with
+   * industry), refunded in full if cancelled. Ticks of work done. Absent: none under way.
+   */
+  upgrade?: { progress: number; credits: number; alloys?: number };
+  /** A Fortified Bunker: the infantry inside, oldest first, each as it was when it went in. Absent: empty. */
+  garrison?: Unit[];
+  /** A Decoy: the structure kind enemies see. Absent on every other structure. */
+  disguise?: BuildingKind;
+  /** A Supply Cache: the side taking it over and its progress from 0 to 1. Absent: nobody is. */
+  capture?: { by: Owner; progress: number };
+  // round7:structures end.
 }
 
 /**
@@ -431,6 +450,10 @@ export interface AiMemory {
   // round6:C end.
   // round6:D begin. Formations and squads: optional AiMemory fields (its wave's squad).
   // round6:D end.
+  // round7:structures begin. Strategic structures: optional AiMemory fields (aiStructures.ts).
+  /** The last tick enemy artillery was seen within reach of home: the Bunker is manned until it has been quiet a while. */
+  pressureAt?: number;
+  // round7:structures end.
 }
 
 export interface GameState {
@@ -865,4 +888,16 @@ export type GameAction =
   // 'none' takes the units out of their squads, leaving their orders as they are.
   | { type: 'formation'; ids: number[]; shape: FormationShape | 'none' }
   // round6:D end.
+  // round7:structures begin. Structure upgrades and strategic structures (structures.ts).
+  /** Starts the work toward a structure's next level, paid at once. */
+  | { type: 'upgradeStructure'; id: number }
+  /** Stops it, refunded in full. */
+  | { type: 'cancelUpgrade'; id: number }
+  /** Infantry walk to a Fortified Bunker and go in. */
+  | { type: 'garrison'; ids: number[]; bunker: number }
+  /** Everyone inside a Bunker comes out. */
+  | { type: 'ungarrison'; id: number }
+  /** What a Decoy looks like to enemies. */
+  | { type: 'disguise'; id: number; as: BuildingKind }
+  // round7:structures end.
   ;

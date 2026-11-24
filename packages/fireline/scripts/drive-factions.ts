@@ -84,7 +84,8 @@ function setups(ok: Ok): void {
     ok(base.heroes === false && base.generals === false, `${name} states heroes and Generals: off`);
     ok(JSON.stringify(base.generalPicks) === '[null,null]', `${name} states every seat's doctrine General: none`);
   }
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup is still exactly the default');
+  // round7:structures: the two structure toggles read absent as off, whatever the base (the lobby states them on).
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup is still exactly the default, bar the structure toggles (off when absent)');
   const n4 = normaliseSetup({ sides: 4 });
   ok(n4.factions!.length === 4 && n4.factions!.every(f => f === 'meridian'), 'four sides: four armies, all Meridian by default');
   ok(n4.generalPicks!.length === 4 && n4.generalPicks!.every(g => g === null), 'four sides: four doctrine picks, all none by default');
@@ -795,8 +796,8 @@ function navalWarBothArmies(ok: Ok): void {
     // round7:fortification: the Point Defence emplacement closes the list, after the economy's five.
     const list = menuOf(f, 'building').filter(k => k !== 'pointdefence');
     // Industry's Fuel Well and Foundry (2026-11-21) come after the Academy, so nothing before them moved.
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list.slice(-6).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower' && menuOf(f, 'building').slice(-1)[0] === 'pointdefence',
-      `${f}: the Structures list ends Fortress, Naval Yard, Academy, the economy's five, then Point Defence (${menuOf(f, 'building').slice(-7).join(', ')})`);
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && menuOf(f, 'building').indexOf('pointdefence') === menuOf(f, 'building').indexOf('watchtower') + 1 && list.slice(-10).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,bunker,supplycache,decoy,intelcentre',
+      `${f}: the Structures list ends Fortress, Naval Yard, Academy, the economy's five, then round 7's strategic four (${list.slice(-10).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');
 

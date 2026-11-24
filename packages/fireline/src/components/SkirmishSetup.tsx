@@ -61,6 +61,8 @@ import { SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, INDUSTRY_AIR_FUEL_SHARE, INDUSTR
 import ArmyField from './ArmyField';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsSetup } from './Generals';
+// round7:structures.
+import { StructuresSetup } from './StructuresSetup';
 
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
@@ -165,6 +167,9 @@ export function readStoredSetup(): SkirmishSetup {
       industry: r.industry === true,
       supply: r.industry === true && r.supply === true,
       territory: r.industry === true && r.supply === true && r.territory === true,
+      // round7:structures: on unless the player turned them off (a setup stored before them reads as on, the lobby's default).
+      structureUpgrades: r.structureUpgrades !== false,
+      strategicBuildings: r.strategicBuildings !== false,
     };
   } catch {
     return FIRST_SETUP;
@@ -424,6 +429,9 @@ export default function SkirmishSetupPanel({
         {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
         <GeneralsSetup value={value} set={set} />
         {/* round6:C end. */}
+        {/* round7:structures begin. Structure upgrades and strategic structures (greyed on standard tech). */}
+        <StructuresSetup value={value} set={set} />
+        {/* round7:structures end. */}
       </SetupStep>
 
       <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">

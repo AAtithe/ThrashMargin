@@ -306,7 +306,8 @@ function doctrine(ok: Ok): void {
   // Point Defence: a structure only with the Point Defence doctrine researched.
   const p = processAction(s, { type: 'doctrine', line: 'fortification', branch: 'pointdef' });
   ok(techAllowed(p, 0, 'pointdefence') && !canQueue(p, 0, 'building', 'pointdefence') && processAction(p, { type: 'queue', category: 'building', kind: 'pointdefence' }) === p, 'Point Defence offered but refused before its research');
-  ok(BUILD_MENU[BUILD_MENU.length - 1] === 'pointdefence', 'Point Defence closes the Structures list, so no other item\'s key moves');
+  // Round 7 merged: the strategic four follow it, so it closes the items from before round 7.
+  ok(BUILD_MENU.indexOf('pointdefence') === BUILD_MENU.indexOf('watchtower') + 1 && BUILD_MENU.slice(BUILD_MENU.indexOf('pointdefence') + 1).every(k => ['bunker', 'supplycache', 'decoy', 'intelcentre'].includes(k)), 'Point Defence follows every structure from before round 7, so none of their keys moves');
   give(p, 0, ['pointdef']);
   const q = processAction(p, { type: 'queue', category: 'building', kind: 'pointdefence' });
   ok(q !== p && q.players[0].credits === p.players[0].credits - BUILDINGS.pointdefence.cost, 'researched: Point Defence queued and paid for');

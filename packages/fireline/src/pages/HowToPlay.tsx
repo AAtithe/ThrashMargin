@@ -8,6 +8,8 @@ import { listedCost, statsOf } from '../game/Sidebar';
 import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsPanel } from '../components/Generals';
+// round7:structures.
+import { StructuresHelp } from './StructuresHelp';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 import {
   AIR_LOAD_FUEL,
@@ -326,6 +328,8 @@ export default function HowToPlay() {
         <SupplyPanel />
         {/* Territory and workforce (2026-11-21): its panel goes on the line below. */}
         <TerritoryPanel />
+        {/* round7:structures: structure upgrades and strategic structures. */}
+        <StructuresHelp />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -560,6 +564,8 @@ const SECTIONS = [
   'Industry',
   'Supply lines',
   'Territory and workforce',
+  // round7:structures.
+  'Upgrades and strategic structures',
   'Formations and groups',
   'Campaign',
   'War for the Planet',

@@ -4,6 +4,10 @@ import { canHome } from '../sim/commands';
 import { isAir } from '../sim/air';
 import { BUILDINGS, UNITS } from '../sim/rules';
 import type { Building, GameAction, GameState, Unit } from '../sim/types';
+// round7:structures begin.
+import { STRUCTURE_LEVELS } from '../sim/rules';
+import { nextLevelOf, ungarrisonProblem, upgradeProblem, upgradesOn } from '../sim/structures';
+// round7:structures end.
 
 /**
  * Round 5, workstream C: the Forward Base Truck a Deploy acts on: the first selected that can deploy
@@ -124,6 +128,32 @@ export const SELECTION_ACTIONS: SelectionAction[] = [
       return ids.length && canHome(state, 0, ids) ? { type: 'home', ids } : null;
     },
   },
+  // round7:structures begin. Structure upgrades: raise a structure a level, or stop the work for a full
+  // refund. Strategic structures: everyone out of a Bunker.
+  {
+    id: 'upgrade',
+    label: 'Upgrade',
+    title: 'Raise this structure a level. Paid now, refunded in full if you cancel; it keeps working meanwhile but takes a quarter more damage until the work is done.',
+    action: (state, sel) => {
+      const b = sel.building;
+      return b && upgradesOn(state) && STRUCTURE_LEVELS[b.kind] && !b.upgrade && nextLevelOf(b) ? { type: 'upgradeStructure', id: b.id } : null;
+    },
+    problem: (state, sel) => (sel.building ? upgradeProblem(state, 0, sel.building.id) : null),
+  },
+  {
+    id: 'cancel-upgrade',
+    label: 'Cancel upgrade',
+    title: 'Stop the upgrade under way. Everything it cost is paid back.',
+    action: (_state, sel) => (sel.building?.upgrade ? { type: 'cancelUpgrade', id: sel.building.id } : null),
+  },
+  {
+    id: 'ungarrison',
+    label: 'Unload',
+    title: 'Everyone inside the Bunker comes out onto the ground round it.',
+    action: (_state, sel) => (sel.building?.kind === 'bunker' && sel.building.garrison?.length ? { type: 'ungarrison', id: sel.building.id } : null),
+    problem: (state, sel) => (sel.building ? ungarrisonProblem(state, 0, sel.building.id) : null),
+  },
+  // round7:structures end.
 ];
 
 /** The commands that apply to this selection, in list order, each with its action and any problem. */

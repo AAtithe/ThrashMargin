@@ -1,4 +1,6 @@
 import { boardProblem, canRide } from '../sim/transport';
+// round7:structures.
+import { canGarrison, garrisonProblem } from '../sim/structures';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
@@ -603,6 +605,18 @@ export function Battle({
         }
         return;
       }
+      // round7:structures begin. Infantry on one of our own Fortified Bunkers: they walk to it and go in.
+      if (targetBuilding && targetBuilding.owner === 0 && targetBuilding.kind === 'bunker') {
+        const riders = mine.filter(canGarrison).map(u => u.id);
+        if (riders.length) {
+          const rest = mine.filter(u => !canGarrison(u)).map(u => u.id);
+          if (dispatch({ type: 'garrison', ids: riders, bunker: targetBuilding.id })) ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
+          else showToast(garrisonProblem(s, 0, riders, targetBuilding.id) ?? 'Cannot garrison');
+          if (rest.length) dispatch({ type: 'move', ids: rest, x: wx, y: wy, queue });
+          return;
+        }
+      }
+      // round7:structures end.
       // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
       if (targetUnit && targetUnit.owner === 0 && UNITS[targetUnit.kind].carries) {
         const riders = mine.filter(u => canRide(u, targetUnit)).map(u => u.id);

@@ -43,6 +43,10 @@ import { generalLeads, generalPlan } from './aiGenerals';
 // round7:fortification. The Fortification line: structures' full health and Point Defence's place.
 import { structureMaxHp } from './fortify';
 import { pointDefenceFocus } from './aiFortification';
+// round7:structures begin.
+import { strategicExtra, strategicFocus, strategicPlanFor, structuresPlan } from './aiStructures';
+import { apparentHp, apparentKind, apparentSpecOf } from './structures';
+// round7:structures end.
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -494,6 +498,10 @@ function commander(s: GameState, owner: Owner): void {
   // round6:C end.
   // Industry (2026-11-21): a drained Fuel Well sold, so the plan can put one by another field. A no-op without industry.
   economyPlan(s, owner);
+  // round7:structures begin. Upgrades, the Bunker's garrison and the Decoys' looks (aiStructures.ts).
+  // Returns at once on Easy and with both toggles off.
+  if (adv) structuresPlan(s, owner, diff, home, units, foes, new Set([...mem.waveIds, ...mem.raidIds]));
+  // round7:structures end.
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
@@ -688,7 +696,7 @@ function commander(s: GameState, owner: Owner): void {
       mem.wavePhase = 2;
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
-      const target = pickTarget(enemy, foes, stage, t.focus, home);
+      const target = pickTarget(enemy, foes, stage, t.focus, home, s, owner);
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
       // Integration: a field General near the wave leads it (generalLeads; none with Generals off).
@@ -721,7 +729,7 @@ function commander(s: GameState, owner: Owner): void {
         core = near;
         centre = middle(near);
       }
-      const target = pickTarget(enemy, foes, centre, t.focus, home);
+      const target = pickTarget(enemy, foes, centre, t.focus, home, s, owner);
       let spread = 0;
       for (const u of core) spread = Math.max(spread, dist(u.x, u.y, centre.x, centre.y));
       const fighting = members.some(u => u.engage);
@@ -846,7 +854,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
  * Where a wave goes next. Haulers, artillery and turrets count as nearer than they are; other
  * structures by how much they matter. Easy just walks to the nearest structure from home.
  */
-function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt): Pt {
+function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt, s?: GameState, viewer?: Owner): Pt {
   if (!focus) return buildingCentre(nearestBuilding(enemy, home.x, home.y));
   const bonus: Partial<Record<BuildingKind, number>> = {
     turret: 8,
@@ -865,7 +873,8 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
   let bestScore = Infinity;
   for (const b of enemy) {
     const c = buildingCentre(b);
-    const score = dist(from.x, from.y, c.x, c.y) - (bonus[b.kind] ?? 0);
+    // round7:structures: by what the structure looks like (a Decoy passes for its disguise).
+    const score = dist(from.x, from.y, c.x, c.y) - (bonus[s && viewer !== undefined ? apparentKind(s, b, viewer) : b.kind] ?? 0);
     if (score < bestScore) {
       bestScore = score;
       best = c;
@@ -892,7 +901,8 @@ function focusFire(s: GameState, owner: Owner, members: Unit[], foes: Unit[], en
   const priority: { id: number; x: number; y: number; armor: 'heavy' | 'light' | 'building'; b?: Building }[] = [];
   for (const u of foes)
     if (u.kind === 'hauler' || u.kind === 'artillery' || u.kind === 'missilecarrier') priority.push({ id: u.id, x: u.x, y: u.y, armor: unitSpecOf(s, u).armor as 'heavy' | 'light' });
-  for (const b of enemy) if (b.kind === 'turret' || b.kind === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
+  // round7:structures: a Decoy passing for a turret is picked as one (apparentKind; b.kind otherwise).
+  for (const b of enemy) if (apparentKind(s, b, owner) === 'turret' || apparentKind(s, b, owner) === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
   if (!priority.length) return;
   const ids = new Set(priority.map(q => q.id));
   const armed = new Set(foes.filter(f => unitSpecOf(s, f).weapon && f.kind !== 'artillery' && f.kind !== 'missilecarrier').map(f => f.id));
@@ -1022,6 +1032,9 @@ function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySp
   // that reconnects something cut off is no extra.
   if (kind === 'watchtower') return true;
   if (kind === 'depot') return !depotSpot(s, owner);
+  // round7:structures: the strategic structures (aiStructures.ts); null for every other kind.
+  const r7 = strategicExtra(s, owner, kind);
+  if (r7 !== null) return r7;
   // round6:B begin. Heroes in free play: with heroes on, on Hard, the Tech Centre is the way to the
   // Academy and goes up in its turn (aiHeroes.ts, heroesNeedTechCentre).
   if (kind === 'techcentre' && heroesNeedTechCentre(s, aiDifficulty(s, owner))) return false;
@@ -1072,6 +1085,8 @@ function nextStructure(
         ['turret', 1],
         ['uplink', 1],
         ['turret', d.turrets],
+        // round7:structures: a Fortified Bunker under artillery pressure (Normal and Hard; nothing otherwise).
+        ...strategicPlanFor(s, owner, advanced, 'early'),
         // Paced research (round 6): the Tech Centre before the second factory, for the Mk IIs.
         ...(pacedTech(s) ? [['techcentre', 1] as [BuildingKind, number]] : []),
         ['factory', d.factories],
@@ -1081,6 +1096,8 @@ function nextStructure(
         ['refinery', Math.max(d.refineries, t.lateRefineries)],
         ['strikecommand', t.strike ? 1 : 0],
         ['repairbay', 1],
+        // round7:structures: a Supply Cache with a wave in the field, and on Hard an Intelligence Centre and Decoys.
+        ...strategicPlanFor(s, owner, advanced, 'late'),
       ]
     : [
         ['barracks', 1],
@@ -1114,6 +1131,10 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     const target = expansionTarget(s, owner, home);
     return target ? depotToward(s, owner, target) : null;
   }
+  // round7:structures begin. The strategic structures each have their own place (aiStructures.ts).
+  const r7 = strategicFocus(s, owner, kind, home, enemyHome);
+  if (r7) return findSpotNear(s, owner, kind, r7);
+  // round7:structures end.
   // Territory: a Watchtower toward the nearest ore outside the borders, else toward the enemy.
   if (kind === 'watchtower') {
     const ore = expansionTarget(s, owner, home) ?? unclaimedOre(s, owner, home);
@@ -1339,13 +1360,16 @@ function blastWorth(
   radius: number,
   damageAt: (d: number, armor: ArmorClass) => number,
   unitShare: number,
+  viewer?: Owner,
 ): number {
   let worth = 0;
   for (const b of enemy) {
     const d = distToBuilding(x, y, b);
     if (d > radius) continue;
-    const spec = buildingSpecOf(s, b);
-    worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, b.hp)) * (spec.weapon ? 1.25 : 1);
+    // round7:structures: what the structure looks like to the side aiming (a Decoy passes for its disguise).
+    const spec = viewer !== undefined ? apparentSpecOf(s, b, viewer) : buildingSpecOf(s, b);
+    const hp = viewer !== undefined ? apparentHp(s, b, viewer) : b.hp;
+    worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, hp)) * (spec.weapon ? 1.25 : 1);
   }
   for (const u of foes) {
     const d = dist(x, y, u.x, u.y);
@@ -1365,11 +1389,12 @@ function bestBlast(
   damageAt: (d: number, armor: ArmorClass) => number,
   unitShare: number,
   bonus: (x: number, y: number) => number,
+  viewer?: Owner,
 ): { x: number; y: number; worth: number } | null {
   let best: { x: number; y: number; worth: number } | null = null;
   const candidates: Pt[] = [...enemy.map(b => buildingCentre(b)), ...foes.map(u => ({ x: u.x, y: u.y }))];
   for (const c of candidates) {
-    const worth = blastWorth(s, enemy, foes, c.x, c.y, radius, damageAt, unitShare) * bonus(c.x, c.y);
+    const worth = blastWorth(s, enemy, foes, c.x, c.y, radius, damageAt, unitShare, viewer) * bonus(c.x, c.y);
     if (!best || worth > best.worth) best = { x: c.x, y: c.y, worth };
   }
   return best;
@@ -1402,6 +1427,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
         (_d, armor) => 2 * BARRAGE_DAMAGE * 0.75 * DAMAGE_VS.artillery[armor],
         0.6,
         (x, y) => (centre && dist(x, y, centre.x, centre.y) < 10 ? 1.5 : 1),
+        owner,
       );
       if (at && at.worth >= t.barrageWorth) fire('barrage', at);
     }
@@ -1410,7 +1436,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
     if (!t.aimPowers) fire('missile', crude());
     else {
       const r = POWERS.missile.radius;
-      const at = bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1);
+      const at = bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1, owner);
       if (at && at.worth >= 1500) fire('missile', at);
     }
   }
@@ -1498,3 +1524,18 @@ function walk(s: GameState, occ: Int32Array, start: number, blocked: number): In
   return steps;
 }
 
+
+// round7:structures begin. For the harness (scripts/drive-structures.ts): where this side's commander
+// would aim a charged barrage or missile at its chosen enemy now, by the same reckoning as useStrikes
+// (Normal and Hard's aim, without the bonus near its own wave). Null when there is nothing to aim at.
+export function aimStrike(s: GameState, owner: Owner, power: 'barrage' | 'missile'): { x: number; y: number; worth: number } | null {
+  const { enemy } = enemyLists(s, owner, chooseEnemy(s, owner));
+  const foes = s.units.filter(u => isEnemy(s, owner, u.owner));
+  if (power === 'barrage') {
+    const r = POWERS.barrage.radius;
+    return bestBlast(s, enemy, foes, r, (_d, armor) => 2 * BARRAGE_DAMAGE * 0.75 * DAMAGE_VS.artillery[armor], 0.6, () => 1, owner);
+  }
+  const r = POWERS.missile.radius;
+  return bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1, owner);
+}
+// round7:structures end.

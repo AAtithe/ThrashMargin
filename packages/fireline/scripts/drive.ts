@@ -80,6 +80,8 @@ import { sections as heroesSections } from './drive-heroes';
 import { sections as generalsSections } from './drive-generals';
 import { sections as industrySections } from './drive-industry';
 import { sections as territorySections } from './drive-territory';
+// round7:structures. Structure upgrades and strategic structures: its sections.
+import { sections as structuresSections } from './drive-structures';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
@@ -2559,7 +2561,8 @@ function missileTests(): void {
 }
 
 function setupTests(): void {
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup is the default');
+  // round7:structures: the two structure toggles read absent as off, whatever the base.
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup is the default, bar the structure toggles');
   const junk = normaliseSetup({ map: 'moon' as never, tech: 'x' as never, ore: 'y' as never, credits: 999999 });
   ok(junk.map === DEFAULT_SETUP.map && junk.tech === DEFAULT_SETUP.tech && junk.ore === DEFAULT_SETUP.ore, 'unknown choices fall back to the default');
   ok(junk.credits === SETUP_CREDITS_MAX && normaliseSetup({ credits: 5 }).credits === SETUP_CREDITS_MIN, 'credits are clamped');
@@ -2815,6 +2818,9 @@ if (!CAMPAIGN_ONLY) {
     // round7:fortification begin. Its sections, from scripts/drive-fortification.ts.
     ...fortificationSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round7:fortification end.
+    // round7:structures begin. Structure upgrades and strategic structures, from scripts/drive-structures.ts.
+    ...structuresSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:structures end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

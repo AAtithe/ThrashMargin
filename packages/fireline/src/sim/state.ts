@@ -68,6 +68,9 @@ import { RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
+// round7:structures begin.
+import { STRATEGIC_BUILDINGS, cloneStructureFields, markIntel, migrateStructures, strategicOn } from './structures';
+// round7:structures end.
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
 // round7:planet begin
@@ -158,7 +161,13 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const supply = industry && (typeof r.supply === 'boolean' ? r.supply : (base.supply ?? false));
   // Territory and workforce (2026-11-21): on only when exactly true, and only with supply lines.
   const territory = supply && (typeof r.territory === 'boolean' ? r.territory : (base.territory ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory };
+  // round7:structures begin. Structure upgrades and strategic structures: on only when exactly true,
+  // and only with advanced tech. Absent reads as off whatever the base, so every older setup and every
+  // partial one plays exactly as before; the lobby states them (DEFAULT_SETUP has them on).
+  const structureUpgrades = tech === 'advanced' && r.structureUpgrades === true;
+  const strategicBuildings = tech === 'advanced' && r.strategicBuildings === true;
+  // round7:structures end.
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, structureUpgrades, strategicBuildings };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -206,6 +215,9 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // line (built only once the side has the Point Defence doctrine: canQueue).
   if (kind === 'pointdefence' && !fortificationOn(s)) return false;
   // round7:fortification end.
+  // round7:structures begin. The four strategic structures only with setup.strategicBuildings (advanced tech).
+  if (STRATEGIC_BUILDINGS.includes(kind as BuildingKind)) return strategicOn(s);
+  // round7:structures end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -461,7 +473,8 @@ export function cloneState(s: GameState): GameState {
       if (u.hero) c.hero = u.hero.active ? { ...u.hero, active: { ...u.hero.active } } : { ...u.hero };
       return c;
     }),
-    buildings: s.buildings.map(b => ({ ...b, rally: b.rally ? { ...b.rally } : null })),
+    // round7:structures: an upgrade under way and a Bunker's garrison copied too (cloneStructureFields).
+    buildings: s.buildings.map(b => cloneStructureFields({ ...b, rally: b.rally ? { ...b.rally } : null })),
     players: s.players.map(p => ({
       ...p,
       queues: {
@@ -691,6 +704,9 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
   // round5:D begin. A Comms Relay this side holds reveals its area (one loop calling mark).
   if (s.sites) for (const c of relaysOf(s, owner)) mark(c.x, c.y, RELAY_RADIUS);
   // round5:D end.
+  // round7:structures begin. A working Intelligence Centre reveals enemy structures within its reach.
+  if (s.setup?.strategicBuildings) markIntel(s, owner, k => (vis[k] = 1));
+  // round7:structures end.
   return vis;
 }
 
@@ -852,6 +868,9 @@ export function migrateState(raw: unknown): GameState | null {
   // Industry (2026-11-21): each side's fuel and alloys kept only with industry on, and only as
   // whole numbers of at least nought; a store and a queue item without industry lose them.
   migrateIndustry(out);
+  // round7:structures begin. Levels, upgrades, garrisons, disguises and captures kept only where they may be.
+  migrateStructures(out);
+  // round7:structures end.
   return out;
 }
 
