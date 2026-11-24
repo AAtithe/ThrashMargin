@@ -84,7 +84,9 @@ const preRound6 = (s: GameState): GameState => {
   if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
   if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
   if (!s.setup) return { ...s, players };
-  const { factions, heroes, generals, generalPicks, ...setup } = s.setup;
+  // round7:adaptive: round 7's adaptive commander, stated off, means the earlier battle exactly.
+  const { factions, heroes, generals, generalPicks, adaptive, ...setup } = s.setup;
+  if (adaptive !== undefined && adaptive !== false) throw new Error('setup adaptive commander on');
   if (factions !== undefined && (factions.length !== s.players.length || factions.some(f => f !== 'meridian'))) throw new Error(`setup armies ${factions}`);
   if (heroes !== undefined && heroes !== false) throw new Error('setup heroes on');
   if (generals !== undefined && generals !== false) throw new Error('setup Generals on');
@@ -870,7 +872,7 @@ function storyTests(ok: Ok): void {
       for (const map of PRE_NAVAL_MAPS) {
         if (sides === 2 && mode === 'teams') continue;
         k++;
-        let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic' } });
+        let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic', adaptive: false } });
         ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
         s = tick(s, 1500);
         ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
@@ -881,7 +883,7 @@ function storyTests(ok: Ok): void {
     for (const mode of ['ffa', 'teams'] as const) {
       if (sides === 2 && mode === 'teams') continue;
       c++;
-      let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic' } });
+      let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic', adaptive: false } });
       ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:0`], `skirmish ${sides} ${mode} coast byte-identical at tick 0`);
       s = tick(s, 1500);
       ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:1500`], `skirmish ${sides} ${mode} coast byte-identical after 1,500 ticks`);
