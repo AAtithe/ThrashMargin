@@ -210,7 +210,16 @@ export interface PlanetHero {
   lost: boolean;
 }
 
-export interface JournalEntry { turn: number; text: string; tone: 'info' | 'good' | 'bad'; f?: FactionId }
+export interface JournalEntry {
+  turn: number;
+  text: string;
+  tone: 'info' | 'good' | 'bad';
+  f?: FactionId;
+  // round7:review begin. The after-action review: a fought battle's turning points, in short lines.
+  /** Kept on the newest fought battle's entry alone (journal.ts, attachReview), so it costs a few hundred bytes at most. */
+  review?: string[];
+  // round7:review end.
+}
 
 export interface PlanetResult {
   won: boolean;
@@ -398,4 +407,7 @@ export interface BattleReport {
   cityLevelLost: 0 | 1;
   /** Battle rules 3 (round 7): what the battle sends back. Only with a setup that has `links`. */
   links?: ReportLinks;
+  // round7:review begin. The after-action review: a fought battle's turning points (REVIEW_LINES_MAX lines).
+  review?: string[];
+  // round7:review end.
 }

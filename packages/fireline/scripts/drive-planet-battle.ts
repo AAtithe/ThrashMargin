@@ -54,7 +54,15 @@ import type { GameState } from '../src/sim/types';
 type Ok = (cond: unknown, what: string) => void;
 
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
-const hash = (x: unknown): string => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+// round7:review begin. A battle's after-action history (src/sim/history.ts) is a record of play, not
+// play: it is left out of the pinned hashes, which date from before it. Recording never changes
+// play (scripts/drive-review.ts plays battles with and without it and compares them).
+const hash = (x: unknown): string =>
+  createHash('sha256')
+    .update(JSON.stringify(x, (k, v) => (k === 'history' ? undefined : v)))
+    .digest('hex')
+    .slice(0, 16);
+// round7:review end.
 /**
  * A battle state as hashed before the merge with the armies' round 6 (fireline-round6-design.md,
  * section 10). A skirmish setup now states every seat's army, heroes, Generals and each seat's

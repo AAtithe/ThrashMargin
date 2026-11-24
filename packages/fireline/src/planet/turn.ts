@@ -17,6 +17,9 @@ import { buildBlock, buildCost, buildingName, damageCity, growCost, isCityBuildi
 import { draftProblem, endTreaty, enactTreaty, expireTreaties, proposalVerdict, shiftTrust, termValue, TREATY_NAMES, trustDrift } from './diplomacy';
 import { addStock, armyCapOf, canAfford, costText, garrisonCap, pay, recruitCost, regionIncome, routeIncome, shortfallText, upkeepOf } from './economy';
 import { note } from './journal';
+// round7:review begin. The after-action review: a fought battle's lines on its journal entry.
+import { attachReview } from './journal';
+// round7:review end.
 import { planetMapOf } from './map';
 import { quickResolve } from './resolve';
 import { doctrineProblem, loadoutProblem, researchProblem, scienceCost } from './research';
@@ -145,6 +148,9 @@ export function reportProblem(s: PlanetState, pb: PendingBattle, rep: unknown, h
     }
   }
   if (!isInt(r.ticks, 0, 1e9)) return bad;
+  // round7:review begin. The after-action review: lines, if any, are a short list of strings.
+  if (r.review !== undefined && (!Array.isArray(r.review) || r.review.length > 3 || !r.review.every(x => typeof x === 'string' && x.length <= 160))) return bad;
+  // round7:review end.
   if (!Array.isArray(r.sides) || r.sides.length !== setup.sides.length) return bad;
   for (let i = 0; i < setup.sides.length; i++) {
     const side = setup.sides[i];
@@ -686,6 +692,9 @@ function applyReport(d: PlanetState, pb: PendingBattle, rep: BattleReport): void
     tone,
     involved ? 0 : attacker,
   );
+  // round7:review begin. The after-action review: a fought battle's turning points go on that entry.
+  if (rep.how === 'fought' && rep.review !== undefined) attachReview(d, rep.review);
+  // round7:review end.
 
   if (d.pending[0] === pb) d.pending.shift();
   unlockHeroes(d);

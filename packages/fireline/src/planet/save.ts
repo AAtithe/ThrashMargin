@@ -39,6 +39,9 @@ import { planetMapOf } from './map';
 import { isUpgrade, isLine } from './research';
 import { JOURNAL_MAX, OFFERS_MAX, PAYMENT_MAX, TEMPERAMENT_LIST, TERM_AMOUNT_MAX, TREATY_TERMS_MAX, TREATY_TURNS, isLengthPreset, isPlanetTerrain, normaliseOptions } from './rules';
 import { isArmyKind, isInt, newPlanetState, sortTreaties } from './state';
+// round7:review begin. The after-action review: journal lines, cleaned.
+import { cleanReview } from './journal';
+// round7:review end.
 import {
   ARMY_KINDS,
   CITY_BUILDINGS,
@@ -556,9 +559,21 @@ function cleanJournal(raw: unknown, F: number): JournalEntry[] {
     const tone: JournalEntry['tone'] = e.tone === 'good' || e.tone === 'bad' ? e.tone : 'info';
     const entry: JournalEntry = { turn: e.turn, text: e.text.slice(0, JOURNAL_TEXT_MAX), tone };
     if (isInt(e.f, 0, F - 1)) entry.f = e.f;
+    // round7:review begin. The after-action review: a battle's lines, kept when well formed.
+    const review = cleanReview(e.review);
+    if (review) entry.review = review;
+    // round7:review end.
     out.push(entry);
   }
-  return out.slice(-JOURNAL_MAX);
+  // round7:review begin. One battle's review at most: the newest.
+  const kept = out.slice(-JOURNAL_MAX);
+  const last = kept.map(e => !!e.review).lastIndexOf(true);
+  return kept.map((e, i) => {
+    if (!e.review || i === last) return e;
+    const { review: _old, ...rest } = e;
+    return rest;
+  });
+  // round7:review end.
 }
 
 const RESULT_HOWS: PlanetResult['how'][] = ['domination', 'elimination', 'alliance', 'turnLimit', 'fallen', 'rival'];

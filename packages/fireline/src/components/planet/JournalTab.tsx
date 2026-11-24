@@ -13,6 +13,18 @@ export default function JournalTab({ s }: PlanetProps) {
             <span>
               <span className="fl-small">Turn {e.turn} · </span>
               {e.text}
+              {/* round7:review begin. A fought battle's turning points, from its after-action review. */}
+              {e.review && (
+                <details className="fl-pl-review" data-testid="journal-review">
+                  <summary>Turning points</summary>
+                  <ul>
+                    {e.review.map((line, j) => (
+                      <li key={j}>{line}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {/* round7:review end. */}
             </span>
           </li>
         ))}

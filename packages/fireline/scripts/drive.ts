@@ -82,6 +82,9 @@ import { sections as industrySections } from './drive-industry';
 import { sections as territorySections } from './drive-territory';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
+// round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
+import { sections as reviewSections } from './drive-review';
+// round7:review end.
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2804,6 +2807,9 @@ if (!CAMPAIGN_ONLY) {
     ...industrySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Territory and workforce (2026-11-21): its sections, from scripts/drive-territory.ts.
     ...territorySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
+    ...reviewSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:review end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();
