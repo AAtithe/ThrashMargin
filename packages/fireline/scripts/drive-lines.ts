@@ -1082,7 +1082,8 @@ function commanderProblem(s: GameState, owner: Owner, diff: Difficulty, mode: Re
 const ARMED_GROUND = (u: Unit) => !!UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air' && !UNITS[u.kind].hero;
 
 function battleFor(seed: string, diff: Difficulty, research: ResearchMode): GameState {
-  const s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research } });
+  // round7:adaptive: adaptive off, so these seeds play as recorded (the adaptive commander has drive-adaptive.ts).
+  const s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research, adaptive: false } });
   s.autopilotDifficulty = diff;
   return s;
 }
@@ -1163,7 +1164,7 @@ function computer(ok: Ok): void {
       let pacedLoadouts = 0;
       for (let i = 1; i <= 3 && pacedLoadouts === 0 && fitted.size === 0; i++) {
         const seed = `ai-${diff}-paced-${i}`;
-        let s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research: 'lines', pace: 'standard' } });
+        let s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research: 'lines', pace: 'standard', adaptive: false } });
         s.autopilotDifficulty = diff;
         while (s.winner === null && s.tick < LADDER_CAP) {
           s = processAction(s, { type: 'tick', n: 50 });

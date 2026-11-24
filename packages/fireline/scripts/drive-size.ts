@@ -88,6 +88,8 @@ const strip = (k: string, v: unknown) =>
           (k === 'faction' && v === 'meridian') ||
             (k === 'factions' && Array.isArray(v) && v.every(x => x === 'meridian')) ||
             ((k === 'heroes' || k === 'generals') && v === false) ||
+            // round7:adaptive: the adaptive commander off is the earlier battle exactly.
+            (k === 'adaptive' && v === false) ||
             (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
           ? undefined
           : v;
@@ -341,10 +343,11 @@ const PRE_ROUND6: Record<string, string> = {
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
-  lines: { map: 'random', tech: 'advanced', research: 'lines' },
-  classic: { map: 'random', tech: 'advanced', research: 'classic' },
-  standard: { map: 'random', tech: 'standard' },
-  three: { map: 'random', tech: 'advanced', research: 'lines', sides: 3 },
+  // round7:adaptive: each states the adaptive commander off, as every battle was before round 7.
+  lines: { map: 'random', tech: 'advanced', research: 'lines', adaptive: false },
+  classic: { map: 'random', tech: 'advanced', research: 'classic', adaptive: false },
+  standard: { map: 'random', tech: 'standard', adaptive: false },
+  three: { map: 'random', tech: 'advanced', research: 'lines', sides: 3, adaptive: false },
 };
 /** A battle as the pre-round-6 constants were made: autopiloted, side 0 at the default difficulty. */
 const hashBattle = (seed: string, d: Difficulty, setup: Partial<SkirmishSetup> | undefined): GameState =>

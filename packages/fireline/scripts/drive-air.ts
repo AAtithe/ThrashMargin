@@ -733,7 +733,8 @@ function computer(ok: Ok): void {
 /** Real battles: both commanders fly strikes; a battle with aircraft replays exactly. */
 function battles(ok: Ok): void {
   const play = (seed: string): { s: GameState; bombs: number; rockets: number; air: number } => {
-    let s = createInitialState(`air-${seed}`, seed, { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { map: 'plains', tech: 'advanced', research: 'classic' } });
+    let s = createInitialState(`air-${seed}`, seed, { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { map: 'plains', tech: 'advanced', research: 'classic', adaptive: false } });
+    // round7:adaptive: adaptive off, so these seeds play as the notes below describe (the adaptive commander has drive-adaptive.ts).
     s.autopilotDifficulty = 'hard';
     let bombs = 0;
     let rockets = 0;
