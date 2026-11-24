@@ -95,6 +95,14 @@ function heroesNote(setup: SkirmishSetup): string {
 }
 // round6:B end.
 
+// round7:fortification begin. The Fortification field's note.
+function fortificationNote(setup: SkirmishSetup, lines: boolean): string {
+  if (!lines) return 'Development lines only.';
+  if (!setup.fortification) return 'Five research lines. Structures stand as built.';
+  return 'A sixth research line: tougher structures, shelters against blasts, then a choice between Counter-battery (enemy guns that fire on you are marked for your artillery) and Point Defence emplacements that shoot down shells, missiles and bombs.';
+}
+// round7:fortification end.
+
 function sitesNote(setup: SkirmishSetup): string {
   if (!setup.sites) return 'No sites: ore is the only income.';
   const per = SITES_PER_SIDE[setup.size ?? 'standard'];
@@ -148,6 +156,8 @@ export function readStoredSetup(): SkirmishSetup {
           : LOBBY_DEFAULT_PACE,
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
       sites: r.sites !== false,
+      // round7:fortification: on unless the player turned it off (a setup stored before round 7 gets it on).
+      fortification: r.fortification !== false,
       factions: r6.factions,
       heroes: r6.heroes,
       generals: r6.generals,
@@ -366,6 +376,27 @@ export default function SkirmishSetupPanel({
           </div>
           {value.tech === 'standard' && <p className="fl-setup-note">Advanced tech only.</p>}
         </div>
+        {/* round7:fortification begin. The Fortification line (Off, On; greyed without development lines). */}
+        <div className="fl-setup-field" data-testid="setup-fortification" data-disabled={lines ? '0' : '1'}>
+          <Label>Fortification</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Fortification">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={lines && !!value.fortification === on}
+                disabled={!lines}
+                data-testid={`fortification-${on ? 'on' : 'off'}`}
+                onClick={() => set({ fortification: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{fortificationNote(value, lines)}</p>
+        </div>
+        {/* round7:fortification end. */}
         {/* round6:A begin. Two armies (fireline-round6-design.md): the Army row, one choice per seat, goes below. */}
         <ArmyField value={value} onPick={factions => set({ factions })} />
         {/* round6:A end. */}

@@ -40,6 +40,10 @@
  *   tsx scripts/ai-ladder.ts --heroes --generals      round 6's options on: heroes (advanced tech only)
  *                                                      and field Generals, on --map random unless a map
  *                                                      is given; both off by default
+ *   tsx scripts/ai-ladder.ts --map random --pace long --fortification   round 7: the Fortification line on
+ *                                                      (development lines only); without the flag it is off.
+ *                                                      With it the report adds how far each difficulty took
+ *                                                      the line, the emplacements built and the shots brought down.
  *
  * A match is `side0,side1`, each side `commander:difficulty` or `commander:difficulty:army` (round 6:
  * `meridian`, the default, or `ashen`; an army needs a skirmish setup), where the commander is `new` (the
@@ -140,6 +144,8 @@ if (SUPPLY && !INDUSTRY) throw new Error('--supply needs --industry');
 const TERRITORY = args.includes('--territory');
 if (TERRITORY && !SUPPLY) throw new Error('--territory needs --supply');
 if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
+// round7:fortification: the Fortification line, stated in every skirmish setup (off without the flag).
+const FORTIFICATION = args.includes('--fortification');
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
@@ -164,6 +170,8 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(INDUSTRY ? { industry: true } : {}),
     ...(SUPPLY ? { supply: true } : {}),
     ...(TERRITORY ? { territory: true } : {}),
+    // round7:fortification
+    fortification: FORTIFICATION,
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -242,8 +250,21 @@ function play(m: Match, seed: number): Result & { match: number } {
   s.ai[0].nextAttack = scaledFor(s, difficultyForPace(m.sides[0].difficulty, PACE)).firstAttack;
   const mk2: (number | null)[] = [null, null];
   const mk3: (number | null)[] = [null, null];
+  // round7:fortification: the most emplacements each side had standing, and shots each brought down.
+  const pdMax = [0, 0];
+  const downs = [0, 0];
+  const seenFx = new Set<number>();
   while (s.winner === null && s.tick < CAP) {
     s = processAction(s, { type: 'tick', n: 50 });
+    if (FORTIFICATION) {
+      for (const o of [0, 1] as Owner[]) pdMax[o] = Math.max(pdMax[o], s.buildings.filter(b => b.owner === o && b.kind === 'pointdefence' && b.hp > 0).length);
+      for (const e of s.effects)
+        if (e.kind === 'intercept' && e.size && !seenFx.has(e.id)) {
+          seenFx.add(e.id);
+          const b = s.buildings.find(x => x.kind === 'pointdefence' && x.x + 0.5 === e.x2 && x.y + 0.5 === e.y2);
+          if (b && b.owner <= 1) downs[b.owner]++;
+        }
+    }
     if (!LINES_BATTLES) continue;
     for (const o of [0, 1] as Owner[]) {
       const ups = s.players[o].upgrades ?? [];
@@ -253,7 +274,13 @@ function play(m: Match, seed: number): Result & { match: number } {
   }
   setAutopilotAi(null, 0);
   setAutopilotAi(null, 1);
-  return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}) };
+  // round7:fortification: how far each side took the line ('none', 'mk1', 'mk2', or its Mk III branch).
+  const stage = (o: Owner) => {
+    const ups = s.players[o].upgrades ?? [];
+    return ups.includes('pointdef') ? 'pd' : ups.includes('counterbattery') ? 'cb' : ups.includes('shelters') ? 'mk2' : ups.includes('concrete') ? 'mk1' : 'none';
+  };
+  const fort = FORTIFICATION ? { fort: { stage: [stage(0), stage(1)], pdMax, downs } } : {};
+  return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}), ...fort };
 }
 
 /** Round 6: with an army named anywhere on the card, every side's label names its army. */
@@ -298,6 +325,8 @@ if (workerAt >= 0) {
           ...(INDUSTRY ? ['--industry'] : []),
           ...(SUPPLY ? ['--supply'] : []),
           ...(TERRITORY ? ['--territory'] : []),
+          // round7:fortification
+          ...(FORTIFICATION ? ['--fortification'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );
@@ -399,6 +428,33 @@ if (workerAt >= 0) {
         const share = (key: 'mk2' | 'mk3', o: 0 | 1) => Math.round((100 * rs.filter(r => r[key]?.[o] != null).length) / Math.max(1, rs.length));
         console.log(`${label(m.sides[0])} v ${label(m.sides[1])}`.padEnd(28) + `${share('mk2', 0)}/${share('mk2', 1)}`.padEnd(14) + `${share('mk3', 0)}/${share('mk3', 1)}`);
       });
+    }
+    // round7:fortification: how far each `new` side took the line, by difficulty.
+    if (FORTIFICATION) {
+      console.log('\nFortification (new sides): share reaching Mk I / Mk II / Counter-battery / Point Defence; emplacements; shots down');
+      for (const diff of Object.keys(DIFFICULTIES) as Difficulty[]) {
+        let sides = 0;
+        const n = { mk1: 0, mk2: 0, cb: 0, pd: 0 };
+        let pds = 0;
+        let downs = 0;
+        for (const r of results as (Result & { fort?: { stage: string[]; pdMax: number[]; downs: number[] } })[]) {
+          const m = matches[r.match];
+          for (const o of [0, 1] as const) {
+            if (m.sides[o].ai !== 'new' || m.sides[o].difficulty !== diff || !r.fort) continue;
+            sides++;
+            const st = r.fort.stage[o];
+            if (st !== 'none') n.mk1++;
+            if (st === 'mk2' || st === 'cb' || st === 'pd') n.mk2++;
+            if (st === 'cb') n.cb++;
+            if (st === 'pd') n.pd++;
+            pds += r.fort.pdMax[o];
+            downs += r.fort.downs[o];
+          }
+        }
+        if (!sides) continue;
+        const pc = (k: number) => `${Math.round((100 * k) / sides)}%`;
+        console.log(`${diff.padEnd(8)} ${String(sides).padEnd(5)} ${pc(n.mk1)} / ${pc(n.mk2)} / ${pc(n.cb)} / ${pc(n.pd)}; ${(pds / sides).toFixed(2)} emplacements a side; ${(downs / sides).toFixed(1)} shots down a side`);
+      }
     }
     for (const [mi, seeds] of stuck) console.log(`  unfinished, ${label(matches[mi].sides[0])} v ${label(matches[mi].sides[1])}: seeds ${seeds.join(', ')}`);
     // Pairings played both ways round: the first-named side's wins over both orientations.

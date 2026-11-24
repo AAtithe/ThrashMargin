@@ -474,6 +474,8 @@ section('mission specs', () => {
     ok(hasBase || !m.tech.some(isBuilding), `${L}: building tech only with a Command Yard`);
     // Round 5 (fireline-round5b-design.md, section 7): missions never use development lines.
     ok(m.research === 'classic', `${L}: classic research, never development lines`);
+    // round7:fortification: every mission states the Fortification line off.
+    ok(m.fortification === false, `${L}: states the Fortification line off`);
 
     // Tech and powers, and the unlock arc.
     for (const t of m.tech) ok(isBuilding(t) || isUnit(t), `${L}: tech ${t} is a real, buildable kind`);
@@ -734,7 +736,7 @@ section('act two: progression and old saves', () => {
   // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play),
   // nor the Naval Yard (the naval war): no mission map has a sea.
   // Nor industry's Fuel Well and Foundry (2026-11-21): never in a mission (industryOn).
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard', 'fuelwell', 'foundry', 'depot', 'quarters', 'watchtower']);
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard', 'fuelwell', 'foundry', 'depot', 'quarters', 'watchtower', /* round7:fortification */ 'pointdefence']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);

@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, Faction, FormationShape, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BattleLineId, BuildingKind, Category, Difficulty, Faction, FormationShape, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -239,7 +239,7 @@ export interface PlayerState {
   generalLostAt?: number;
   // round6:C end.
   /** Lines battles: the branch each line is committed to. Absent: none chosen. Permanent. */
-  doctrines?: Partial<Record<LineId, UpgradeId>>;
+  doctrines?: Partial<Record</* round7:fortification */ BattleLineId, UpgradeId>>;
   /** Lines battles: the loadout per vehicle kind. Absent or missing kind: no modules. */
   loadouts?: Partial<Record<UnitKind, ModuleId[]>>;
   /** Industry (setup.industry): fuel and alloys in store. Absent on every other battle. */
@@ -291,6 +291,10 @@ export interface Effect {
     // round6:A end.
     // round6:C begin. Generals: its effect kinds (the aura, for instance).
     // round6:C end.
+    // round7:fortification begin. A Point Defence shot at a projectile: (x, y) the point in the air,
+    // (x2, y2) the emplacement; size 1 brought it down, 0 missed.
+    | 'intercept'
+    // round7:fortification end.
     ;
   x: number;
   y: number;
@@ -338,6 +342,15 @@ export interface AiMemory {
   nextAirStrike?: number;
   /** Paced research (round 6): credits the commander is saving for its next research, or absent. */
   researchFor?: number;
+  // round7:fortification begin. Indirect fire on its structures (fortify.ts notePressure): blasts from
+  // ground guns, and from the air or a support power, counted while the Fortification line is in play;
+  // and the tick and place of the last. Absent: none yet, and always absent with the line off.
+  shellGround?: number;
+  shellAir?: number;
+  shellTick?: number;
+  shellX?: number;
+  shellY?: number;
+  // round7:fortification end.
   /** The tick before which no new airlift sets out. */
   nextAirlift?: number;
   /**
@@ -505,6 +518,13 @@ export interface GameState {
   blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
+  // round7:fortification begin.
+  /**
+   * Counter-battery: firing positions revealed to a side's team until a tick: [x, y, radius, until,
+   * side, shooter] (shooter 0 for a support power). Absent unless the Fortification line is in play.
+   */
+  reveals?: [number, number, number, number, number, number][];
+  // round7:fortification end.
 
   // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
   /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
@@ -723,6 +743,8 @@ export interface MissionSpec {
   tech: (BuildingKind | UnitKind)[];
   /** Research mode for this mission. Always 'classic': missions never use development lines. */
   research: 'classic';
+  // round7:fortification: stated off by every campaign mission (the line needs development lines).
+  fortification?: false;
   powers: SupportPower[];
   objectives: ObjectiveSpec[];
   /** Optional objectives: each one done earns a star (the mission itself earns the first). */
@@ -829,7 +851,7 @@ export type GameAction =
   | { type: 'power'; power: SupportPower; x: number; y: number }
   | { type: 'research'; upgrade: UpgradeId }
   | { type: 'cancelResearch' }
-  | { type: 'doctrine'; line: LineId; branch: UpgradeId }
+  | { type: 'doctrine'; line: /* round7:fortification */ BattleLineId; branch: UpgradeId }
   | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] }
   // round5:C begin. Engineering vehicles: deploying a Forward Base truck, packing up a Field Yard.
   | { type: 'deploy'; id: number }

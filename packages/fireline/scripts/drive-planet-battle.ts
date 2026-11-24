@@ -114,7 +114,11 @@ const preRound6 = (s: GameState): GameState => {
  */
 const preSize = (s: GameState): unknown => {
   if (!s.setup) return s;
-  const { pace, size, sites, ...rest } = s.setup;
+  // round7:fortification: the Fortification line's toggle, after the hashes were recorded. Its value is
+  // the default's (on) wherever it can apply (advanced tech, development lines) and off elsewhere; no
+  // hashed battle is a Long or Epic one, so no commander researches it, and it is left out of the hash.
+  const { pace, size, sites, fortification, ...rest } = s.setup;
+  if (fortification !== (s.setup.tech === 'advanced' && s.setup.research === 'lines')) throw new Error(`skirmish recorded fortification ${fortification}`);
   if (pace !== 'quick') throw new Error(`skirmish recorded pace ${pace}, expected quick`);
   if (size !== 'standard') throw new Error(`skirmish recorded map size ${size}, expected standard`);
   if (sites !== false) throw new Error(`skirmish recorded sites ${sites}, expected false`);
@@ -127,8 +131,18 @@ const preSize = (s: GameState): unknown => {
  */
 const preNaval = (s: GameState): unknown => {
   if (s.ai.some(m => m.navalShore !== undefined || m.landing !== undefined)) throw new Error('a planet battle looked for a sea');
+  // round7:fortification begin. A planet battle states the Fortification line off: checked, then left
+  // out of the hash (recorded before the toggle existed).
+  let setup = s.setup;
+  if (setup && 'fortification' in setup) {
+    if (setup.fortification !== false) throw new Error('a planet battle plays the Fortification line');
+    const { fortification: _f, ...rest } = setup;
+    setup = rest as GameState['setup'];
+  }
+  // round7:fortification end.
   return {
     ...s,
+    ...(setup ? { setup } : {}),
     players: s.players.map(p => {
       if (p.queues.naval === undefined || p.queues.naval.length) throw new Error(`side ${p.owner}'s Naval queue is not empty`);
       const { naval: _drop, ...queues } = p.queues;

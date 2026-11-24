@@ -85,6 +85,8 @@ import { sections as formationsSections } from './drive-formations';
 // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
 import { sections as reviewSections } from './drive-review';
 // round7:review end.
+// round7:fortification. The Fortification line, counter-battery and Point Defence (scripts/drive-fortification.ts).
+import { sections as fortificationSections } from './drive-fortification';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2810,6 +2812,9 @@ if (!CAMPAIGN_ONLY) {
     // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
     ...reviewSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round7:review end.
+    // round7:fortification begin. Its sections, from scripts/drive-fortification.ts.
+    ...fortificationSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:fortification end.
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

@@ -76,6 +76,9 @@ import { disbandQuestion, isSupport, selectionActions, type Selection } from './
 import { canDisband } from '../sim/commands';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralNote } from '../components/Generals';
+// round7:fortification. The Fortification line: the sixth line, structures' full health, Point Defence.
+import { BATTLE_LINES, POINT_DEFENCE_CHANCE, POINT_DEFENCE_COOLDOWN, POINT_DEFENCE_RADIUS, upgradeLineOf, type BattleLineId } from '../sim/rules';
+import { linesFor, structureMaxHp } from '../sim/fortify';
 
 /** A tab of the build window: a build list, or Research once a Research Lab stands. */
 export type Tab = Category | 'research';
@@ -298,6 +301,15 @@ export function statsOf(
   if (kind === 'shipyard')
     rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
+  // round7:fortification begin.
+  if (kind === 'pointdefence') {
+    rows.push({
+      label: 'Intercepts',
+      value: `Shells, Missile Carrier missiles, bombs and the missile strike landing within ${POINT_DEFENCE_RADIUS} tiles: one shot every ${secs(POINT_DEFENCE_COOLDOWN)}, ${Math.round(POINT_DEFENCE_CHANCE * 100)}% to bring it down`,
+    });
+    rows.push({ label: 'Note', value: 'Never fires at units. Needs the Point Defence doctrine researched (Fortification line).' });
+  }
+  // round7:fortification end.
   if (kind === 'barracks' || kind === 'factory' || kind === 'helipad' || kind === 'shipyard')
     rows.push({ label: 'Each one', value: `adds a production line, building alongside the others, and ${MAX_QUEUE} queue places` });
   if (kind === 'researchlab')
@@ -715,7 +727,9 @@ export function BuildButton({
   const head = tab === 'building' ? q[0] : q.slice(0, lineCount(state, 0, tab)).filter(i => i.kind === kind).sort((a, b) => b.progress - a.progress)[0];
   const isHead = !!head && head.kind === kind;
   const progress = isHead ? head.progress / buildTicksFor(state, 0, kind) : 0;
-  const open = unlocked(state, 0, kind);
+  // round7:fortification: Point Defence waits for its doctrine as well as its structures.
+  const doctrineLocked = kind === 'pointdefence' && !hasUpgrade(state, 0, 'pointdef');
+  const open = unlocked(state, 0, kind) && !doctrineLocked;
   // Vehicles carry the loadout's modules in their price (development lines only).
   const cost = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
@@ -830,6 +844,12 @@ export function BuildButton({
           Needs {missing.map(r => BUILDINGS[r].name).join(', ')}
         </span>
       )}
+      {/* round7:fortification */}
+      {missing.length === 0 && doctrineLocked && (
+        <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
+          Needs Point Defence research
+        </span>
+      )}
     </div>
   );
 }
@@ -850,7 +870,7 @@ export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState;
         {busy && lowPower && <span className="fl-research-slow">half speed: power low</span>}
       </h3>
       {lines
-        ? LINE_ORDER.map(line => <LineRow key={line} state={state} line={line} dispatch={dispatch} />)
+        ? /* round7:fortification */ linesFor(state).map(line => <LineRow key={line} state={state} line={line} dispatch={dispatch} />)
         : UPGRADE_ORDER.map(id => {
         const spec = UPGRADES[id];
         const done = hasUpgrade(state, 0, id);
@@ -905,10 +925,10 @@ function nodeState(state: GameState, id: UpgradeId): NodeState {
   const p = state.players[0];
   if (hasUpgrade(state, 0, id)) return 'done';
   if (p.research?.id === id) return 'running';
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   if (mark === 3) {
     const chosen = doctrineOf(state, 0, line);
-    if (!chosen) return hasUpgrade(state, 0, LINES[line].marks[1]) ? 'choose' : 'blocked';
+    if (!chosen) return hasUpgrade(state, 0, BATTLE_LINES[line].marks[1]) ? 'choose' : 'blocked';
     if (chosen !== id) return 'closed';
   }
   return researchProblem(state, 0, id) ? 'blocked' : 'ready';
@@ -917,7 +937,7 @@ function nodeState(state: GameState, id: UpgradeId): NodeState {
 /** What the caption line says about one node: its effect, price and time, and what stands in the way. */
 function nodeCaption(state: GameState, id: UpgradeId): string {
   const spec = UPGRADES[id];
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   const head = `${spec.name}, ${MARK_NAME[mark]}: ${spec.blurb}`;
   const st = nodeState(state, id);
   if (st === 'done') return `${head} Done.`;
@@ -931,8 +951,8 @@ function nodeCaption(state: GameState, id: UpgradeId): string {
 }
 
 /** The node the caption describes when nothing is pointed at: the one under way, or the next step. */
-function defaultNode(state: GameState, line: LineId): UpgradeId | null {
-  const l = LINES[line];
+function defaultNode(state: GameState, line: /* round7:fortification */ BattleLineId): UpgradeId | null {
+  const l = BATTLE_LINES[line];
   const ids = [...l.marks, ...l.fork];
   const running = ids.find(id => state.players[0].research?.id === id);
   if (running) return running;
@@ -946,9 +966,9 @@ function defaultNode(state: GameState, line: LineId): UpgradeId | null {
  * One development line: Mk I, Mk II, then the doctrine fork. The caption under the nodes describes
  * whichever node is pointed at or focused, and otherwise the next step.
  */
-function LineRow({ state, line, dispatch }: { state: GameState; line: LineId; dispatch: (a: GameAction) => boolean }) {
+function LineRow({ state, line, dispatch }: { state: GameState; line: /* round7:fortification */ BattleLineId; dispatch: (a: GameAction) => boolean }) {
   const [hover, setHover] = useState<UpgradeId | null>(null);
-  const l = LINES[line];
+  const l = BATTLE_LINES[line];
   const chosen = doctrineOf(state, 0, line);
   const shown = hover ?? defaultNode(state, line);
   const node = (id: UpgradeId) => (
@@ -990,7 +1010,7 @@ function LineNode({
   onPoint: (id: UpgradeId | null) => void;
 }) {
   const spec = UPGRADES[id];
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   const st = nodeState(state, id);
   const busy = state.players[0].research;
   const problem = st === 'ready' || st === 'blocked' ? researchProblem(state, 0, id) : null;
@@ -1259,7 +1279,9 @@ export function SelectionPanel({
   if (building) {
     const spec = buildingSpecOf(state, building);
     const mine = building.owner === 0;
-    const refund = Math.floor((spec.cost * 0.5 * (building.hp / spec.hp)) / 10) * 10;
+    // round7:fortification: full health is Reinforced concrete's where the side has it.
+    const fullHp = structureMaxHp(state, building);
+    const refund = Math.floor((spec.cost * 0.5 * (building.hp / fullHp)) / 10) * 10;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1268,10 +1290,10 @@ export function SelectionPanel({
             {spec.name}
           </strong>
           <span style={{ fontFamily: FONT.mono, fontSize: '0.72rem', color: UI.textSoft }}>
-            {Math.ceil(building.hp)}/{spec.hp}
+            {Math.ceil(building.hp)}/{fullHp}
           </span>
         </div>
-        <Bar frac={building.hp / spec.hp} />
+        <Bar frac={building.hp / fullHp} />
         {tipCard}
         {mine && (
           <>
@@ -1285,7 +1307,7 @@ export function SelectionPanel({
               <button
                 className="fl-d-sbtn"
                 aria-pressed={building.repairing}
-                disabled={building.hp >= spec.hp && !building.repairing}
+                disabled={building.hp >= fullHp && !building.repairing}
                 onClick={() => dispatch({ type: 'repair', id: building.id })}
                 title="Repair (G), paid for as the work is done"
               >

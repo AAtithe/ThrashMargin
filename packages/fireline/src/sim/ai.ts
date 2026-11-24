@@ -40,6 +40,9 @@ import { isProducer, linkedHubs, servedBy, supplyOn } from './supply';
 import { heroesNeedTechCentre, heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { generalLeads, generalPlan } from './aiGenerals';
+// round7:fortification. The Fortification line: structures' full health and Point Defence's place.
+import { structureMaxHp } from './fortify';
+import { pointDefenceFocus } from './aiFortification';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -399,7 +402,7 @@ function commander(s: GameState, owner: Owner): void {
     repairing = 0;
   } else {
     const hurt = standing
-      .filter(b => !b.repairing && b.hp < buildingSpecOf(s, b).hp * t.repairBelow && repairOrder.includes(b.kind))
+      .filter(b => !b.repairing && b.hp < /* round7:fortification */ structureMaxHp(s, b) * t.repairBelow && repairOrder.includes(b.kind))
       .sort((a, b) => repairOrder.indexOf(a.kind) - repairOrder.indexOf(b.kind) || a.id - b.id);
     for (const b of hurt) {
       if (repairing >= 2 || p.credits < t.repairReserve) break;
@@ -807,7 +810,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
   const order: BuildingKind[] = !s.mission && techAllowed(s, owner, 'techcentre')
     ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
     : ['uplink', 'turret', 'barracks'];
-  const refund = (b: Building) => Math.floor((buildingSpecOf(s, b).cost * SELL_RETURN * (b.hp / buildingSpecOf(s, b).hp)) / 10) * 10;
+  const refund = (b: Building) => Math.floor((buildingSpecOf(s, b).cost * SELL_RETURN * (b.hp / /* round7:fortification */ structureMaxHp(s, b))) / 10) * 10;
   // Nothing at all if even every queued unit and every spare structure would not reach the sum:
   // taking back the last troops a broke side is training only stopped its last stand (a Coast
   // battle cancelled and requeued one Grenadier every decision for twenty minutes).
@@ -1123,6 +1126,8 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   // Industry: a Fuel Well beside the nearest field rich enough to feed it.
   if (kind === 'fuelwell') focus = wellFocus(s, owner, home) ?? home;
   if (kind === 'techcentre' || kind === 'strikecommand') focus = toward(home, enemyHome, -4);
+  // round7:fortification: Point Defence beside the structure last shelled, or the Command Yard.
+  if (kind === 'pointdefence') focus = pointDefenceFocus(s, owner) ?? home;
   if (kind === 'refinery') {
     let best = -1;
     let bestD = Infinity;

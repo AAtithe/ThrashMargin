@@ -185,6 +185,9 @@ export type BuildingKind =
   // Territory and workforce (2026-11-21, setup.territory): the Watchtower and the Quarters.
   | 'watchtower'
   | 'quarters'
+  // round7:fortification begin. The Point Defence emplacement (the Fortification line's Mk III B).
+  | 'pointdefence'
+  // round7:fortification end.
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -1110,6 +1113,21 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
   },
 
 
+  // round7:fortification begin. Point Defence: offered only with setup.fortification, built only once
+  // the side has researched the Point Defence doctrine (techAllowed and canQueue). Never fires at units.
+  pointdefence: {
+    name: 'Point Defence',
+    w: 1,
+    h: 1,
+    cost: 1200,
+    buildTicks: 120,
+    hp: 450,
+    power: -60,
+    sight: 6,
+    requires: ['researchlab'],
+    blurb: 'Shoots down shells, missiles and bombs falling within four tiles: three in five, one every three seconds. Never fires at units. Draws heavy power.',
+  },
+  // round7:fortification end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -1148,6 +1166,9 @@ export const BUILD_MENU: BuildingKind[] = [
   // Territory and workforce (2026-11-21): likewise.
   'quarters',
   'watchtower',
+  // round7:fortification begin.
+  'pointdefence',
+  // round7:fortification end.
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1550,6 +1571,14 @@ export interface SkirmishSetup {
    * Absent on setups saved before round 5, which normaliseSetup reads as false.
    */
   sites?: boolean;
+  // round7:fortification begin.
+  /**
+   * Round 7: the Fortification research line, counter-battery and Point Defence
+   * (fireline-round7-fortification.md). Meaningful only with advanced tech and development lines;
+   * normaliseSetup turns it off otherwise. Absent on older saves, which read as false (LEGACY_SETUP).
+   */
+  fortification?: boolean;
+  // round7:fortification end.
   /**
    * Round 6, workstream A: each seat's army, one per side (index = Owner). Absent on setups saved
    * before round 6, which normaliseSetup reads as every seat 'meridian': the army every side always had.
@@ -1606,6 +1635,9 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   mode: 'ffa',
   size: 'standard',
   sites: false,
+  // round7:fortification begin. On for a new advanced development-lines skirmish.
+  fortification: true,
+  // round7:fortification end.
   research: 'lines',
   pace: 'quick',
   factions: ['meridian', 'meridian'],
@@ -1629,6 +1661,9 @@ export const LEGACY_SETUP: SkirmishSetup = {
   mode: 'ffa',
   size: 'standard',
   sites: false,
+  // round7:fortification begin.
+  fortification: false,
+  // round7:fortification end.
   research: 'classic',
   pace: 'quick',
   factions: ['meridian', 'meridian'],
@@ -1826,7 +1861,12 @@ export type UpgradeId =
   | 'fieldrepair' | 'motorised' // engines
   | 'assembly' | 'salvage' // logistics
   | 'heat' | 'highexplosive' // weapons
-  | 'hardened' | 'munitions'; // air
+  | 'hardened' | 'munitions' // air
+  // round7:fortification begin. The Fortification line (battles with setup.fortification only).
+  | 'concrete' | 'shelters' // Mk I, Mk II
+  | 'counterbattery' | 'pointdef' // Mk III fork
+  // round7:fortification end.
+  ;
 
 export interface UpgradeSpec {
   name: string;
@@ -1896,6 +1936,12 @@ export const UPGRADES: Record<UpgradeId, UpgradeSpec> = {
   avionics: { name: 'Avionics', blurb: 'Aircraft fly 15% faster.', cost: 2000, ticks: 750, requires: ['researchlab', 'helipad', 'techcentre'] },
   hardened: { name: 'Armoured cockpits', blurb: 'Aircraft take a quarter less damage from flak, anti-air missiles and machine guns.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
   munitions: { name: 'Heavy munitions', blurb: 'Gunship rockets, Interceptor missiles and every bomb hit 15% harder.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
+  // round7:fortification begin. The Fortification line (fireline-round7-fortification.md).
+  concrete: { name: 'Reinforced concrete', blurb: 'Every structure has a fifth more health.', cost: 1500, ticks: 600, requires: ['researchlab'] },
+  shelters: { name: 'Hardened shelters', blurb: 'Structures take a quarter less from the blast of shells, grenades, bombs and missiles.', cost: 2000, ticks: 750, requires: ['researchlab', 'techcentre'] },
+  counterbattery: { name: 'Counter-battery', blurb: 'Enemy guns and missiles that fire on what you can see are spotted for 8 seconds, and your artillery on Guard shoots back.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  pointdef: { name: 'Point Defence', blurb: 'Unlocks the Point Defence emplacement, which shoots down shells, missiles and bombs falling near it.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  // round7:fortification end.
 };
 
 /** The six upgrades a 'classic' battle offers, in the order the Research block lists them (Countermeasures since the air war). */
@@ -1969,6 +2015,41 @@ export const AVIONICS_SPEED = 1.15;
 export const HARDENED_TAKEN = 0.75;
 export const HARDENED_KINDS: WeaponKind[] = ['flak', 'aamissile', 'bullet'];
 export const MUNITIONS_DAMAGE = 1.15;
+
+// round7:fortification begin. The Fortification line, counter-battery and Point Defence
+// (fireline-round7-fortification.md). A sixth development line, present only in a battle whose setup
+// has `fortification` on (development lines, advanced tech). LineId stays the five lines that War for
+// the Planet researches; BattleLineId adds the sixth for the battle-side readers (linesFor in fortify.ts).
+export type BattleLineId = LineId | 'fortification';
+export const FORTIFICATION_LINE: LineSpec = { name: 'Fortification', marks: ['concrete', 'shelters'], fork: ['counterbattery', 'pointdef'] };
+/** Every line a battle may hold, the five and Fortification. */
+export const BATTLE_LINES: Record<BattleLineId, LineSpec> = { ...LINES, fortification: FORTIFICATION_LINE };
+/** The Fortification line's upgrades: line and mark, as UPGRADE_LINE gives them for the five. */
+export const FORT_UPGRADE_LINE: Partial<Record<UpgradeId, { line: BattleLineId; mark: 1 | 2 | 3 }>> = {
+  concrete: { line: 'fortification', mark: 1 },
+  shelters: { line: 'fortification', mark: 2 },
+  counterbattery: { line: 'fortification', mark: 3 },
+  pointdef: { line: 'fortification', mark: 3 },
+};
+/** Line and mark of any line upgrade, the five lines' or Fortification's; undefined for Countermeasures. */
+export const upgradeLineOf = (id: UpgradeId): { line: BattleLineId; mark: 1 | 2 | 3 } | undefined => UPGRADE_LINE[id] ?? FORT_UPGRADE_LINE[id];
+/** Reinforced concrete (Mk I): structures' full health. */
+export const CONCRETE_HP = 1.2;
+/** Hardened shelters (Mk II): what a structure takes from the splash of these weapon kinds. */
+export const SHELTERS_TAKEN = 0.75;
+export const SHELTERS_KINDS: WeaponKind[] = ['artillery', 'bomb', 'missile'];
+/** Counter-battery (Mk III A): how long a firing battery stays revealed, and the radius revealed round it. */
+export const COUNTER_BATTERY_TICKS = 80;
+export const COUNTER_BATTERY_RADIUS = 3;
+/** Counter-battery: the kinds whose shots are traced back (besides the barrage and the missile strike). */
+export const COUNTER_BATTERY_KINDS: UnitKind[] = ['artillery', 'missilecarrier', 'battleship'];
+/** Point Defence (Mk III B): radius round the emplacement in which a projectile's landing point is covered. */
+export const POINT_DEFENCE_RADIUS = 4;
+/** Ticks between two intercept attempts by one emplacement (twice as long short of power). */
+export const POINT_DEFENCE_COOLDOWN = 30;
+/** Chance one attempt brings the projectile down, drawn from the battle's seed. */
+export const POINT_DEFENCE_CHANCE = 0.6;
+// round7:fortification end.
 
 /** Vehicle modules. Vehicles only: infantry, aircraft and heroes never carry them. */
 export type ModuleId = 'longbarrel' | 'smoke' | 'fueltank' | 'tracks' | 'orecage';
