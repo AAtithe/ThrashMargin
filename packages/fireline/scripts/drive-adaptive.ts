@@ -102,9 +102,10 @@ function setupField(ok: Ok): void {
   delete raw.setup!.adaptive;
   const m = migrateState(raw)!;
   ok(m.setup!.adaptive === false && !adaptiveOn(m, 1), 'a save from before round 7 loads with the commander not adapting');
-  // War for the Planet states it off, in its own setup (src/planet/battle.ts states every field).
+  // War for the Planet states it in its own setup (src/planet/battle.ts states every field): on in a
+  // war on battle rules 3, off in an older war. drive-planet-links.ts checks both on real battles.
   const planetSrc = readFileSync(fileURLToPath(new URL('../src/planet/battle.ts', import.meta.url)), 'utf8');
-  ok(/adaptive: false/.test(planetSrc), 'buildPlanetBattle states adaptive: false');
+  ok(/adaptive: rules3,/.test(planetSrc), 'buildPlanetBattle states adaptive from the war\'s battle rules');
   // Missions: no setup, never adaptive, the campaign untouched.
   const c = newCampaign();
   for (const spec of MISSIONS.slice(0, 3)) {
