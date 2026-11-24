@@ -149,7 +149,18 @@ now leave the `history` key out (marked), the same way they leave out other late
 
 ## 5. Results
 
-RESULTS_PLACEHOLDER
+- `npx tsc --noEmit -p packages/fireline/tsconfig.json`: clean.
+- `npm run drive:fire`: 401,847 assertions, 0 failed (1,518 s on a machine shared with four other
+  builders). The review sections took about 70 s of that.
+- `npm run campaign:fire`: 7,699 assertions, 0 failures.
+- `npm run drive:planet`: 35,255 assertions passed, 0 failed (budgets included; run before the last
+  two commits, which touch no planet code).
+- `node scripts/ui-check.cjs fireline`: 32 of 32 UI checks passed. It does not open the Review screen.
+- The Review screen loaded in Chromium through Playwright, using the `tm_user` local sign-in and a
+  local save: a finished two-sided battle from its end card in light and dark at 1440, a three-sided
+  battle in progress from the Paused card ("Review so far") in dark, and the finished battle at 375.
+  No sideways scroll and no errors from the review. The one console warning, a duplicate React key,
+  comes from the battle's existing log feed.
 
 ## Known gaps
 
