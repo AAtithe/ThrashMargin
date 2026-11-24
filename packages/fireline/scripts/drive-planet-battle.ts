@@ -116,8 +116,18 @@ const preSize = (s: GameState): unknown => {
  */
 const preNaval = (s: GameState): unknown => {
   if (s.ai.some(m => m.navalShore !== undefined || m.landing !== undefined)) throw new Error('a planet battle looked for a sea');
+  // round7:fortification begin. A planet battle states the Fortification line off: checked, then left
+  // out of the hash (recorded before the toggle existed).
+  let setup = s.setup;
+  if (setup && 'fortification' in setup) {
+    if (setup.fortification !== false) throw new Error('a planet battle plays the Fortification line');
+    const { fortification: _f, ...rest } = setup;
+    setup = rest as GameState['setup'];
+  }
+  // round7:fortification end.
   return {
     ...s,
+    ...(setup ? { setup } : {}),
     players: s.players.map(p => {
       if (p.queues.naval === undefined || p.queues.naval.length) throw new Error(`side ${p.owner}'s Naval queue is not empty`);
       const { naval: _drop, ...queues } = p.queues;
