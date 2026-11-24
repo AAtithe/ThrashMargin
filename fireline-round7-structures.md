@@ -169,4 +169,41 @@ Existing tests updated to name the new fields and menu entries: `drive-factions.
 `drive-size.ts` and `drive-planet-battle.ts` hash strippers, `campaign-check.ts` skirmish-only list.
 `scripts/ai-ladder.ts` takes `--structure-upgrades` and `--strategic`.
 
-RESULTS
+## F. Results
+
+- `npm run drive:fire`: 402,071 assertions, none failed (167 of them `drive-structures.ts`; 1,720 s on a
+  shared machine). `npm run campaign:fire`: 7,699 of 7,699. `npm run drive:planet`: 35,255 of 35,255.
+- **Ladder** (`--map random --pace long --seeds 150 --jobs 2`, seat 0 wins / seat 1 wins / unfinished,
+  median minutes), with `--structure-upgrades --strategic` against without:
+
+| Match | On | Off |
+|---|---|---|
+| Hard v Normal | 27% / 72% / 2, median 28.4 | 32% / 67% / 2, median 26.2 |
+| Normal v Hard | 8% / 92% / 0, median 24.3 | 3% / 97% / 1, median 20.4 |
+| Hard beats Normal, both ways | 59.3% (95% interval 54 to 65) | 64.3% (59 to 70) |
+
+  Read plainly: the difficulty order holds, every row moves within the noise 150 seeds allow (about
+  plus or minus 8 points), and battles run two to four minutes longer at the median, which is what a
+  long game should gain from turrets that grow and Bunkers that hold. Nothing stalls: unfinished
+  battles at the 90,000-tick cap are 2 of 300 either way. Depth with them on: Mk II research reached by
+  89% of Normal and 94% of Hard sides (median minute 9.8 and 9.9), so the upgrade spending does not
+  starve research.
+- **Tuning made.** The first upgrade reserve (Normal 2,200, Hard 1,600 credits) left the computer almost
+  never rich enough: in the harness's three whole battles only one side upgraded at all. Lowered to
+  1,400 and 1,000, both commanders upgrade in every battle while research depth stays as above.
+- **A bug found by the off-equals-before check.** A dangling `else` in the bombers' new branch skipped
+  the original scoring with the toggles off, so the drive-lines replay battle diverged at tick 4,464. Fixed
+  with braces; a tick-by-tick comparison against the base tree then matched for 14,000 ticks.
+
+## Known gaps
+
+- Not run here: `npm run check:ui`, `npm run tours` and `npm run check:loading` need Playwright, which is
+  not installed in this environment. Nothing has been looked at in a browser: the new art, chevrons,
+  Intelligence panel, Decoy select box and lobby rows are typechecked only. The build-window tour should
+  pass as is (the new structures are listed with the lobby's default, which has them on), but it is unrun.
+- The bombers' choice of target is fooled through `apparentSpecOf`, but no harness section stages a
+  bomber strike; the barrage, missile and artillery cases are measured.
+- The ladder covered Hard against Normal only (both seats, both conditions), not the full card; Easy is
+  untouched by design, and the frozen previous commander was not run.
+- The computer never builds a Supply Cache on a standard map, and its Bunker waits for artillery
+  pressure, so on most standard-size battles it uses upgrades alone.
