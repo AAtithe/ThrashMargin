@@ -500,8 +500,15 @@ function returnTests(ok: Ok): void {
 // ---- Link 9: the spot for round 7's other battle features ----------------------------------------------
 
 function flagTests(ok: Ok): void {
-  const src = readFileSync(join(dirname(new URL(import.meta.url).pathname), '..', 'src', 'planet', 'battle.ts'), 'utf8');
-  ok(/round7:planet begin[\s\S]*INTEGRATOR[\s\S]*fortification[\s\S]*structureUpgrades[\s\S]*strategicBuildings[\s\S]*adaptive[\s\S]*const rules3 = setup\.links !== undefined;[\s\S]*round7:planet end/.test(src), 'buildPlanetBattle marks where the other battle features turn on from the battle rules');
+  // Round 7's battle-side features are on in a war on battle rules 3 and off in an older war's battles.
+  const sc = firstScene('flags');
+  const on = setupOf(sc)!;
+  const r7 = (g: GameState) => [g.setup?.fortification, g.setup?.structureUpgrades, g.setup?.strategicBuildings, g.setup?.adaptive];
+  const gOn = buildPlanetBattle(on, ids(7), { autopilot: true });
+  ok(on.links !== undefined && r7(gOn).every(v => v === true), `battle rules 3: the Fortification line, structure upgrades, strategic structures and the adaptive commander on (${r7(gOn).join()})`);
+  const { links: _links, ...older } = on;
+  const gOff = buildPlanetBattle(older as BattleSetup, ids(8), { autopilot: true });
+  ok(r7(gOff).every(v => v === false), `an older war's battle: all four off (${r7(gOff).join()})`);
   for (const f of ['../src/sim/state.ts', '../src/sim/mission.ts', '../src/sim/tick.ts', '../src/sim/types.ts']) {
     const t = readFileSync(join(dirname(new URL(import.meta.url).pathname), f), 'utf8');
     const begins = (t.match(/round7:planet begin/g) ?? []).length;

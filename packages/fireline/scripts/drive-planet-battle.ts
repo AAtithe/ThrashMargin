@@ -97,13 +97,16 @@ const preRound6 = (s: GameState): GameState => {
   if (!s.setup) return { ...s, players };
   const { factions, heroes, generals, generalPicks, industry, supply, territory, structureUpgrades, strategicBuildings, adaptive, ...setup } = s.setup;
   if (territory !== undefined && territory !== false) throw new Error('setup territory on');
+  // Round 7's options: a war on battle rules 3 turns them on in its planet battles, so they are checked
+  // off only outside a planet battle (an older war's planet battles are held to their recorded hashes).
+  const r7 = !s.planet;
   // round7:structures: off is the earlier battle exactly.
-  if ((structureUpgrades !== undefined && structureUpgrades !== false) || (strategicBuildings !== undefined && strategicBuildings !== false)) throw new Error('setup structure options on');
+  if (r7 && ((structureUpgrades !== undefined && structureUpgrades !== false) || (strategicBuildings !== undefined && strategicBuildings !== false))) throw new Error('setup structure options on');
   // Industry and supply lines (2026-11-21): off is the earlier battle exactly.
   if (industry !== undefined && industry !== false) throw new Error('setup industry on');
   if (supply !== undefined && supply !== false) throw new Error('setup supply lines on');
   // round7:adaptive: round 7's adaptive commander, stated off, means the earlier battle exactly.
-  if (adaptive !== undefined && adaptive !== false) throw new Error('setup adaptive commander on');
+  if (r7 && adaptive !== undefined && adaptive !== false) throw new Error('setup adaptive commander on');
   if (factions !== undefined && (factions.length !== s.players.length || factions.some(f => f !== 'meridian'))) throw new Error(`setup armies ${factions}`);
   if (heroes !== undefined && heroes !== false) throw new Error('setup heroes on');
   if (generals !== undefined && generals !== false) throw new Error('setup Generals on');
@@ -139,7 +142,9 @@ const preNaval = (s: GameState): unknown => {
   // out of the hash (recorded before the toggle existed).
   let setup = s.setup;
   if (setup && 'fortification' in setup) {
-    if (setup.fortification !== false) throw new Error('a planet battle plays the Fortification line');
+    // Round 7: a war on battle rules 3 turns the line on (with the other three round 7 options, which
+    // preRound6 has already taken out); an older war states it off. A boolean either way.
+    if (typeof setup.fortification !== 'boolean') throw new Error('a planet battle states no Fortification line');
     const { fortification: _f, ...rest } = setup;
     setup = rest as GameState['setup'];
   }

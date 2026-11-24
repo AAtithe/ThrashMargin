@@ -80,9 +80,9 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
   const n = setup.sides.length;
   const human = setup.sides.some(x => x.human);
   // round7:planet begin. Battle rules 3: the setup carries the war's links (fireline-round7-planet.md).
-  // INTEGRATOR: the battle-side features of round 7's other workstreams (`fortification`,
-  // `structureUpgrades`, `strategicBuildings`, `adaptive`) are stated false in the skirmish setup
-  // below; on a war on battle rules 3 each is turned on by setting it to `rules3` instead of false.
+  // Round 7's battle-side features (the Fortification line, structure upgrades, strategic structures
+  // and the adaptive commander) are on in a war on battle rules 3 and off in every older war, so an
+  // older war's battles play exactly as they always did.
   const rules3 = setup.links !== undefined;
   // round7:planet end
   const s = createInitialState(ids.id, ids.name, {
@@ -104,19 +104,18 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       pace: 'quick',
       size: battleMapSizeOf(setup),
       sites: false,
-      // round7:fortification: stated off; War for the Planet may turn it on later.
-      fortification: false,
+      // round7:fortification: on in a war on battle rules 3.
+      fortification: rules3,
       factions: setup.sides.map(() => 'meridian' as const),
       heroes: false,
       generals: false,
       generalPicks: setup.sides.map(() => null),
-      // round7:structures begin. Structure upgrades and strategic structures stated off (another
-      // workstream turns them on for planet wars); off is a planet battle exactly as before.
-      structureUpgrades: false,
-      strategicBuildings: false,
+      // round7:structures begin. On in a war on battle rules 3; off is a planet battle exactly as before.
+      structureUpgrades: rules3,
+      strategicBuildings: rules3,
       // round7:structures end.
-      // round7:adaptive begin. Stated off: whether War for the Planet uses the adaptive commander is decided later.
-      adaptive: false,
+      // round7:adaptive begin. On in a war on battle rules 3.
+      adaptive: rules3,
       // round7:adaptive end.
     },
     teams: setup.sides.map(x => x.team),
