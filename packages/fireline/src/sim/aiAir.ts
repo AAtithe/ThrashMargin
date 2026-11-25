@@ -297,9 +297,12 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
     delete mem.researchFor;
     if (!crisis && ore >= PACED_ORE_FLOOR && count('researchlab') < 1 && !p.queues.building.some(q => q.kind === 'researchlab'))
       if (count('factory') > 0 && count('refinery') >= d.refineries && count('turret') >= 1) queueStructure(s, owner, 'researchlab');
-    // 2026-11-25: no new research while outmatched in the field (aiStrength.ts): the credits go on the army.
-    if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR && !outmatched(s, owner, OUTMATCH_RESEARCH)) {
-      const next = /* round7:fortification */ (!p.research && count('researchlab') > 0 ? fortificationNext(s, owner, diff) : null) ?? nextResearch(s, owner, t.research.paced, true);
+    // 2026-11-25: no new research while outmatched in the field (aiStrength.ts): the credits go on the
+    // army. The Fortification line is the exception: it answers shelling, which a side behind needs most.
+    if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR) {
+      const behind = outmatched(s, owner, OUTMATCH_RESEARCH);
+      const fort = /* round7:fortification */ fortificationNext(s, owner, diff);
+      const next = fort ?? (behind ? null : nextResearch(s, owner, t.research.paced, true));
       const pos = next && UPGRADE_LINE[next];
       if (next && pos && pos.mark === 3) {
         const line = pos.line;
