@@ -25,9 +25,11 @@ export const OUTMATCH_RESEARCH = 1.25;
 /** Below this enemy army value (credits) the opening skirmishes decide nothing, so nothing is outmatched. */
 export const OUTMATCH_FLOOR = 2500;
 
-const fielded = (s: GameState, u: Unit): boolean => u.hp > 0 && u.kind !== 'hauler' && !isShip(u) && !UNITS[u.kind].hero && !!unitSpecOf(s, u).weapon;
+// Aircraft are left out: the answer to them is anti-air (airPlan), which an outmatched commander must still build.
+const fielded = (s: GameState, u: Unit): boolean =>
+  u.hp > 0 && u.kind !== 'hauler' && UNITS[u.kind].category !== 'air' && !isShip(u) && !UNITS[u.kind].hero && !!unitSpecOf(s, u).weapon;
 
-/** The price of a side's armed land army (haulers, ships and heroes left out). */
+/** The price of a side's armed land army (haulers, aircraft, ships and heroes left out). */
 export function armyValue(s: GameState, owner: Owner): number {
   let v = 0;
   for (const u of s.units) if (u.owner === owner && fielded(s, u)) v += UNITS[u.kind].cost;
