@@ -128,7 +128,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   and Hard and counts wins (about 5 minutes on four cores, so not in check); use it for any change to a mission, the
   campaign difficulty, the AI or the balance, and read one plan's result as noise. `npm run ladder:fire`
   pits AI commanders over 150 seeds (about 10 minutes, so not in check; `-- --pace long --size large` for
-  a game size on a larger map, far longer); use it for any balance or AI change. Fireline is real time: it
+  a game size on a larger map, far longer); use it for any balance or AI change; `-- --opening-card normal,hard` is the scripted-opening test, three fixed openings against the fixed and the adaptive commander (`src/sim/aiOpening.ts`, test only). Fireline is real time: it
   saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Fireline's vast maps** (256 to 320 tiles, `'vast'` in `MAP_SIZES`) are the only size with ravines

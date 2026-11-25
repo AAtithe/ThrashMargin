@@ -3064,8 +3064,10 @@ The banner also offers the review so far.
   income bonus applies only to computer seats, so seat 1 wins about 97% of Hard mirrors whoever adapts.
   It is on by default because it changes how the computer plays (flanks, raids, counter-building, a
   log line when the player can see it), which is its purpose for a player learning not to rely on one
-  opening; the measurement that would test that purpose (a scripted fixed opening against it) is still
-  to be built.
+  opening. The scripted-opening test (2026-11-25, `--opening-card`; results in
+  `fireline-round7-adaptive.md`) now measures that purpose, and it fails it: no fixed opening wins
+  measurably less against the adaptive commander, and a tank column beats the Normal commander 150
+  times in 150, adaptive or not.
 - War for the Planet (ladder at default seeds and holdout, before and after battle rules 3): every
   target holds; the computer's Normal win rate fell, most in Short holdout (48.7% to 38.7%).
 

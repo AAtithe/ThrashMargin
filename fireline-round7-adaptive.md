@@ -241,3 +241,55 @@ at least even, default it off until a scripted-opening ladder shows it working.
 - `npm run campaign:fire`: 7699 assertions, 0 failures.
 - `npm run drive:planet`: 35255 assertions passed, 0 failed (the recorded pre-round-7 hashes match
   with the toggle off).
+
+## The scripted-opening test (2026-11-25)
+
+The measurement above pits the adaptive commander against its own fixed self, which cannot show
+what the feature is for: punishing a player who repeats one plan. This test can.
+
+**How it works.** `src/sim/aiOpening.ts` gives a side one fixed opening, for testing only (nothing
+sets one in a real game, and nothing about it is saved). The side is played by the ordinary Normal
+commander: the same economy, research, attack timing and waves, nothing extra earned, never adapting.
+It trains only its plan's units (`openingMix`, ahead of `adaptMix`), takes back anything else the
+commander queues, and keeps its lines busy from credits beyond a reserve of 600 (`openingGuard`, run
+after every decision). Without that, the commander banked its credits for research: a first "tank
+column" built one tank in 38 minutes.
+
+| Opening | Vehicles | Infantry | Infantry cap |
+|---|---|---|---|
+| Tank column | Tank | Rocketeer | 6 |
+| Infantry flood | Buggy | Rifleman 2, Grenadier 2, Rocketeer 1 | none |
+| Artillery siege | Artillery 2, Tank 1 | Rifleman | 6 |
+
+`npm run ladder:fire -- --map random --pace long --opening-card normal,hard` plays each opening from
+seat 0 against the fixed and then the adaptive commander at each level. Seat 0 is the same in both
+rows of a pair, so the seat cancels. `drive-adaptive.ts` checks each opening fields only its plan
+(crews walking out of fallen structures as riflemen aside), trains its main unit, and keeps to its cap.
+
+**Result, Long pace, random maps, 150 seeds per match (1,800 battles, 24 minutes on four cores).**
+The scripted opening's wins:
+
+| Opening | v Normal fixed | v Normal adaptive | v Hard fixed | v Hard adaptive |
+|---|---|---|---|---|
+| Tank column | 150 (100%) | 150 (100%) | 101 (67%) | 95 (63%) |
+| Infantry flood | 1 (1%) | 1 (1%) | 1 (1%) | 1 (1%) |
+| Artillery siege | 139 (93%) | 132 (88%) | 20 (13%) | 27 (18%) |
+
+**What it says.**
+
+- **The adaptive commander does not punish a repeated plan.** No row moves by more than the noise of
+  150 seeds (about plus or minus 5 to 8 points), and against Hard the siege does slightly better
+  against the adaptive commander, not worse.
+- **At Normal it barely acts in time.** Battles end in about 15 minutes, and 70 of the 150 tank-column
+  battles against the adaptive Normal commander were tick for tick the same battle as against the fixed
+  one: the adaptation never changed a decision that mattered. Against Hard, 28 of 150 were identical.
+- **A tank column beats the Normal commander every time, adaptive or not.** That is a hole in the
+  Normal commander itself, found by this test: a player who learns it can win every Normal battle with
+  one plan, which is the opposite of what the game should teach.
+- **The infantry flood is not a viable plan** (1 win in 600), so its rows say nothing about adapting.
+
+**Next.** The test is the yardstick for the fixes: the adaptive commander should start reading and
+answering much earlier (its Normal tuning is half strength and slow, which in a 15-minute battle is no
+adaptation at all), and the Normal commander needs an answer to massed tanks before minute 10
+(rocketeers and missile carriers earlier, from what it sees). A fix succeeds when the tank column's
+win rate against the adaptive commander falls well below its rate against the fixed one, at 150 seeds.
