@@ -3067,7 +3067,11 @@ The banner also offers the review so far.
   opening. The scripted-opening test (2026-11-25, `--opening-card`; results in
   `fireline-round7-adaptive.md`) now measures that purpose, and it fails it: no fixed opening wins
   measurably less against the adaptive commander, and a tank column beats the Normal commander 150
-  times in 150, adaptive or not.
+  times in 150, adaptive or not. The fix the same day (`aiStrength.ts`: build the army first when outmatched, read the
+  enemy by value, tanks against armour, in paced games only) cut the tank column to 75% against Normal and
+  13% against Hard, and the artillery siege from 93% to 25% against Normal. The adaptive commander now reads
+  the whole map and runs at full strength, but still measures no better than the fixed one (37% against 25%
+  for the siege, the wrong way).
 - War for the Planet (ladder at default seeds and holdout, before and after battle rules 3): every
   target holds; the computer's Normal win rate fell, most in Short holdout (48.7% to 38.7%).
 

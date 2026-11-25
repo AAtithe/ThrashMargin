@@ -293,3 +293,57 @@ answering much earlier (its Normal tuning is half strength and slow, which in a 
 adaptation at all), and the Normal commander needs an answer to massed tanks before minute 10
 (rocketeers and missile carriers earlier, from what it sees). A fix succeeds when the tank column's
 win rate against the adaptive commander falls well below its rate against the fixed one, at 150 seeds.
+
+## The fix (2026-11-25, same day)
+
+**Normal's hole was a set of habits, not one bug.** Traced battle by battle at the Long pace:
+
+1. Paced research held credits back for the next tier while a tank column was already at the gate.
+2. It spent on extra structures and aircraft while its army was behind.
+3. It read the enemy by head count, so six rocketeers made a tank column look like infantry.
+4. It launched waves into an army it could not beat.
+5. Its vehicle answer to armour was artillery and missile carriers, which lose to tanks (matchup
+   score against heavy: tank +1.52, rocketeer +1.14, artillery -2.66, missile carrier -2.5).
+6. It built too few tanks of its own.
+
+**What changed** (all in paced games only, Standard, Long and Epic, so Quick and the campaign are untouched):
+
+- `src/sim/aiStrength.ts` (new) values each side's fielded army by cost. `outmatched(s, owner, ratio)`
+  says the enemy's army is worth more than ours times the ratio.
+- When outmatched: no savings hold and no extras or aircraft (from level, ratio 1); no new research
+  (1.25); no wave and no gather to attack (1.1). It builds the army first.
+- The enemy is read by value, not head count.
+- Against a mostly armoured enemy (`armourThreat`, 55% of its value): tanks weighted 8, Bastions 1, other
+  vehicles 0.2, fewer grenadiers, infantry held at 6 so credits reach the factory, and two War
+  Factories and two rocket turrets added to the build order after the uplink.
+
+**The adaptive commander.** Its sight-only memory knew less than the base commander's whole-map
+read, which is why it never added anything. Changes: it reads the whole map (`ADAPT_WHOLE_MAP`;
+stealth still hides), Normal runs at full strength and rate (1 and 0.25), a one-sided enemy widens its
+limits (`adaptLimits`: when one class is over 60% of the lean, a factor up to 5 and a share up to 80%),
+and it attacks early when its army is worth 1.4 times the enemy's (`adaptSeize`). Two further
+attempts measured worse or no different and were taken out: extra factories and turrets for
+the adaptive side only, and sending fast units at artillery only when no armour screens it (55 to 56 siege wins).
+
+**Result, Long pace, random maps, 150 seeds per match.** The scripted opening's wins, before and after:
+
+| Opening | v Normal fixed | v Normal adaptive | v Hard fixed | v Hard adaptive |
+|---|---|---|---|---|
+| Tank column | 100% to 75% | 100% to 74% | 67% to 13% | 63% to 17% |
+| Infantry flood | 1% to 2% | 1% to 3% | 1% to 0% | 1% to 0% |
+| Artillery siege | 93% to 25% | 88% to 37% | 13% to 0% | 18% to 1% |
+
+Standard card (Long, 150 seeds each seat): the new Normal beats the previous Normal 92% from either
+seat; Easy loses every battle to Normal; the new Normal beats the new Hard 3% of the time from seat 0.
+Hard from seat 0 now wins 45% against the new Normal (the previous pair: 30%) and 88% against the previous Normal.
+
+**What it says.**
+
+- **Normal now has an answer.** The tank column still wins three in four at Normal, so the gap is
+  narrowed, not closed; a player who wants a sure win must move up to Hard, where the same column wins
+  one battle in eight.
+- **The adaptive commander still does not punish a repeated plan.** Against the tank column it matches
+  the fixed commander; against the siege it is 12 points worse (37% against 25%, outside the noise).
+  It no longer adds nothing because it knows less; it now adds nothing because the base commander
+  already answers what it sees. Its distinct value has to come from the memory across waves and the
+  plans (flanks, raids), not from the mix, and no measurement yet shows that.
