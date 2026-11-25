@@ -506,8 +506,9 @@ export function mixFor(
   const mean = openList.reduce((a, [k, w]) => a + score(k) * w, 0) / before;
   const doctrine = (k: UnitKind): number => {
     let d = 0;
-    // Artillery and missile carriers are run down by something fast.
-    if (k === 'buggy' || k === 'raider' || k === 'stealthtank') d += lean[ART] * 2;
+    // Artillery and missile carriers are run down by something fast, unless armour screens them:
+    // buggies sent through a tank screen to reach the guns die on the way (the scripted siege, 2026-11-25).
+    if (k === 'buggy' || k === 'raider' || k === 'stealthtank') d += Math.max(0, lean[ART] - lean[HEAVY]) * 2;
     // A ring of defences: outrange it.
     if (k === 'artillery' || k === 'missilecarrier' || k === 'bastion') d += lean[STATIC] * 1.5;
     // Aircraft: anti-air, the more the more of them.
