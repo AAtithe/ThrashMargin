@@ -86,6 +86,7 @@ import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
 // round7:adaptive
 import { setAdaptiveOverride, setAdaptiveParts } from '../src/sim/aiAdapt';
+import { OPENINGS, OPENING_SPECS, setOpening, type Opening } from '../src/sim/aiOpening';
 // round7:adaptive: ablations, ADAPT_PARTS=mix or ADAPT_PARTS=plans adapts only that half (default both).
 if (process.env.ADAPT_PARTS) setAdaptiveParts(process.env.ADAPT_PARTS.includes('mix'), process.env.ADAPT_PARTS.includes('plans'));
 import { scaledFor } from '../src/sim/aiScale';
@@ -105,6 +106,8 @@ interface Side {
   /** Round 7: forced adaptive (true) or fixed (false); absent follows the setup. */
   adaptive?: boolean;
   // round7:adaptive end
+  /** The scripted-opening test: this side plays one fixed opening every game (aiOpening.ts). Absent: none. */
+  opening?: Opening;
 }
 interface Match {
   sides: [Side, Side];
@@ -206,7 +209,12 @@ const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
 function parseSide(text: string): Side {
   // round7:adaptive begin. An `adaptive` or `fixed` marker anywhere after the difficulty.
-  const parts = text.split(':');
+  // The scripted-opening test: an `open-armour`, `open-infantry` or `open-siege` marker after the difficulty.
+  const openMark = text.split(':').slice(2).find(p => p.startsWith('open-'));
+  const opening = openMark ? (openMark.slice(5) as Opening) : undefined;
+  if (opening !== undefined && !OPENINGS.includes(opening)) throw new Error(`bad opening in "${text}"`);
+  if (opening !== undefined && LEGACY) throw new Error('a scripted opening needs a skirmish setup: give --map');
+  const parts = text.split(':').filter(p => p !== openMark);
   const marker = parts.slice(2).find(p => p === 'adaptive' || p === 'fixed');
   const [ai, difficulty, army] = parts.filter(p => p !== marker);
   if (marker && LEGACY) throw new Error('the adaptive commander needs a skirmish setup: give --map');
@@ -215,7 +223,7 @@ function parseSide(text: string): Side {
   if (!COMMANDERS.includes(ai as Commander) || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
   if (army !== undefined && !FACTIONS.includes(army as Faction)) throw new Error(`bad army in "${text}"`);
   if (army && army !== 'meridian' && LEGACY) throw new Error('an army needs a skirmish setup: give --map');
-  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}), ...adapt };
+  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}), ...adapt, ...(opening ? { opening } : {}) };
 }
 
 /**
@@ -261,7 +269,28 @@ function standardCard(): Match[] {
   ];
 }
 
+/**
+ * The scripted-opening test (fireline-round7-adaptive.md): side 0 plays one fixed opening every game
+ * through the Normal commander, never adapting; side 1 is the fixed commander, then the adaptive one,
+ * at each level asked for. The adaptive commander does its job if the fixed openings win less often
+ * against it than against the fixed commander. Side 0 is the same in both rows, so the seat cancels.
+ */
+function openingCard(levels: Difficulty[]): Match[] {
+  const out: Match[] = [];
+  for (const o of OPENINGS)
+    for (const d of levels)
+      for (const mode of ['fixed', 'adaptive'])
+        out.push({ sides: [parseSide(`new:normal:fixed:open-${o}`), parseSide(`new:${d}:${mode}`)] });
+  return out;
+}
+
 function matchesFromArgs(): Match[] {
+  const card = arg('--opening-card', '');
+  if (card) {
+    const levels = card.split(',') as Difficulty[];
+    for (const d of levels) if (!(d in DIFFICULTIES)) throw new Error(`bad --opening-card level "${d}"`);
+    return openingCard(levels);
+  }
   const out: Match[] = [];
   args.forEach((a, i) => {
     if (a !== '--match') return;
@@ -278,6 +307,8 @@ function play(m: Match, seed: number): Result & { match: number } {
   setAdaptiveOverride(0, m.sides[0].adaptive ?? null);
   setAdaptiveOverride(1, m.sides[1].adaptive ?? null);
   // round7:adaptive end
+  setOpening(0, m.sides[0].opening ?? null);
+  setOpening(1, m.sides[1].opening ?? null);
   const name = `ladder-${seed}`;
   const base = setupFor(seed);
   const armies = m.sides.map(sd => sd.army ?? 'meridian');
@@ -316,6 +347,8 @@ function play(m: Match, seed: number): Result & { match: number } {
   setAdaptiveOverride(0, null);
   setAdaptiveOverride(1, null);
   // round7:adaptive end
+  setOpening(0, null);
+  setOpening(1, null);
   // round7:fortification: how far each side took the line ('none', 'mk1', 'mk2', or its Mk III branch).
   const stage = (o: Owner) => {
     const ups = s.players[o].upgrades ?? [];
@@ -328,7 +361,8 @@ function play(m: Match, seed: number): Result & { match: number } {
 /** Round 6: with an army named anywhere on the card, every side's label names its army. */
 const ARMIES_NAMED = FACTIONS_CARD || args.some((a, i) => args[i - 1] === '--match' && a.includes(':ashen'));
 // round7:adaptive: a forced side is labelled `adaptive` or `fixed`.
-const label = (sd: Side) => `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}${sd.adaptive === undefined ? '' : sd.adaptive ? ' adaptive' : ' fixed'}`;
+const label = (sd: Side) =>
+  `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}${sd.adaptive === undefined ? '' : sd.adaptive ? ' adaptive' : ' fixed'}${sd.opening ? ` (${OPENING_SPECS[sd.opening].name.toLowerCase()})` : ''}`;
 const minutes = (ticks: number) => (ticks / 600).toFixed(1);
 
 // Worker: plays every (match, seed) job whose index is k mod n, one JSON line per battle.

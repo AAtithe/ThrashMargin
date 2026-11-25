@@ -25,6 +25,7 @@ import { isEnemy, startOf } from './sides';
 import { seenBy } from './sites';
 import { buildingCentre, dist, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { buildingSpecOf, unitSpecOf } from './specs';
+import { openingMix, openingOf } from './aiOpening';
 import type { AdaptMemory, AdaptPlan, AdaptSighting, AdaptSite, GameState, Unit } from './types';
 
 // ---- Numbers ---------------------------------------------------------------------------------
@@ -430,6 +431,8 @@ export function classScores(kind: UnitKind): number[] {
  * more), so the army never becomes one kind. Off, or with nothing seen: the list itself, unchanged.
  */
 export function adaptMix(s: GameState, owner: Owner, choices: [UnitKind, number][], slot: 'vehicle' | 'infantry'): [UnitKind, number][] {
+  // The scripted-opening test (aiOpening.ts, harness only): a side playing a fixed opening trains its units and nothing else.
+  if (openingOf(owner)) return openingMix(owner, choices, slot);
   if (!adaptiveOn(s, owner) || !parts.mix) return choices;
   const mem = memoryOf(s, owner);
   return mixFor(choices, mem.lean, tuningOf(s, owner).strength, slot, k => techAllowed(s, owner, k) && unlocked(s, owner, k));

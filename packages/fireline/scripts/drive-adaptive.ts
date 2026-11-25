@@ -40,6 +40,7 @@ import {
   summarise,
 } from '../src/sim/aiAdapt';
 import { canQueue, doMove, doQueue } from '../src/sim/commands';
+import { OPENINGS, OPENING_SPECS, openingOf, setOpening } from '../src/sim/aiOpening';
 import { occupancy, passable } from '../src/sim/grid';
 import { createMissionState } from '../src/sim/mission';
 import { missionContext, newCampaign } from '../src/campaign/progression';
@@ -424,6 +425,48 @@ function counterBattles(ok: Ok): void {
   }
 }
 
+// ---- The scripted-opening test (aiOpening.ts; scripts/ai-ladder.ts --opening-card) ----------------
+
+function openings(ok: Ok): void {
+  ok(OPENINGS.every(o => openingOf(0) === null && OPENING_SPECS[o].vehicle.length > 0), 'no side has an opening unless a script sets one');
+  // Crews walk out of a fallen or sold structure as riflemen, so a rifleman may stand on any side.
+  const crew: UnitKind[] = ['rifleman'];
+  const support: UnitKind[] = ['hauler', 'medic', 'repairtruck', 'basetruck'];
+  for (const o of OPENINGS) {
+    const spec = OPENING_SPECS[o];
+    const plan = [...spec.vehicle, ...spec.infantry].map(([k]) => k);
+    setOpening(0, o);
+    setAdaptiveOverride(0, false);
+    const kinds: Partial<Record<UnitKind, number>> = {};
+    let s: GameState;
+    try {
+      s = newBattle(`opening-${o}`, 'normal', { map: 'plains', tech: 'advanced', research: 'lines', pace: 'long' });
+      s.autopilotDifficulty = 'normal';
+      const known = new Set(s.units.map(u => u.id));
+      while (s.winner === null && s.tick < 9000) {
+        s = processAction(s, { type: 'tick', n: 50 });
+        for (const u of s.units) {
+          if (known.has(u.id) || u.owner !== 0) continue;
+          known.add(u.id);
+          kinds[u.kind] = (kinds[u.kind] ?? 0) + 1;
+        }
+      }
+    } finally {
+      setOpening(0, null);
+      setAdaptiveOverride(0, null);
+    }
+    const stray = (Object.keys(kinds) as UnitKind[]).filter(k => !plan.includes(k) && !support.includes(k) && !crew.includes(k));
+    ok(stray.length === 0, `${spec.name}: side 0 fields only its plan (${JSON.stringify(kinds)})`);
+    const lead = spec.vehicle.length ? spec.vehicle[0][0] : spec.infantry[0][0];
+    ok((kinds[o === 'infantry' ? 'rifleman' : lead] ?? 0) >= 5, `${spec.name}: by fifteen minutes it has trained at least five of its main unit (${kinds[o === 'infantry' ? 'rifleman' : lead] ?? 0})`);
+    if (spec.infantryCap !== undefined) {
+      const inf = s!.units.filter(u => u.owner === 0 && spec.infantry.some(([k]) => k === u.kind) && u.hp > 0).length;
+      ok(inf <= spec.infantryCap, `${spec.name}: its infantry stays within the cap of ${spec.infantryCap} (${inf})`);
+    }
+  }
+  ok(openingOf(0) === null, 'the opening is cleared after the battle');
+}
+
 // ---- Plans -------------------------------------------------------------------------------------------
 
 function plans(ok: Ok): void {
@@ -605,6 +648,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Adaptive commander: gradual change', gradual],
   ['Adaptive commander: side 0 fields one category', counterBattles],
   ['Adaptive commander: plans', plans],
+  ['Adaptive commander: the scripted openings keep to their plans', openings],
   ['Adaptive commander: replay, saves and junk memory', replay],
   ['Adaptive commander: whole battles and the log', battles],
 ];

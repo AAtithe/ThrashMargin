@@ -48,6 +48,7 @@ import { strategicExtra, strategicFocus, strategicPlanFor, structuresPlan } from
 import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
+import { openingGuard } from './aiOpening';
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
 // round7:adaptive end.
 
@@ -216,6 +217,8 @@ export function runAi(s: GameState, owner: Owner): void {
   const hook = hooks[owner];
   if (hook) hook(s, owner);
   else commander(s, owner);
+  // The scripted-opening test (aiOpening.ts, harness only): a side on a fixed opening keeps to it.
+  openingGuard(s, owner);
 }
 
 interface Pt {
