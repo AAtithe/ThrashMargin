@@ -26,7 +26,6 @@ import { seenBy } from './sites';
 import { buildingCentre, dist, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { buildingSpecOf, unitSpecOf } from './specs';
 import { openingMix, openingOf } from './aiOpening';
-import { armyValue, enemyArmyValue } from './aiStrength';
 import type { AdaptMemory, AdaptPlan, AdaptSighting, AdaptSite, GameState, Unit } from './types';
 
 // ---- Numbers ---------------------------------------------------------------------------------
@@ -743,23 +742,4 @@ function tell(s: GameState, owner: Owner, mem: AdaptMemory): void {
   if (visible.length < 2) return;
   alarm(s, `adapt${owner}`, news.text, TELL_GAP, 'info');
   put(s, owner, { told: news.key });
-}
-
-// ---- Seizing the moment (2026-11-25) -----------------------------------------------------------
-
-/** Own field army over the enemy's, by price, at or above which the adaptive commander attacks at once. */
-export const ADAPT_SEIZE = 1.4;
-/** Below this enemy army value (credits) there is no moment to seize: the battle's first minutes. */
-export const ADAPT_SEIZE_FLOOR = 1500;
-
-/**
- * True when the adaptive commander should send its wave now rather than at its next scheduled time:
- * its army is ADAPT_SEIZE times the enemy's, as it is straight after an enemy push has broken against
- * its defences. The fixed commander keeps its timetable, and a fixed plan that keeps attacking into a
- * prepared defence is punished for it in the minutes after. Nothing when off.
- */
-export function adaptSeize(s: GameState, owner: Owner): boolean {
-  if (!adaptiveOn(s, owner)) return false;
-  const foe = enemyArmyValue(s, owner);
-  return foe >= ADAPT_SEIZE_FLOOR && armyValue(s, owner) >= foe * ADAPT_SEIZE;
 }

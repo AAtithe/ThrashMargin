@@ -50,7 +50,6 @@ import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
 import { openingGuard } from './aiOpening';
 import { OUTMATCH_WAVE, armourThreat, outmatched } from './aiStrength';
-import { adaptSeize } from './aiAdapt';
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
 // round7:adaptive end.
 
@@ -704,9 +703,7 @@ function commander(s: GameState, owner: Owner): void {
     });
   };
   if (mem.wavePhase === 0) {
-    // 2026-11-25: the adaptive commander also goes the moment it is well ahead (aiAdapt.ts adaptSeize).
-    const seize = !threat && enemy.length > 0 && adaptSeize(s, owner);
-    if (!threat && (s.tick >= mem.nextAttack || seize) && enemy.length) {
+    if (!threat && s.tick >= mem.nextAttack && enemy.length) {
       const fit = recruits();
       // A wave that has waited a whole extra interval goes with what it has; with no income left
       // and none coming, everything goes now, since waiting can only make it weaker.
@@ -715,7 +712,7 @@ function commander(s: GameState, owner: Owner): void {
       // keeps its army at home beside its turrets rather than sending it into a stronger one, unless
       // broke. Only one of two sides can be outmatched at a time, so the stronger one still comes.
       const hold = pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE);
-      if (!hold && (fit.length >= size || overdue || (seize && fit.length >= d.firstWave))) {
+      if (!hold && (fit.length >= size || overdue)) {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
