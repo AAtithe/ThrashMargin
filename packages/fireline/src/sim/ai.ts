@@ -49,6 +49,8 @@ import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
 import { openingGuard } from './aiOpening';
+import { OUTMATCH_WAVE, armourThreat, outmatched } from './aiStrength';
+import { adaptSeize } from './aiAdapt';
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
 // round7:adaptive end.
 
@@ -326,7 +328,8 @@ function commander(s: GameState, owner: Owner): void {
     if (want && adv && isExtra(s, owner, want, d)) {
       const armed = units.filter(u => unitSpecOf(s, u).weapon).length;
       const foeArmy = s.units.filter(u => isEnemy(s, owner, u.owner) && unitSpecOf(s, u).weapon).length;
-      if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) {
+      // 2026-11-25: and, at a paced game size, while outmatched by value (aiStrength.ts).
+      if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9) || (pacedResearch(s) && outmatched(s, owner))) {
         want = null;
         held = true;
       }
@@ -433,8 +436,13 @@ function commander(s: GameState, owner: Owner): void {
     if (armed >= mem.garrison) saving = true;
   }
   const foeArmed = foes.filter(u => unitSpecOf(s, u).weapon);
-  const foeInfantry = foeArmed.filter(u => unitSpecOf(s, u).armor === 'infantry').length;
-  const foeArmour = foeArmed.length - foeInfantry;
+  // 2026-11-25: at a paced game size the read is by value, in infantry-equivalents (a rifleman's price),
+  // not by head: six rocketeers and nine tanks read as infantry-heavy by head, and the commander kept
+  // training grenadiers into a tank column (aiStrength.ts). Every other game reads by head, as before.
+  const byValue = pacedResearch(s);
+  const weigh = (list: Unit[]) => (byValue ? list.reduce((a, u) => a + UNITS[u.kind].cost, 0) / UNITS.rifleman.cost : list.length);
+  const foeInfantry = weigh(foeArmed.filter(u => unitSpecOf(s, u).armor === 'infantry'));
+  const foeArmour = weigh(foeArmed) - foeInfantry;
   const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
   // Paced research (round 6): short of the next research, with an army at home and no enemy near
@@ -446,7 +454,8 @@ function commander(s: GameState, owner: Owner): void {
   if (adv && pacedResearch(s) && mem.researchFor && p.credits < mem.researchFor) {
     const armedHome = units.filter(u => unitSpecOf(s, u).weapon && u.kind !== 'hauler' && !isShip(u)).length;
     const threat = foes.some(u => unitSpecOf(s, u).weapon && dist(u.x, u.y, home.x, home.y) < PACED_HOLD_RADIUS);
-    pacedHold = armedHome >= PACED_HOLD_ARMY && !threat;
+    // 2026-11-25: and never while outmatched in the field (aiStrength.ts): the army comes first.
+    pacedHold = armedHome >= PACED_HOLD_ARMY && !threat && !outmatched(s, owner);
   }
   if (pacedHold) saving = true;
   // round6:A begin. Two armies (fireline-round6-design.md): A may change the unit choices from here
@@ -695,12 +704,18 @@ function commander(s: GameState, owner: Owner): void {
     });
   };
   if (mem.wavePhase === 0) {
-    if (!threat && s.tick >= mem.nextAttack && enemy.length) {
+    // 2026-11-25: the adaptive commander also goes the moment it is well ahead (aiAdapt.ts adaptSeize).
+    const seize = !threat && enemy.length > 0 && adaptSeize(s, owner);
+    if (!threat && (s.tick >= mem.nextAttack || seize) && enemy.length) {
       const fit = recruits();
       // A wave that has waited a whole extra interval goes with what it has; with no income left
       // and none coming, everything goes now, since waiting can only make it weaker.
       const overdue = (s.tick >= mem.nextAttack + d.attackInterval && fit.length >= d.firstWave) || (broke && fit.length > 0);
-      if (fit.length >= size || overdue) {
+      // 2026-11-25 (aiStrength.ts): at a paced game size, a commander clearly outmatched in the field
+      // keeps its army at home beside its turrets rather than sending it into a stronger one, unless
+      // broke. Only one of two sides can be outmatched at a time, so the stronger one still comes.
+      const hold = pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE);
+      if (!hold && (fit.length >= size || overdue || (seize && fit.length >= d.firstWave))) {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
@@ -718,7 +733,7 @@ function commander(s: GameState, owner: Owner): void {
     const members = waveUnits();
     // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
     const gathered = members.filter(u => dist(u.x, u.y, waveStage.x, waveStage.y) < 6).length;
-    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450)) {
+    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450) && !(pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE))) {
       mem.wavePhase = 2;
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
@@ -1106,6 +1121,7 @@ function nextStructure(
   // Supply lines (2026-11-21): a cut-off producer is reconnected before anything else. Never without them.
   if (depotSpot(s, owner) && unlocked(s, owner, 'depot')) return powerFor('depot');
   const t = advanced ? TACTICS[advanced] : null;
+  const armourPlan = !!t && pacedResearch(s) && armourThreat(s, owner);
   const plan: [BuildingKind, number][] = t
     ? [
         // Advanced tech: the original base first (the early army matters more than any tech),
@@ -1118,6 +1134,9 @@ function nextStructure(
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
+        // 2026-11-25: facing armour at a paced size (aiStrength.ts), a second War Factory and Rocket
+        // Turrets, the anti-armour defence, come before the rest of the plan.
+        ...(armourPlan ? ([['factory', 2], ['rocketturret', 2]] as [BuildingKind, number][]) : []),
         ['turret', d.turrets],
         // round7:structures: a Fortified Bunker under artillery pressure (Normal and Hard; nothing otherwise).
         ...strategicPlanFor(s, owner, advanced, 'early'),
@@ -1293,6 +1312,8 @@ function advancedUnits(
   const infantryHeavy = read && foeInfantry > foeArmour * 1.5;
   const armourHeavy = read && foeArmour > foeInfantry * 1.5;
   const fortified = t.counter && foeTurrets >= 3;
+  // 2026-11-25: facing armour at a paced size, tanks first (aiStrength.ts).
+  const armourFirst = armourHeavy && pacedResearch(s);
   // Vehicles first. The choice is fixed until something more is trained (a roll from the count
   // trained, not a draw), so a dear vehicle is saved for rather than re-rolled into a cheap one;
   // while it is saved for, the infantry queue holds one at a time once there are a few soldiers.
@@ -1312,6 +1333,10 @@ function advancedUnits(
       ['flametank', infantryHeavy ? 5 : armourHeavy ? 1 : 3],
       ['bastion', 0.5 + (armourHeavy ? 0.5 : 0) + (fortified ? 1 : 0)],
     ];
+    // 2026-11-25: at a paced size against armour, the measured answers (aiAdapt.ts MATCHUPS: tanks +1.52
+    // against heavy armour per credit; artillery -2.66, missile carriers -2.5, Bastions -0.23): tanks,
+    // and the siege bonus waits until the armour is dealt with (aiStrength.ts).
+    if (armourFirst) for (const e of vehicles) e[1] = e[0] === 'tank' ? 8 : e[0] === 'bastion' ? 1 : 0.2;
     // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
     if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
     // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
@@ -1328,11 +1353,16 @@ function advancedUnits(
   // With ten soldiers, a vehicle being saved for holds the infantry back altogether; against
   // massed infantry it takes fourteen (grenadiers are worth more there than any vehicle short of
   // a flame tank).
-  const holdInfantry = waiting > 0 && soldiers >= (infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
+  // 2026-11-25: at a paced game size, against armour, from six soldiers: tanks answer tanks far better
+  // than cheap infantry does, and the infantry otherwise took every credit a tank needed (aiStrength.ts).
+  const holdInfantry = waiting > 0 && soldiers >= (armourFirst ? 6 : infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
   // Infantry: two queued as with one Barracks; more (a line per Barracks) only from credits to spare.
   const iLines = lineCount(s, owner, 'infantry');
-  const iRoom = holdInfantry ? 0 : waiting ? 1 : 2;
-  if (iq.length < iRoom || (!holdInfantry && !waiting && iq.length < iLines + 1 && extraLine(s, p.credits))) {
+  // 2026-11-25: against armour at a paced size, past six soldiers the infantry waits unless a tank's
+  // price is to spare, so the War Factory line is never starved by cheap infantry (aiStrength.ts).
+  const tankFirst = armourFirst && soldiers >= 6 && p.credits < vehiclePrice(s, owner, 'tank') + 250 && countBuildings(s, owner, 'factory') > 0;
+  const iRoom = holdInfantry || tankFirst ? 0 : waiting ? 1 : 2;
+  if (iq.length < iRoom || (!holdInfantry && !tankFirst && !waiting && iq.length < iLines + 1 && extraLine(s, p.credits))) {
     const medics = units.filter(u => UNITS[u.kind].medic).length + iq.filter(q => q.kind === 'medic').length;
     let kind: UnitKind | null = null;
     if (medics < Math.min(t.counter ? 3 : 1, Math.floor(soldiers / 6))) kind = 'medic';
@@ -1340,7 +1370,7 @@ function advancedUnits(
       const infantry: [UnitKind, number][] = [
         ['rifleman', infantryHeavy ? 1 : armourHeavy ? 1 : 2],
         ['rocketeer', infantryHeavy ? 1 : armourHeavy ? 5 : 1.5],
-        ['grenadier', (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
+        ['grenadier', armourFirst ? 0.5 : (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
       ];
       // Round 6, workstream A: Meridian's Sappers against defences and armour, in a battle with two
       // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.

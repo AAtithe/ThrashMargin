@@ -2,6 +2,7 @@ import { extraLine } from './aiScale';
 import { refundGoods } from './industry';
 import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { isShip } from './naval';
+import { OUTMATCH_RESEARCH, outmatched } from './aiStrength';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
 import { canRide, doBoard, doUnload, isStill } from './transport';
 import { buildingCentre, dist, distToBuilding } from './grid';
@@ -244,7 +245,10 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // structure inland. The last stand and recovery read this.
   const landArmed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u) && !isShip(u)).length;
   const foeArmy = foes.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
-  const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9);
+  const paced0 = pacedResearch(s);
+  // 2026-11-25: at a paced game size, never while outmatched by value (aiStrength.ts): a head count let 19
+  // infantry read as ready against 15 tanks, and the commander bought a Helipad and a gunship instead.
+  const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9) && !(paced0 && outmatched(s, owner));
 
   // 1. Anti-air, in proportion to what the opponent flies.
   const foeAir = foes.filter(isAir).length;
@@ -293,7 +297,8 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
     delete mem.researchFor;
     if (!crisis && ore >= PACED_ORE_FLOOR && count('researchlab') < 1 && !p.queues.building.some(q => q.kind === 'researchlab'))
       if (count('factory') > 0 && count('refinery') >= d.refineries && count('turret') >= 1) queueStructure(s, owner, 'researchlab');
-    if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR) {
+    // 2026-11-25: no new research while outmatched in the field (aiStrength.ts): the credits go on the army.
+    if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR && !outmatched(s, owner, OUTMATCH_RESEARCH)) {
       const next = /* round7:fortification */ (!p.research && count('researchlab') > 0 ? fortificationNext(s, owner, diff) : null) ?? nextResearch(s, owner, t.research.paced, true);
       const pos = next && UPGRADE_LINE[next];
       if (next && pos && pos.mark === 3) {

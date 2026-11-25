@@ -26,6 +26,7 @@ import { seenBy } from './sites';
 import { buildingCentre, dist, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { buildingSpecOf, unitSpecOf } from './specs';
 import { openingMix, openingOf } from './aiOpening';
+import { armyValue, enemyArmyValue } from './aiStrength';
 import type { AdaptMemory, AdaptPlan, AdaptSighting, AdaptSite, GameState, Unit } from './types';
 
 // ---- Numbers ---------------------------------------------------------------------------------
@@ -40,6 +41,16 @@ const ART = 3;
 const AIR = 4;
 const NAVY = 5;
 const STATIC = 6;
+
+/**
+ * What it reads (2026-11-25): the whole map, as the rest of the commander always has (a stated rule
+ * of the game). Round 7 first read only its team's sight, so the layer meant to sharpen the commander
+ * read less than the commander it sharpened: blind until minute 8 against a tank column, then reading
+ * it as infantry from the rocketeers in front, it overrode the commander's correct whole-map read and
+ * did slightly worse. Stealth Tanks and Spies are still read only where seenBy says so. What side 0
+ * is told is unchanged: only news it can see for itself.
+ */
+export const ADAPT_WHOLE_MAP = true;
 
 /** Ticks between looks round (five seconds). */
 export const ADAPT_SAMPLE = 50;
@@ -62,6 +73,28 @@ export const ADAPT_MAX_SHARE = 0.5;
 export const ADAPT_MIN_FACTOR = 0.5;
 /** A kind's weight never rises above this many times what it was before adapting. */
 export const ADAPT_MAX_FACTOR = 2.5;
+/**
+ * A one-sided enemy (2026-11-25): when one class is at least ADAPT_ONE_SIDED of what has been seen, the
+ * answer goes further than the usual bounds, up to ADAPT_ONE_SIDED_FACTOR times a kind's weight and
+ * ADAPT_ONE_SIDED_SHARE of the mix, scaled in from the threshold. A player repeating one plan fields a
+ * one-sided army, and that is what this commander exists to punish.
+ */
+export const ADAPT_ONE_SIDED = 0.6;
+export const ADAPT_ONE_SIDED_FACTOR = 5;
+export const ADAPT_ONE_SIDED_SHARE = 0.8;
+
+/** The mix's bounds and the strength multiplier for a lean: the usual ones, widened against a one-sided enemy. */
+export function adaptLimits(lean: number[]): { maxShare: number; maxFactor: number; boost: number } {
+  const total = lean.reduce((a, b) => a + b, 0);
+  const top = total > 0 ? Math.max(...lean) / total : 0;
+  const k = Math.max(0, Math.min(1, (top - ADAPT_ONE_SIDED) / (1 - ADAPT_ONE_SIDED)));
+  return {
+    maxShare: ADAPT_MAX_SHARE + k * (ADAPT_ONE_SIDED_SHARE - ADAPT_MAX_SHARE),
+    maxFactor: ADAPT_MAX_FACTOR + k * (ADAPT_ONE_SIDED_FACTOR - ADAPT_MAX_FACTOR),
+    boost: 1 + 2 * k,
+  };
+}
+
 /** Defences seen at or above which an enemy is turtling (an ordinary Hard base has six). */
 export const TURTLE_DEFENCES = 8;
 /** Shortest gap between two lines in side 0's log about this commander's changes (five minutes). */
@@ -82,7 +115,9 @@ interface AdaptTuning {
 
 /** Hard adapts fully; Normal more slowly and only partly (no economy raids, no expansion hunting). */
 export const ADAPT_TUNING: Record<'normal' | 'hard', AdaptTuning> = {
-  normal: { strength: 0.5, rate: 0.1, hold: 1200, plans: ['flank', 'siege'], siegeWave: 2 },
+  // 2026-11-25: Normal answers fully and faster (was strength 0.5, rate 0.1). The scripted-opening test
+  // showed half strength at a tenth a look changed nothing that mattered in a 15-minute battle.
+  normal: { strength: 1, rate: 0.25, hold: 1200, plans: ['flank', 'siege'], siegeWave: 2 },
   hard: { strength: 1, rate: 0.25, hold: 600, plans: ['flank', 'raid', 'expand', 'siege'], siegeWave: 4 },
 };
 
@@ -197,7 +232,9 @@ const decay = (age: number, halfLife: number): number => Math.pow(0.5, Math.max(
 export function observe(s: GameState, owner: Owner): AdaptMemory {
   const mem = memoryOf(s, owner);
   const vis = teamVisibility(s, owner);
+  // 2026-11-25: the whole map (ADAPT_WHOLE_MAP), as the rest of the commander has always read it.
   const inView = (x: number, y: number) => {
+    if (ADAPT_WHOLE_MAP) return true;
     const tx = Math.floor(x);
     const ty = Math.floor(y);
     return onMap(s, tx, ty) && vis[tileAt(s, tx, ty)] === 1;
@@ -230,7 +267,7 @@ export function observe(s: GameState, owner: Owner): AdaptMemory {
     // Any tile of it in view will do: a corner of a large structure is enough to know it is there.
     const spec = buildingSpecOf(s, b);
     let any = false;
-    for (let y = b.y; y < b.y + spec.h && !any; y++) for (let x = b.x; x < b.x + spec.w; x++) if (onMap(s, x, y) && vis[tileAt(s, x, y)]) any = true;
+    for (let y = b.y; y < b.y + spec.h && !any; y++) for (let x = b.x; x < b.x + spec.w; x++) if (onMap(s, x, y) && (ADAPT_WHOLE_MAP || vis[tileAt(s, x, y)])) any = true;
     if (!any) continue;
     sitesNow.set(b.id, { id: b.id, o: b.owner, k: b.kind, t: s.tick, x: c.x, y: c.y });
   }
@@ -477,20 +514,21 @@ export function mixFor(
     if (k === aaKind) d += lean[AIR] * 8;
     return d;
   };
+  const lim = adaptLimits(lean);
   const scaled: [UnitKind, number][] = list.map(([k, w]) => {
     if (w <= 0 || !open(k)) return [k, w];
-    const f = Math.exp(strength * (GAIN * (score(k) - mean) + doctrine(k)));
-    return [k, w * Math.max(ADAPT_MIN_FACTOR, Math.min(ADAPT_MAX_FACTOR, f))];
+    const f = Math.exp(strength * lim.boost * (GAIN * (score(k) - mean) + doctrine(k)));
+    return [k, w * Math.max(ADAPT_MIN_FACTOR, Math.min(lim.maxFactor, f))];
   });
-  return capShares(scaled, list, open);
+  return capShares(scaled, list, open, lim.maxShare);
 }
 
-/** No open kind above ADAPT_MAX_SHARE of the mix (or its share before adapting, where that was higher). */
-function capShares(scaled: [UnitKind, number][], base: [UnitKind, number][], open: (k: UnitKind) => boolean): [UnitKind, number][] {
+/** No open kind above maxShare (ADAPT_MAX_SHARE, widened by adaptLimits) of the mix (or its share before adapting, where that was higher). */
+function capShares(scaled: [UnitKind, number][], base: [UnitKind, number][], open: (k: UnitKind) => boolean, maxShare = ADAPT_MAX_SHARE): [UnitKind, number][] {
   const out = scaled.map(([k, w]): [UnitKind, number] => [k, w]);
   const idx = out.map((_, i) => i).filter(i => out[i][1] > 0 && open(out[i][0]));
   const baseTotal = idx.reduce((a, i) => a + base[i][1], 0);
-  const cap = (i: number) => Math.max(ADAPT_MAX_SHARE, base[i][1] / baseTotal);
+  const cap = (i: number) => Math.max(maxShare, base[i][1] / baseTotal);
   // A few passes: lowering one kind raises the others' shares.
   for (let pass = 0; pass < 6; pass++) {
     const total = idx.reduce((a, i) => a + out[i][1], 0);
@@ -705,4 +743,23 @@ function tell(s: GameState, owner: Owner, mem: AdaptMemory): void {
   if (visible.length < 2) return;
   alarm(s, `adapt${owner}`, news.text, TELL_GAP, 'info');
   put(s, owner, { told: news.key });
+}
+
+// ---- Seizing the moment (2026-11-25) -----------------------------------------------------------
+
+/** Own field army over the enemy's, by price, at or above which the adaptive commander attacks at once. */
+export const ADAPT_SEIZE = 1.4;
+/** Below this enemy army value (credits) there is no moment to seize: the battle's first minutes. */
+export const ADAPT_SEIZE_FLOOR = 1500;
+
+/**
+ * True when the adaptive commander should send its wave now rather than at its next scheduled time:
+ * its army is ADAPT_SEIZE times the enemy's, as it is straight after an enemy push has broken against
+ * its defences. The fixed commander keeps its timetable, and a fixed plan that keeps attacking into a
+ * prepared defence is punished for it in the minutes after. Nothing when off.
+ */
+export function adaptSeize(s: GameState, owner: Owner): boolean {
+  if (!adaptiveOn(s, owner)) return false;
+  const foe = enemyArmyValue(s, owner);
+  return foe >= ADAPT_SEIZE_FLOOR && armyValue(s, owner) >= foe * ADAPT_SEIZE;
 }
