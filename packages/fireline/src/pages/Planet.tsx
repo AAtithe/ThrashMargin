@@ -8,7 +8,7 @@
  * existing save queue. A fought battle is the skirmish <Battle> on the generated GameState, saved
  * every 15 seconds of play as campaign battles are; its outcome comes back as a BattleReport.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/ThemeToggle';
 import ArmyTab from '../components/planet/ArmyTab';
@@ -334,22 +334,55 @@ export default function PlanetFlow({
         )}
         {tab === 'map' && (
           <div className="fl-pl-mapview">
-            <div>
+            <div className="fl-pl-mapcol">
               <PlanetMapCanvas s={s} map={map} selected={selected} targets={targets} moves={moves} onSelect={setSelected} />
               <div className="fl-pl-legend" aria-label="Legend">
-                {s.factions.map(f => (
-                  <span key={f.id} style={{ display: 'inline-flex', alignItems: 'center', opacity: f.alive ? 1 : 0.5 }}>
-                    <span className="fl-pl-swatch" style={{ borderColor: `var(--pl-f${f.id})` }}>
-                      {f.name.charAt(0)}
+                <div className="fl-pl-legend-row">
+                  {s.factions.map(f => (
+                    <span key={f.id} className="fl-pl-legend-faction" data-out={f.alive ? undefined : '1'} style={{ '--fac': `var(--pl-f${f.id})` } as CSSProperties}>
+                      <span className="fl-pl-swatch">{f.name.charAt(0)}</span>
+                      {f.name}
+                      {f.alive ? '' : ' (out)'}
                     </span>
-                    {f.name}
-                    {f.alive ? '' : ' (out)'}
+                  ))}
+                  <span className="fl-pl-legend-faction">
+                    <span className="fl-pl-swatch">N</span>Independents
                   </span>
-                ))}
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <span className="fl-pl-swatch">N</span>Independents
-                </span>
-                <span>Ringed in red: attack now. Dashed: sea crossings. Hatched: cut off.</span>
+                </div>
+                <ul className="fl-pl-legend-row fl-pl-legend-keys">
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-target" aria-hidden="true" />
+                    Ringed in red: attack now
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-move" aria-hidden="true" />
+                    Dotted ring: can move
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-sea" aria-hidden="true" />
+                    Dashed: sea crossing
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-cut" aria-hidden="true" />
+                    Hatched: cut off
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-capital" aria-hidden="true" />
+                    Capital
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-army" aria-hidden="true" />
+                    Field army, with its units
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-pips" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    City level
+                  </li>
+                </ul>
               </div>
             </div>
             <RegionPanel {...props} region={selected} onSelect={setSelected} />

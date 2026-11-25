@@ -3073,3 +3073,160 @@ The banner also offers the review so far.
 No harness section stages a bomber against a Decoy. The planet AI values support from neighbouring
 regions but does not build for it. The adaptive commander's matchup table must be regenerated with
 `scripts/adapt-matchups.ts` after any unit stat change.
+
+### 2026-11-22: Vast maps, with ravines and ruined cities
+
+The player asked for maps four times larger, with more detail and more complications: ravines and
+destroyed cities. Read as four times the ground of the largest size: a fourth size, **Vast**, twice
+as wide as Huge (256, 288 and 320 tiles for two, three and four sides; `MAP_TILES_MAX` 320). Standard,
+large and huge are untouched, map for map: the hazards are gated on `sizeHasHazards`, which is Vast
+only, so nothing round 5 balanced moves.
+
+**The new ground** (`src/sim/hazards.ts`, laid by both generators through their symmetric brush):
+- *Ravines* (`'v'`): winding gorges two to four tiles wide, impassable to ground units and ships,
+  flown over. Laid after the tracks: a ravine crossing a track turns it into a bridge (`'b'`), a
+  ravine that would run along a track is cut short there, and each ravine is bridged every 22 tiles.
+  A final pass (`settleBridges`) turns any bridge group with no ravine beside it back into dirt (a
+  track grazing a ravine's edge, or a third-of-a-turn rounding a bridge apart). Bridges are walkable
+  but nothing is built on them ("Cannot build on a bridge"). In wedge maps ravines keep to one side of
+  the wedge's own axis, or each one and its mirror crossed into an X.
+- *Ruined cities*: a street grid (`'p'`, walkable and buildable) between blocks of rubble and gutted
+  buildings (`'x'`, impassable), with collapsed squares inside and a ragged edge. Laid before the
+  type's features and the tracks, so a track through a city runs down a street (`carveTile`) and a
+  river or a canyon wall still has its way. Three cities a half on two-sided maps (radius 13 to 20),
+  two a wedge on three and four. Plus ruined hamlets, a gutted farmstead on a paved yard.
+- Kept clear of every base's clearing, the contested centre and the home field. Ore only on grass
+  and dirt. More ore to match the ground: four flank pairs and six expansions on two sides
+  (`MAX_ORE_FIELDS_VAST` 44), two expansions and a third border field per wedge on three and four.
+- Over 42 maps (every type and side count, two seeds): ravine 2.1%, bridge 0.34%, ruins 1.5%,
+  streets 4.5% of all tiles. Every draft passed the generator's own checks first time on 8 seeds of
+  every type and side count (two sides 63 to 90 ms a draft, four sides 109 to 124 ms).
+
+**The walkable set** gains `'p'` and `'b'` in two places that must agree: `isWalkable` (`map.ts`) and
+`walkCode` (`grid.ts`, by character code).
+
+**Saves** (`src/sim/pack.ts`). A four-sided vast battle's save is 420 KB before a unit is built (the
+ground, the ore and the explored map are each 102,400 entries), against the portal's 512 KB limit.
+Battles wider than the balanced sizes (`MAP_TILES_MAX_BALANCED`, 160) save those three fields as run
+lengths: 40 to 80 KB at the start, 59 KB ten minutes in. `migrateState` unpacks before anything reads
+the state, refuses a packed save that does not unpack to its own map, and every save a build before
+vast maps could make stays byte-identical (huge is never packed). Packed on both write paths (local
+storage and the cloud saver) and on the server's create.
+
+**Terrain** (src/game). Painted at full resolution a 320-tile map is a 10,240 px canvas and Scars keeps
+a pristine copy: about 840 MB. Maps wider than 160 tiles paint at half resolution (`terrainScale`), so
+the largest canvas is 5,120 px, as huge already was; Scars and Water draw in world pixels through the
+canvas transform and scale their source rectangles by hand, and the renderer scales its blit. Standard,
+large and huge hash pixel-identical to before on five real maps. Ravines paint as a gorge (a lit south
+lip, a streaked north wall, a dark floor with fallen stone), bridges as one span per group (abutments,
+planks, girders, rails), ruins in three styles (concrete, brick, sandstone) with a standing shell or two
+casting a shadow, streets as cracked asphalt with craters, burnt-out cars and faded markings. Checked on
+a revealed vast battle in Chromium: a city and a bridged ravine, no page errors.
+
+**The computer's numbers** (`aiScale.ts`). Linear growth with width would have put Normal's first attack
+five and a half times later than standard on a vast two-sided map and given every side 24 more turrets.
+Beyond huge's scale each number now grows at half the rate (`VAST_SCALE_RATE`): two sides play at
+scale 3 rather than 4, four sides at 2.5 rather than 3.33. Large and huge are below the knee and
+unchanged.
+
+**Tick time** (`perf-fire.ts`, minutes 20 to 30). Vast, four sides, before the damping and two exact
+optimisations: median 7.36 ms, p99 23.95 ms, 491 units on the field. The damping (363 units), then
+target acquisition testing the square round its range before anything else (filters reordered only,
+so the pick is the same), then the walkable mask worked out once per map and copied for each
+occupancy grid: median 4.33 ms, p99 17.36 ms, worst 81.8 ms. Vast two sides: median 1.58 ms, p99
+15.45 ms. Huge four sides for comparison: median 2.66 ms, p99 9.79 ms. Four-sided vast is still a
+little over the 4 ms median the round 5 log aimed for; the p99 is inside its 25 ms.
+
+**Whole battles**, Normal against Normal, advanced tech, map by seed (harness cap 162,000 ticks, 270
+minutes). Two sides, six seeds: 32.6, 33.4, 34.9, 60.2 and 62.2 minutes, and one Coast battle
+unfinished at the cap. Every side harvested in all of them. Four sides as teams, two seeds: 49.2 and
+50.2 minutes. The unfinished one is a stalemate between the two computers across Coast's causeways:
+over a thousand kills each by minute 120, with side 0 holding 300,000 credits it never spends. That is
+the computer's existing limit, not the new ground, and it is not tuned here; a person breaks it. The
+lobby says "30 to 60 minutes or more".
+
+**Harness.** `scripts/drive-vast.ts`, inside `npm run drive:fire` (about 40 seconds, 382 assertions):
+the size and its rules; 42 vast maps through the generator's checks, every tile a known ground, ore
+only on grass and dirt, every bridge spanning a ravine and joining ground, nothing laid by a base, the
+same seed the same map; the balanced sizes free of the new ground; streets and bridges passable,
+ravines and ruins not, no ship on any of them, nothing built on a bridge, a unit walking across a
+ravine by its bridge and a path across a 320-tile map; packing round trips, junk refused, huge never
+packed; the damped numbers; a vast battle replayed byte-identically for ten minutes, its packed save
+under the limit and playing on exactly, and units seen walking the streets or bridges with none
+standing in a ravine or a ruin. The harness caps in `drive.ts`, `drive-maps.ts` and `long-games.ts`
+gain vast at 162,000 ticks.
+
+**Checks.** `npm run check`: all passed (Fireline drive 402,276 assertions, campaign-check 7,699,
+drive:planet 35,255). `npm run check:ui -- fireline`: 32/32. The size picker at 375 px: four options
+on one row, no sideways scroll.
+
+### 2026-11-22: The ground is held in chunks
+
+The ground was painted once per battle onto one canvas, and the battle marks kept a second copy of
+it, so memory grew with the map's area: a Huge map 200 MB, and a Vast map at full resolution would
+have been 800 MB, which is why Vast shipped at half resolution. Huge's 5,120-pixel canvas is also
+past the canvas size iPhone Safari is commonly reported to refuse (not tested on a device here).
+
+**Now** (`src/game/terrainStore.ts`), on every map size: the ground is 512-pixel chunks, painted near
+the camera by a worker that lives for the battle (visible chunks first, two in flight), the furthest
+dropped once the ground held passes 96 MB and painted again when the camera returns. Until a chunk
+arrives the minimap's colours stand in for it. Each chunk's canvas reaches 2 pixels into its
+neighbours and is drawn a pixel past its edge, so no seam can show under zoom (Chrome shows none
+even without it; the overlap is for browsers that soften image edges). Vast is back at full
+resolution, and `terrainScale` is gone.
+
+**The painter** (`createTerrainPainter`, `terrain.ts`) works out everything that depends on the whole
+map once (the shading fields, noise, grass patches and zones, relief, groups of ruins and bridges)
+and paints any region: per-tile decoration from the tiles within 3 of the region, streams and groups
+filtered by where they reach, the per-pixel passes over the region's pixels only. A whole-map paint
+is byte-identical to before on six real maps (standard, large and huge). Chunks laid side by side
+are within a few levels of the whole: Chrome's antialiased circle and path edges shift by a level or
+two when the same drawing is moved by whole pixels (gradients, stretched images and the blade blocks
+do not), so about 0.02% to 0.13% of pixels differ by more than 2 levels and the worst single pixel by
+23. Exact equality across chunks cannot be had in this browser; nothing is missing or misplaced.
+
+**Marks and water.** `Scars` draws fading marks into the loaded chunks (`paintLive`) and fades them
+back from a clean copy each chunk keeps only once marked (`restore`); it now tracks only the marked
+squares, so fading no longer slows on bigger maps. Rubble and craters are permanent marks with their
+own seed (`permanent`, drawn with the seeded `rand`, not `Math.random`), replayed into a chunk painted
+again. `Water` redraws its tiles from the clean copy a chunk with animated water keeps from the start.
+
+**Measured** (Chromium, 1440 by 900, panning the whole map for fifteen seconds): ground held at most
+32 MB on standard (as before), 96 MB on Huge four sides (200 MB before), 97 MB on Vast four sides at
+full resolution (200 MB before at half). `perf-render.cjs`, minute 25, four sides, before and after
+on the same battle: Huge, frame work median 4.0 to 1.3 ms, p99 14.6 to 11.2 ms; Vast (half to full
+resolution), median 4.1 to 1.6 ms, p99 14.6 to 14.0 ms, though the 95th percentile gap between frames
+while panning flat out rose from 21.9 to 24.2 ms (newly painted chunks being installed).
+
+**Checks.** `scripts/terrain-check.cjs` (new, Playwright, not in `npm run check`): chunks against the
+whole on three maps and a 2,048-pixel square of a Vast city; no seams under a fractional zoom over
+magenta (and a deliberate one-pixel gap is seen, so the test can see one); a chunk dropped and painted
+again comes back the same with its permanent mark and without its fading one; water animates and never
+builds up; Vast four sides opens and pans with the worker and with no Worker at all, held under budget,
+no page errors: 22/22. `npm run check`: all passed. `npm run check:ui -- fireline`: 32/32. Fireline
+tour: ok.
+
+### 2026-11-22: The computer spends what it banks (the Coast stalemate)
+
+The vast maps entry recorded one Coast battle unfinished at the 270-minute cap. The cause was not
+the ground: both commanders had one barracks and one factory (the build plan stops at the
+difficulty's factories, one on Normal), side 0 had harvested 579,000 credits to side 1's 333,000,
+and it held 247,000 of them unspent at minute 60. A 74% income lead bought nothing, so equal armies
+met at the causeways for four and a half hours.
+
+**The rule** (`aiScale.ts`, `surplusOn`): on a map larger than standard, never in a mission, a
+commander holding SURPLUS_CREDITS (6,000) or more appends to its build plan up to SURPLUS_FACTORIES
+(2) more factories and SURPLUS_BARRACKS (1) more barracks. Standard maps are untouched.
+
+**Measured.** Vast Coast, two sides, eight seeds, old code against new: old, every battle finished
+but ran 39.6 to 109.1 minutes, with the winner or loser holding 40,000 to 184,000 credits in five of
+the eight (one side lost while holding 184,000); new, all eight finished in 39.6 to 74.9 minutes with
+no side holding more than 2,061. The battle that stalled (seed v-2) now ends at 62.4 minutes.
+`ladder:fire --map random --size large`, 150 seeds: the new code's card (Hard beats Normal 73.0%,
+Normal beats Easy 97.7%, the mirror 47/53, nothing unfinished) is identical, battle for battle, to the
+old code's on the same five matches. Large battles end before anyone banks 6,000 credits, so the rule
+never fires there. Huge was not laddered; it sits between the two.
+
+**Harness** (`drive-vast.ts`, "Larger maps: surplus production"): off on standard maps however rich,
+off in missions, on from exactly 6,000; a commander handed 60,000 credits on a large map builds past
+its plan's factories and within the cap, and on a standard map keeps its one.

@@ -16,7 +16,7 @@ import { ARMY_KINDS, CITY_BUILDINGS, NEUTRAL, type ArmyKind, type RegionId } fro
 import { garrisonTotal } from '../../planet/state';
 import { HERO_KINDS, MAP_TYPE_NAMES, UNITS, heroLevelFor, type HeroKind } from '../../sim/rules';
 import { BattleMapSize, WarLinks } from './BattleCards';
-import { FactionName, Odds, OrderButton, stockText, unitName, type PlanetProps } from './common';
+import { FactionName, Odds, facStyle, OrderButton, stockText, unitName, type PlanetProps } from './common';
 
 export default function RegionPanel({ s, map, act, region, onSelect }: PlanetProps & { region: RegionId | null; onSelect: (r: RegionId | null) => void }) {
   const capital = s.factions[0].capital;
@@ -298,7 +298,7 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
                 <>
                   <div className="fl-pl-sides">
                     {setup.sides.map((side, i) => (
-                      <div key={i} className="fl-pl-side">
+                      <div key={i} className="fl-pl-side" data-team={side.team} style={facStyle(side.faction)}>
                         <strong>
                           <FactionName s={s} f={side.faction} />
                         </strong>
@@ -310,7 +310,7 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
                   </div>
                   <BattleMapSize setup={setup} />
                   <WarLinks s={s} map={map} setup={setup} />
-                  <Odds p={attackOdds(setup)} label="Chance of taking it" />
+                  <Odds p={attackOdds(setup)} label="Chance of taking it" bar />
                 </>
               )}
               <OrderButton s={s} act={act} a={{ type: 'attack', target: region, credits, heroes: chosen }} tone="primary" testId="attack">

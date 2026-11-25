@@ -6,7 +6,7 @@ import { airPlan, vehiclePrice } from './aiAir';
 import { engineeringPlan, expansionSpot } from './aiEngineering';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
-import { extraLine, reserveRadius, scaledFor, stageDistance } from './aiScale';
+import { SURPLUS_BARRACKS, SURPLUS_FACTORIES, extraLine, reserveRadius, scaledFor, stageDistance, surplusOn } from './aiScale';
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
@@ -1141,6 +1141,9 @@ function nextStructure(
         ['turret', d.turrets],
         ['factory', d.factories],
       ];
+  // Surplus production (aiScale.ts): money banked and not being spent becomes more producers.
+  if (surplusOn(s, s.players[owner].credits))
+    plan.push(['factory', Math.max(1, d.factories) + SURPLUS_FACTORIES], ['barracks', 1 + SURPLUS_BARRACKS]);
   for (const [k, n] of plan) {
     if (count(k) >= n) continue;
     if (!unlocked(s, owner, k)) continue;

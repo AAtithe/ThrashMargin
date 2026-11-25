@@ -674,6 +674,11 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
   let best = 0;
   let bestScore = Infinity;
   for (const e of s.units) {
+    // The cheapest test first: anything outside the square round the range is out of it. (Only
+    // filters are reordered, so the pick is the same; it matters on vast maps' bigger armies.)
+    const ex = e.x - x;
+    const ey = e.y - y;
+    if (ex > range || ex < -range || ey > range || ey < -range) continue;
     if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
     const cat = UNITS[e.kind].category;
     if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) continue;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { usePace } from '../lib/motion';
 import { BUILDINGS } from '../sim/rules';
 import type { GameState } from '../sim/types';
 import { TEAM } from '../theme';
@@ -12,6 +13,20 @@ import { stealthSeen } from '../sim/sites';
 import { isDetected } from '../sim/mission';
 
 const SCALE = 3;
+
+// The radar's own art. It draws over the map's terrain, which is the same in both colour modes,
+// so like the battlefield it keeps one palette rather than reading the page's theme tokens.
+const ORE = '#d9b23a';
+/** The view's corner brackets, and its faint wash at VIEW_WASH. */
+const VIEW = '#ffffff';
+const VIEW_WASH = 'rgba(255, 255, 255, 0.08)';
+/** The ring round a selected unit of yours. */
+const PICKED = '#f4f8f6';
+/** The radar sweep: its leading edge, and how long one turn takes at full pace. */
+const SWEEP_RGB = '150, 236, 170';
+const SWEEP_MS = 4200;
+/** How far round the sweep's trailing glow reaches, in radians. */
+const SWEEP_TAIL = 1.1;
 
 /** A combat alert: somewhere side 0 is being hit. `at` is performance.now() when it was raised. */
 export interface Alert {
@@ -35,6 +50,7 @@ export default function Minimap({
   cam,
   onJump,
   alerts,
+  selected,
 }: {
   state: GameState;
   vis: Uint8Array;
@@ -43,29 +59,101 @@ export default function Minimap({
   onJump: (x: number, y: number) => void;
   /** Live list, appended to by the battle screen; read every frame for the pings. */
   alerts?: Alert[];
+  /** The player's selection, marked on the radar so the army is easy to find. */
+  selected?: Set<number>;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const pingRef = useRef<HTMLCanvasElement>(null);
   const alertsRef = useRef(alerts);
   alertsRef.current = alerts;
+  const pace = usePace();
+  // The sweep turns only while the radar is on and motion is allowed (motion.ts: "off" follows
+  // the system's reduced-motion setting unless the player chose otherwise).
+  const sweepRef = useRef(false);
+  sweepRef.current = online && pace !== 'off';
+  const kickRef = useRef<() => void>(() => {});
 
-  // Alert pings: a second canvas on top, animated on its own frame loop so the rings expand
-  // smoothly while the radar beneath redraws only when the battle ticks. Pings show even while
-  // the radar is offline: the alarm has already told you, and this says where.
+  // The overlay canvas: alert pings and the radar sweep, animated on their own frame loop so they
+  // move smoothly while the radar beneath redraws only when the battle ticks. Pings show even while
+  // the radar is offline: the alarm has already told you, and this says where. The loop stops when
+  // there is nothing to animate (no live ping, no sweep) and is started again from the render below,
+  // which runs on every battle tick; nothing in it allocates per frame.
   useEffect(() => {
     let raf = 0;
+    let running = false;
     let drawn = false;
+    let wedge: HTMLCanvasElement | null = null;
+    const sweepArt = (size: number): HTMLCanvasElement => {
+      if (wedge && wedge.width === size) return wedge;
+      // One pre-drawn wedge, centred, pointing along +x with its glow trailing behind; each frame
+      // only rotates it into place.
+      const w = document.createElement('canvas');
+      w.width = w.height = size;
+      const g = w.getContext('2d')!;
+      const r = size / 2;
+      if (typeof g.createConicGradient === 'function') {
+        // A smooth trail: transparent at the tail, brightest at the leading edge, nothing ahead of it.
+        const cg = g.createConicGradient(-SWEEP_TAIL, r, r);
+        const lead = SWEEP_TAIL / (Math.PI * 2);
+        cg.addColorStop(0, `rgba(${SWEEP_RGB}, 0)`);
+        cg.addColorStop(lead * 0.6, `rgba(${SWEEP_RGB}, 0.05)`);
+        cg.addColorStop(lead, `rgba(${SWEEP_RGB}, 0.18)`);
+        cg.addColorStop(Math.min(1, lead + 0.001), `rgba(${SWEEP_RGB}, 0)`);
+        cg.addColorStop(1, `rgba(${SWEEP_RGB}, 0)`);
+        g.fillStyle = cg;
+        g.beginPath();
+        g.arc(r, r, r, 0, Math.PI * 2);
+        g.fill();
+      }
+      const steps = typeof g.createConicGradient === 'function' ? 0 : 48;
+      for (let k = 0; k < steps; k++) {
+        const a0 = -SWEEP_TAIL * (1 - k / steps);
+        const a1 = -SWEEP_TAIL * (1 - (k + 1) / steps);
+        g.fillStyle = `rgba(${SWEEP_RGB}, ${0.16 * ((k + 1) / steps) ** 2})`;
+        g.beginPath();
+        g.moveTo(r, r);
+        g.arc(r, r, r, a0, a1 + 0.01);
+        g.closePath();
+        g.fill();
+      }
+      g.strokeStyle = `rgba(${SWEEP_RGB}, 0.5)`;
+      g.lineWidth = Math.max(1, size / 240);
+      g.beginPath();
+      g.moveTo(r, r);
+      g.lineTo(size, r);
+      g.stroke();
+      wedge = w;
+      return w;
+    };
     const frame = (now: number) => {
-      raf = requestAnimationFrame(frame);
       const c = pingRef.current;
       const list = alertsRef.current;
-      if (!c || !list) return;
-      const live = list.filter(a => now - a.at < ALERT_MS);
-      if (!live.length && !drawn) return;
+      const sweep = sweepRef.current;
+      let live = 0;
+      if (list) for (let i = 0; i < list.length; i++) if (now - list[i].at < ALERT_MS) live++;
+      if (!c || (!live && !sweep)) {
+        if (c && drawn) c.getContext('2d')!.clearRect(0, 0, c.width, c.height);
+        drawn = false;
+        running = false;
+        return;
+      }
+      raf = requestAnimationFrame(frame);
       const ctx = c.getContext('2d')!;
       ctx.clearRect(0, 0, c.width, c.height);
-      drawn = live.length > 0;
-      for (const a of live) {
+      drawn = true;
+      if (sweep) {
+        const size = Math.max(c.width, c.height) * 1.5;
+        const art = sweepArt(Math.ceil(size));
+        ctx.save();
+        ctx.translate(c.width / 2, c.height / 2);
+        ctx.rotate(((now % SWEEP_MS) / SWEEP_MS) * Math.PI * 2);
+        ctx.drawImage(art, -art.width / 2, -art.height / 2);
+        ctx.restore();
+      }
+      if (!list) return;
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        if (now - a.at >= ALERT_MS) continue;
         const t = (now - a.at) / ALERT_MS;
         const x = a.x * SCALE;
         const y = a.y * SCALE;
@@ -84,9 +172,23 @@ export default function Minimap({
         ctx.fill();
       }
     };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    kickRef.current = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(frame);
+    };
+    kickRef.current();
+    return () => {
+      cancelAnimationFrame(raf);
+      running = false;
+      kickRef.current = () => {};
+    };
   }, []);
+  // Every render (each battle tick, a pace change, the uplink going on or off): restart the overlay
+  // loop if it had stopped. A no-op while it runs.
+  useEffect(() => {
+    kickRef.current();
+  });
   const terrain = useMemo(() => paintMiniTerrain(state.tiles, state.mapW, state.mapH), [state.tiles, state.mapW, state.mapH]);
   const MAP_W = state.mapW;
   const MAP_H = state.mapH;
@@ -111,7 +213,7 @@ export default function Minimap({
       return;
     }
     ctx.drawImage(terrain, 0, 0, MAP_W * SCALE, MAP_H * SCALE);
-    ctx.fillStyle = '#d9b23a';
+    ctx.fillStyle = ORE;
     for (let k = 0; k < state.ore.length; k++) {
       if (state.ore[k] <= 0 || state.explored.charCodeAt(k) !== 49) continue;
       ctx.fillRect((k % MAP_W) * SCALE, ((k / MAP_W) | 0) * SCALE, SCALE, SCALE);
@@ -143,9 +245,27 @@ export default function Minimap({
       if (u.owner !== 0 && !vis[k]) continue;
       // A hidden enemy Spy or Stealth Tank stays off the radar too, as it does off the battlefield.
       if (u.owner !== 0 && (!stealthSeen(state, u, 0) || (u.kind === 'spy' && !isDetected(state, u, 0)))) continue;
+      const ux = Math.floor(u.x * SCALE);
+      const uy = Math.floor(u.y * SCALE);
       ctx.fillStyle = TEAM[u.owner].light;
-      ctx.fillRect(Math.floor(u.x * SCALE) - 1, Math.floor(u.y * SCALE) - 1, 2.5, 2.5);
-      if (u.ammo !== undefined) ctx.fillRect(Math.floor(u.x * SCALE) - 3, Math.floor(u.y * SCALE), 6.5, 0.9); // An aircraft: a wing bar.
+      if (u.owner !== 0) {
+        // Other sides are diamonds, so the sides differ by shape as well as by colour.
+        ctx.beginPath();
+        ctx.moveTo(ux, uy - 2);
+        ctx.lineTo(ux + 2, uy);
+        ctx.lineTo(ux, uy + 2);
+        ctx.lineTo(ux - 2, uy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (selected?.has(u.id)) {
+        ctx.fillRect(ux - 2, uy - 2, 3.5, 3.5);
+        ctx.strokeStyle = PICKED;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ux - 2.5, uy - 2.5, 4.5, 4.5);
+      } else {
+        ctx.fillRect(ux - 1, uy - 1, 2.5, 2.5);
+      }
+      if (u.ammo !== undefined) ctx.fillRect(ux - 3, uy, 6.5, 0.9); // An aircraft: a wing bar.
     }
     // Fog: one pixel per tile in a small canvas, drawn over the radar at its scale in one call
     // (round 5: a 160-tile map has 25,600 tiles, too many to fill one at a time on every tick).
@@ -169,11 +289,31 @@ export default function Minimap({
     }
     fctx.putImageData(img, 0, 0);
     ctx.drawImage(fog, 0, 0, MAP_W * SCALE, MAP_H * SCALE);
-    // The view.
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
+    // The view: a faint wash with corner brackets, like a camera's frame.
     const s = SCALE / TILE;
-    ctx.strokeRect(cam.x * s + 0.5, cam.y * s + 0.5, (cam.w / cam.zoom) * s, (cam.h / cam.zoom) * s);
+    const vx = Math.round(cam.x * s) + 0.5;
+    const vy = Math.round(cam.y * s) + 0.5;
+    const vw = Math.round((cam.w / cam.zoom) * s);
+    const vh = Math.round((cam.h / cam.zoom) * s);
+    ctx.fillStyle = VIEW_WASH;
+    ctx.fillRect(vx, vy, vw, vh);
+    const arm = Math.max(3, Math.min(10, vw / 4, vh / 4));
+    ctx.strokeStyle = VIEW;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(vx, vy + arm);
+    ctx.lineTo(vx, vy);
+    ctx.lineTo(vx + arm, vy);
+    ctx.moveTo(vx + vw - arm, vy);
+    ctx.lineTo(vx + vw, vy);
+    ctx.lineTo(vx + vw, vy + arm);
+    ctx.moveTo(vx + vw, vy + vh - arm);
+    ctx.lineTo(vx + vw, vy + vh);
+    ctx.lineTo(vx + vw - arm, vy + vh);
+    ctx.moveTo(vx + arm, vy + vh);
+    ctx.lineTo(vx, vy + vh);
+    ctx.lineTo(vx, vy + vh - arm);
+    ctx.stroke();
   });
 
   const jump = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -211,25 +351,9 @@ export default function Minimap({
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}
       />
       {!online && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#cfd8d4',
-            fontSize: '0.72rem',
-            textAlign: 'center',
-            textShadow: '0 1px 2px #000',
-            pointerEvents: 'none',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}
-        >
+        <div className="fl-radar-offline">
           <strong>Radar offline</strong>
-          <span style={{ textTransform: 'none', letterSpacing: 0, opacity: 0.85 }}>Build a powered Comms Uplink</span>
+          <span>Build a powered Comms Uplink</span>
         </div>
       )}
     </div>

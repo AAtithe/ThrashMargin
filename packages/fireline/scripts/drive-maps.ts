@@ -37,7 +37,7 @@ import type { GameState } from '../src/sim/types';
 type Ok = (cond: unknown, what: string) => void;
 
 /** The harness's tick cap for a battle (as in drive.ts): 45000 standard, 72000 large, 108000 huge. */
-const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'vast' ? 162000 : setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
 /** Plays n ticks, in actions of at most 600 (MAX_TICKS_PER_ACTION). */
 function run(s: GameState, n: number): GameState {
@@ -79,7 +79,7 @@ function invariants(ok: Ok, s: GameState, label: string): void {
 // ---- The size option --------------------------------------------------------------------------
 
 function sizeTests(ok: Ok): void {
-  ok(MAP_SIZES.join() === 'standard,large,huge', 'three sizes, smallest first');
+  ok(MAP_SIZES.join() === 'standard,large,huge,vast', 'four sizes, smallest first');
   ok(DEFAULT_SETUP.size === 'standard' && LEGACY_SETUP.size === 'standard', 'the default and legacy setups are standard size');
   for (const n of [2, 3, 4] as const) {
     ok(mapTilesFor({ sides: n, size: 'standard' }) === MAP_SIZE_FOR[n], `standard, ${n} sides: ${MAP_SIZE_FOR[n]} tiles, as before`);
@@ -88,7 +88,7 @@ function sizeTests(ok: Ok): void {
       const t = mapTilesFor({ sides: n, size });
       ok(t === MAP_SIZE_TILES[size][n] && t <= MAP_TILES_MAX, `${size}, ${n} sides: ${t} tiles, at most ${MAP_TILES_MAX}`);
     }
-    ok(MAP_SIZE_TILES.standard[n] < MAP_SIZE_TILES.large[n] && MAP_SIZE_TILES.large[n] < MAP_SIZE_TILES.huge[n], `${n} sides: each size larger than the last`);
+    ok(MAP_SIZE_TILES.standard[n] < MAP_SIZE_TILES.large[n] && MAP_SIZE_TILES.large[n] < MAP_SIZE_TILES.huge[n] && MAP_SIZE_TILES.huge[n] < MAP_SIZE_TILES.vast[n], `${n} sides: each size larger than the last`);
   }
   for (const size of MAP_SIZES) ok(normaliseSetup({ size }).size === size, `normaliseSetup keeps ${size}`);
   for (const junk of ['Large', 'giant', 3, null, undefined, {}, ['huge'], true]) {

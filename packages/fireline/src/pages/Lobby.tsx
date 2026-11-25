@@ -102,6 +102,21 @@ export default function Lobby() {
     if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' });
   }, [setupStep]);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
+  // The enemy-commander cards' meters, each against the largest of the three at this setup.
+  const threats = (() => {
+    const rows = (Object.keys(DIFFICULTIES) as Difficulty[]).map(d => ({ d, spec: scaledForSetup(setup, difficultyForPace(d, setup.pace)) }));
+    const cap = Math.max(...rows.map(r => r.spec.waveCap), 1);
+    const fastest = Math.max(...rows.map(r => 1 / Math.max(1, r.spec.attackInterval)));
+    const baseOf = (sp: (typeof rows)[number]['spec']) => sp.refineries + sp.factories + sp.turrets;
+    const most = Math.max(...rows.map(r => baseOf(r.spec)), 1);
+    return rows.map(({ d, spec }) => ({
+      d,
+      spec,
+      wave: [Math.round((100 * spec.firstWave) / cap), Math.round((100 * spec.waveCap) / cap)] as const,
+      tempo: Math.round((100 * (1 / Math.max(1, spec.attackInterval))) / fastest),
+      base: Math.round((100 * baseOf(spec)) / most),
+    }));
+  })();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -399,12 +414,25 @@ export default function Lobby() {
             )}
             <SetupStep n={setupStep === 'size' ? 2 : 1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
               <div className="fl-levels" role="group" aria-label="Enemy commander">
-                {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
-                  const spec = scaledForSetup(setup, difficultyForPace(d, setup.pace));
+                {threats.map(({ d, spec, wave, tempo, base }) => {
                   return (
                     <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
                       <span className="fl-level-name">{spec.label}</span>
                       <span className="fl-level-attack">First attack ~{minutes(spec.firstAttack)} min</span>
+                      <span className="fl-level-threat" aria-hidden="true">
+                        <span>Waves</span>
+                        <span className="fl-level-bar">
+                          <span style={{ left: `${wave[0]}%`, width: `${Math.max(4, wave[1] - wave[0])}%` }} />
+                        </span>
+                        <span>Tempo</span>
+                        <span className="fl-level-bar">
+                          <span style={{ width: `${tempo}%` }} />
+                        </span>
+                        <span>Base</span>
+                        <span className="fl-level-bar">
+                          <span style={{ width: `${base}%` }} />
+                        </span>
+                      </span>
                       <span className="fl-level-facts">
                         Waves of {spec.firstWave}, growing to {spec.waveCap}, every ~{minutes(spec.attackInterval)} min.{' '}
                         {spec.refineries} {spec.refineries === 1 ? 'refinery' : 'refineries'}, {spec.factories}{' '}
@@ -784,7 +812,7 @@ const mapTypeOf = (s: SaveMeta): MapType | null => {
 /** "Large map" or "Huge map" for a battle on a larger map (round 5); null for standard size and older rows. */
 const sizeOfSave = (s: SaveMeta): string | null => {
   const z = (s as SaveMeta & { size?: unknown }).size;
-  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : null;
+  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : z === 'vast' ? 'Vast map' : null;
 };
 
 /** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */

@@ -37,8 +37,11 @@ export function passable(s: GameState, occ: Int32Array, x: number, y: number, se
   const c = s.tiles.charCodeAt(k);
   // Ships (`sea`, the naval layer) sail open water and nothing else.
   if (sea) return c === 119; // 'w'
-  return c === 103 || c === 100; // 'g' or 'd'
+  return walkCode(c);
 }
+
+/** isWalkable (map.ts) by character code: 'g', 'd', and on vast maps 'p' (street) and 'b' (bridge). */
+export const walkCode = (c: number): boolean => c === 103 || c === 100 || c === 112 || c === 98;
 
 /**
  * The row in front of a structure, where its door and dock are: below it for a side whose base is
@@ -198,16 +201,27 @@ function openTiles(s: GameState, occ: Int32Array, sea = false): Uint8Array {
   const cache = sea ? seaCache : openCache;
   let open = cache.get(occ);
   if (!open || open.length !== occ.length) {
-    open = new Uint8Array(occ.length);
-    const tiles = s.tiles;
-    for (let k = 0; k < open.length; k++) {
-      if (occ[k] !== 0) continue;
-      const c = tiles.charCodeAt(k);
-      if (sea ? c === 119 : c === 103 || c === 100) open[k] = 1;
-    }
+    // The ground never changes in a battle, so its walkable mask is worked out once per map and
+    // copied; only the structures (occ) differ from one grid to the next.
+    open = new Uint8Array(groundMask(s.tiles, sea));
+    for (let k = 0; k < open.length; k++) if (occ[k] !== 0) open[k] = 0;
     cache.set(occ, open);
   }
   return open;
+}
+
+/** Per tile, 1 where the ground alone lets a unit (or with `sea`, a ship) through. The last map's, kept. */
+const groundMasks: { tiles: string; sea: boolean; mask: Uint8Array }[] = [];
+function groundMask(tiles: string, sea: boolean): Uint8Array {
+  for (const g of groundMasks) if (g.sea === sea && g.tiles === tiles) return g.mask;
+  const mask = new Uint8Array(tiles.length);
+  for (let k = 0; k < tiles.length; k++) {
+    const c = tiles.charCodeAt(k);
+    if (sea ? c === 119 : walkCode(c)) mask[k] = 1;
+  }
+  groundMasks.push({ tiles, sea, mask });
+  if (groundMasks.length > 4) groundMasks.shift();
+  return mask;
 }
 
 function scratchFor(total: number): void {

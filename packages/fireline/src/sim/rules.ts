@@ -1782,18 +1782,26 @@ export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 // round5:B begin. Larger maps (fireline-round5-design.md, workstream B): the numbers below are the
 // contract's starting points; B measures, may lower them (never raise past MAP_TILES_MAX without a
 // stated measurement), and adds its constants inside this block.
-export type MapSize = 'standard' | 'large' | 'huge';
+export type MapSize = 'standard' | 'large' | 'huge' | 'vast';
 /** The sizes the lobby offers, smallest first. */
-export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge'];
-export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge' };
+export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge', 'vast'];
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge', vast: 'Vast' };
 /** A skirmish map's width and height in tiles, by size and number of sides. 'standard' is MAP_SIZE_FOR exactly. */
 export const MAP_SIZE_TILES: Record<MapSize, Record<2 | 3 | 4, number>> = {
   standard: MAP_SIZE_FOR,
   large: { 2: 96, 3: 112, 4: 128 },
   huge: { 2: 128, 3: 144, 4: 160 },
+  // Vast (2026-11-22): twice as wide as huge, four times the ground, with ravines and ruined
+  // cities (VAST_HAZARDS). Its terrain is painted at half resolution (src/game/terrain.ts) and its
+  // saves pack the per-tile fields (packState), so neither outgrows what huge already needed.
+  vast: { 2: 256, 3: 288, 4: 320 },
 };
 /** No map is wider or taller than this (pathfinding, fog and the terrain prerender are sized for it). */
-export const MAP_TILES_MAX = 160;
+export const MAP_TILES_MAX = 320;
+/** The widest map of the sizes balanced in round 5 (standard, large, huge): huge with four sides. */
+export const MAP_TILES_MAX_BALANCED = 160;
+/** Whether a size carries ravines and ruined cities (the generators' hazards pass). Vast only: the other sizes stay exactly as balanced. */
+export const sizeHasHazards = (size: MapSize | undefined): boolean => size === 'vast';
 /** A setup's map width and height in tiles. Setups from before round 5 have no size: 'standard'. */
 export const mapTilesFor = (setup: Pick<SkirmishSetup, 'sides' | 'size'>): number => MAP_SIZE_TILES[setup.size ?? 'standard'][setup.sides];
 /** What the lobby says about each size: roughly how long a battle against the computer runs (measured, round 5 build log). */
@@ -1801,6 +1809,7 @@ export const MAP_SIZE_BLURBS: Record<MapSize, string> = {
   standard: 'The original size. Battles run about 20 minutes.',
   large: 'Half as wide again, with more ore and room to expand. Battles run about 30 to 40 minutes.',
   huge: 'Twice as wide, with ore all over. Battles run 45 minutes or more.',
+  vast: 'Four times the ground of huge, cut by ravines and ruined cities. Battles run 30 to 60 minutes or more.',
 };
 /**
  * Ore that spreads back (large and huge maps only): every ORE_SPREAD_TICKS, a tile of an ore field
@@ -2386,6 +2395,7 @@ export const SITES_PER_SIDE: Record<MapSize, Record<SiteKind, number>> = {
   standard: { derrick: 1, hospital: 0, relay: 0 },
   large: { derrick: 2, hospital: 1, relay: 1 },
   huge: { derrick: 3, hospital: 1, relay: 2 },
+  vast: { derrick: 5, hospital: 2, relay: 3 },
 };
 /** Placement: a site's centre is at least this far from every start's yard centre, and from every other site's. */
 export const SITE_YARD_GAP = 10;

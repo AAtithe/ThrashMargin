@@ -1,6 +1,6 @@
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { territoryOn, territoryProblem } from './territory';
-import { isWalkable } from './map';
+import { isBridge, isWalkable } from './map';
 import { isEnemy } from './sides';
 import { airRoom, canHit, canSendHome, isAir, sendHome } from './air';
 import { isShip, launchTile, shoreProblem } from './naval';
@@ -185,6 +185,7 @@ export function placementProblem(
       const k = tileAt(s, tx, ty);
       foot.add(k);
       if (!isWalkable(s.tiles[k])) return 'Ground is not clear';
+      if (isBridge(s.tiles[k])) return 'Cannot build on a bridge';
       if (s.ore[k] > 0) return 'Cannot build on ore';
       if (occ[k]) return 'Something is already there';
     }

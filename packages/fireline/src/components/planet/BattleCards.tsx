@@ -12,7 +12,7 @@ import { SUPPORT_NAMES } from '../../planet/links';
 import { CITY_BUILDINGS } from '../../planet/types';
 import { BIG_CITY_LEVEL, battleMapSizeOf } from '../../planet/battle';
 import { MAP_SIZE_NAMES, MAP_TYPE_NAMES, TICKS_PER_SECOND, UNITS, heroLevelFor, mapTilesFor } from '../../sim/rules';
-import { FactionName, Odds, rankName, unitName } from './common';
+import { FactionName, Odds, facStyle, rankName, unitName } from './common';
 
 /** The battle's map size and width, as the attack preview and the pending battle card show it (section 9.7). */
 export function BattleMapSize({ setup }: { setup: Pick<BattleSetup, 'mapSize' | 'sides' | 'cityLevel'> }) {
@@ -173,7 +173,7 @@ export function PendingCard({
       <WarLinks s={s} map={map} setup={setup} />
       <div className="fl-pl-sides">
         {setup.sides.map((side, i) => (
-          <div key={i} className="fl-pl-side" data-team={side.team}>
+          <div key={i} className="fl-pl-side" data-team={side.team} style={facStyle(side.faction)}>
             <strong>
               <FactionName s={s} f={side.faction} />
             </strong>
@@ -186,7 +186,7 @@ export function PendingCard({
           </div>
         ))}
       </div>
-      <Odds p={defending ? 1 - p : p} label={defending ? 'Chance of holding' : 'Chance of taking it'} />
+      <Odds p={defending ? 1 - p : p} label={defending ? 'Chance of holding' : 'Chance of taking it'} bar />
       <div className="fl-pl-row">
         {pb.fighting ? (
           <>

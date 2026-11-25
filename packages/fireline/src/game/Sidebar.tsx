@@ -1201,6 +1201,99 @@ export function BuildTipFooter({
   );
 }
 
+/** For the first three minutes of a battle the Orders card opens itself; after that it stays folded. */
+const LEGEND_OPEN_TICKS = 3 * 60 * TICKS_PER_SECOND;
+const LEGEND_KEY = 'fl_orders_open';
+
+/**
+ * The key bindings, folded into one line once the player has had time to learn them. Opening or
+ * closing it is remembered on this device (a convenience only: the default is fine without it).
+ */
+function OrdersLegend({ early }: { early: boolean }) {
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(LEGEND_KEY);
+      if (v === '1' || v === '0') return v === '1';
+    } catch {
+      // Storage blocked: fall back to the battle's age.
+    }
+    return early;
+  });
+  return (
+    <div className="fl-d-legend-box">
+      <p className="fl-d-legend-prompt">Nothing selected: click a unit or drag a box.</p>
+      <details
+        className="fl-d-legend-wrap"
+        open={open}
+        onToggle={e => {
+          const now = (e.currentTarget as HTMLDetailsElement).open;
+          if (now === open) return;
+          setOpen(now);
+          try {
+            localStorage.setItem(LEGEND_KEY, now ? '1' : '0');
+          } catch {
+            // Not remembered; nothing else changes.
+          }
+        }}
+      >
+        <summary>Key bindings</summary>
+          <dl className="fl-d-legend" aria-label="Orders">
+            <div>
+              <dt>Click, drag a box</dt>
+              <dd>Select</dd>
+            </div>
+            <div>
+              <dt>Right-click</dt>
+              <dd>Move or attack</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>A</kbd>
+              </dt>
+              <dd>Attack-move</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>S</kbd>
+              </dt>
+              <dd>Stop</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
+              </dt>
+              <dd>Make a group</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>.</kbd>
+              </dt>
+              <dd>Formation: line, column, wedge, box</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
+              </dt>
+              <dd>Build the item with that letter</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Tab</kbd>
+              </dt>
+              <dd>Next build list</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Space</kbd>
+              </dt>
+              <dd>Jump to the last alert</dd>
+            </div>
+          </dl>
+      </details>
+    </div>
+  );
+}
+
 // round6:D. Formations and squads: the formation row and the touch group chips (fireline-round6-design.md).
 import { FormationControls } from './Formations';
 
@@ -1231,60 +1324,7 @@ export function SelectionPanel({
         </p>
       );
     }
-    return (
-      <dl className="fl-d-legend" aria-label="Orders">
-        <div>
-          <dt>Click, drag a box</dt>
-          <dd>Select</dd>
-        </div>
-        <div>
-          <dt>Right-click</dt>
-          <dd>Move or attack</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>A</kbd>
-          </dt>
-          <dd>Attack-move</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>S</kbd>
-          </dt>
-          <dd>Stop</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
-          </dt>
-          <dd>Make a group</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>.</kbd>
-          </dt>
-          <dd>Formation: line, column, wedge, box</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
-          </dt>
-          <dd>Build the item with that letter</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Tab</kbd>
-          </dt>
-          <dd>Next build list</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Space</kbd>
-          </dt>
-          <dd>Jump to the last alert</dd>
-        </div>
-      </dl>
-    );
+    return <OrdersLegend early={state.tick < LEGEND_OPEN_TICKS} />;
   }
   if (building) {
     // round7:structures: an enemy Decoy shows as what it passes for (apparentSpecOf; the spec itself otherwise).
@@ -1295,6 +1335,7 @@ export function SelectionPanel({
     const refund = Math.floor((spec.cost * 0.5 * (building.hp / fullHp)) / 10) * 10;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Portrait kind={building.kind} enemy={!mine} repairing={building.repairing} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(mine ? building.kind : apparentKind(state, building, 0))}>
             {mine ? '' : 'Enemy '}
@@ -1351,6 +1392,7 @@ export function SelectionPanel({
   const one = units.length === 1 ? units[0] : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {one && <Portrait kind={one.kind} enemy={!mine} rank={one.hero ? 'hero' : one.vet > 0 ? one.vet : 0} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {[...counts].map(([kind, n]) =>
           mine && onSelect && counts.size > 1 ? (
@@ -1389,13 +1431,14 @@ export function SelectionPanel({
           ),
         )}
       </div>
+      <Bar frac={hp / Math.max(1, max)} />
+      {mine && onSelect && units.length >= 2 && units.length <= GRID_MAX && <UnitGrid units={units} counts={counts} onSelect={onSelect} touch={touch} />}
       {mine && onSelect && counts.size > 1 && (
         <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
           {touch ? 'Tap a kind to take it out of the selection.' : 'Click a kind to take it out of the selection; Ctrl+click to keep only that kind.'}
           {units.some(isSupport) && units.some(u => !isSupport(u)) ? ' On an attack, Medics and Repair Trucks hold back behind the fighting.' : ''}
         </span>
       )}
-      <Bar frac={hp / Math.max(1, max)} />
       {tipCard}
       {one && one.kind === 'hauler' && mine && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
@@ -1622,6 +1665,7 @@ export function ForcesPanel({
             title={`Select all ${units.length} ${UNITS[k].name} on the map (Shift adds them). Click again to go to them.`}
             onClick={e => pick(units, e.shiftKey)}
           >
+            <img className="fl-d-chip-pic" src={iconFor(k)} alt="" width={24} height={16} draggable={false} />
             {units.length > 1 ? `${units.length}× ` : ''}
             {UNITS[k].name}
           </button>
@@ -1646,6 +1690,72 @@ const STANCE_BUTTONS: ['aggressive' | 'guard' | 'hold', string, string][] = [
   ['guard', 'Guard', 'Fire at enemies in range and answer fire from close by (default)'],
   ['hold', 'Hold fire', 'Never fire or chase unless ordered to attack'],
 ];
+
+/** The most units the selection shows one by one; a bigger selection keeps to the kind chips. */
+const GRID_MAX = 24;
+
+/** good, warn or bad, by the same thresholds as Bar. */
+function hpTone(f: number): 'good' | 'warn' | 'bad' {
+  return f > 0.6 ? 'good' : f > 0.3 ? 'warn' : 'bad';
+}
+
+/**
+ * A picture of the one thing selected (the build menu's own cached art), with a rank badge for a
+ * hero or a veteran, and a sweep across it while a building is under repair.
+ */
+function Portrait({ kind, enemy, rank = 0, repairing = false }: { kind: BuildingKind | UnitKind; enemy: boolean; rank?: number | 'hero'; repairing?: boolean }) {
+  return (
+    <div className="fl-sel-hero" data-enemy={enemy ? '1' : '0'} data-repairing={repairing ? '1' : undefined} aria-hidden="true">
+      <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+      {rank !== 0 && <span className="fl-sel-rank">{rank === 'hero' ? '★' : '›'.repeat(rank)}</span>}
+    </div>
+  );
+}
+
+/**
+ * Every unit of a mixed selection as a small picture with its own health bar, grouped by kind, so a
+ * wounded tank stands out from a healthy one. Click: that unit alone. Ctrl or Cmd: that kind alone.
+ * Shift: take that one unit out.
+ */
+function UnitGrid({ units, counts, onSelect, touch }: { units: Unit[]; counts: Map<UnitKind, number>; onSelect: (ids: number[]) => void; touch: boolean }) {
+  const order = [...counts.keys()];
+  const sorted = [...units].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.id - b.id);
+  return (
+    <div className="fl-sel-grid" role="group" aria-label="Selected units" data-testid="selection-grid">
+      {sorted.map(u => {
+        const f = Math.max(0, Math.min(1, u.hp / Math.max(1, maxHpOf(u))));
+        const name = UNITS[u.kind].name;
+        const rank = u.hero ? '★' : u.vet > 0 ? '›'.repeat(u.vet) : '';
+        return (
+          <button
+            key={u.id}
+            type="button"
+            className="fl-sel-cell"
+            data-tone={hpTone(f)}
+            data-kind={u.kind}
+            title={`${name}, ${Math.ceil(u.hp)} of ${maxHpOf(u)} health${touch ? '' : '. Click: this one alone. Ctrl+click: every ' + name + '. Shift+click: take it out.'}`}
+            aria-label={`${name}, ${Math.round(f * 100)}% health`}
+            onClick={e =>
+              onSelect(
+                e.ctrlKey || e.metaKey
+                  ? units.filter(x => x.kind === u.kind).map(x => x.id)
+                  : e.shiftKey
+                    ? units.filter(x => x.id !== u.id).map(x => x.id)
+                    : [u.id],
+              )
+            }
+          >
+            <img src={iconFor(u.kind)} alt="" width={48} height={32} draggable={false} />
+            {rank && <span className="fl-sel-rank">{rank}</span>}
+            <span className="fl-sel-hp" aria-hidden="true">
+              <span style={{ width: `${Math.round(f * 100)}%` }} />
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Health, as a segmented gauge: green, amber under 60%, red under 30%. */
 function Bar({ frac }: { frac: number }) {

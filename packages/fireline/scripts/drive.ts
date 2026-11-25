@@ -68,6 +68,8 @@ import * as sides from '../src/sim/sides';
 import { sections as act2Sections } from './drive-act2';
 // round5:B. Larger maps and long games: its import (scripts/drive-maps.ts) goes on the line below.
 import { sections as mapsSections } from './drive-maps';
+// Vast maps (2026-11-22): ravines, ruined cities, packed saves.
+import { sections as vastSections } from './drive-vast';
 // round5:C. Engineering vehicles: its import (scripts/drive-engineering.ts) goes on the line below.
 import { sections as engineeringSections } from './drive-engineering';
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
@@ -150,7 +152,7 @@ const CAMPAIGN_ONLY = args.includes('--campaign');
  * A battle's tick cap: 45000 (75 minutes) for every standard-size battle, as always; longer on the
  * larger maps of round 5, where battles run longer (72000 large, 108000 huge).
  */
-const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'vast' ? 162000 : setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 
 function invariants(s: GameState, label: string): void {
   const ids = new Set<number>();
@@ -2796,6 +2798,7 @@ if (!CAMPAIGN_ONLY) {
     // round5:B. Larger maps and long games (fireline-round5-design.md): its sections, imported from
     // scripts/drive-maps.ts, go on the line below this comment.
     ...mapsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    ...vastSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round5:C. Engineering vehicles (fireline-round5-design.md): its sections, imported from
     // scripts/drive-engineering.ts, go on the line below this comment.
     ...engineeringSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
