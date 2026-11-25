@@ -3070,8 +3070,8 @@ The banner also offers the review so far.
   times in 150, adaptive or not. The fix the same day (`aiStrength.ts`: build the army first when outmatched, read the
   enemy by value, tanks against armour, in paced games only) cut the tank column to 75% against Normal and
   13% against Hard, and the artillery siege from 93% to 25% against Normal. The adaptive commander now reads
-  the whole map and runs at full strength, but still measures no better than the fixed one (37% against 25%
-  for the siege, the wrong way).
+  the whole map and runs at full strength, but still measures no better than the fixed one (tank column 75%
+  against 73%, siege 24% against 25%).
 - War for the Planet (ladder at default seeds and holdout, before and after battle rules 3): every
   target holds; the computer's Normal win rate fell, most in Short holdout (48.7% to 38.7%).
 

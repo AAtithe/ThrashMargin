@@ -320,10 +320,19 @@ win rate against the adaptive commander falls well below its rate against the fi
 **The adaptive commander.** Its sight-only memory knew less than the base commander's whole-map
 read, which is why it never added anything. Changes: it reads the whole map (`ADAPT_WHOLE_MAP`;
 stealth still hides), Normal runs at full strength and rate (1 and 0.25), a one-sided enemy widens its
-limits (`adaptLimits`: when one class is over 60% of the lean, a factor up to 5 and a share up to 80%),
-and it attacks early when its army is worth 1.4 times the enemy's (`adaptSeize`). Two further
-attempts measured worse or no different and were taken out: extra factories and turrets for
-the adaptive side only, and sending fast units at artillery only when no armour screens it (55 to 56 siege wins).
+limits (`adaptLimits`: when one class is over 60% of the lean, a factor up to 5 and a share up to 80%).
+Three further attempts were taken out: extra factories and turrets for the adaptive side only (worse);
+sending fast units at artillery only when no armour screens it (55 to 56 siege wins, no effect); and
+attacking at once when its army was worth 1.4 times the enemy's (`adaptSeize`), which was what made the
+siege row worse (37%, back to 24% without it) and also launched waves through a held attack timer.
+
+The full check then found three behaviours the fix had broken, all mended: enemy aircraft counted
+towards "outmatched", so a commander facing Gunships stopped building the Interceptors that answer them
+(aircraft now left out); an outmatched commander stopped all research, including the Fortification line
+that answers shelling (that line is now exempt); and two harness tests read the new behaviour wrongly
+(fallen squad members counted as a second owner; the airlift test now runs with the adaptive layer off,
+since that layer answers its two parked Gunships with Skyhunters).
+
 
 **Result, Long pace, random maps, 150 seeds per match.** The scripted opening's wins, before and after:
 
@@ -332,6 +341,10 @@ the adaptive side only, and sending fast units at artillery only when no armour 
 | Tank column | 100% to 75% | 100% to 74% | 67% to 13% | 63% to 17% |
 | Infantry flood | 1% to 2% | 1% to 3% | 1% to 0% | 1% to 0% |
 | Artillery siege | 93% to 25% | 88% to 37% | 13% to 0% | 18% to 1% |
+
+Final build (seize removed, the three fixes in), Normal, 150 seeds: tank column 73% against fixed and 75%
+against adaptive; infantry flood 2% and 3%; artillery siege 25% and 24%. The Hard columns and the
+standard card above were measured with seize in; seize touched only adaptive sides.
 
 Standard card (Long, 150 seeds each seat): the new Normal beats the previous Normal 92% from either
 seat; Easy loses every battle to Normal; the new Normal beats the new Hard 3% of the time from seat 0.
@@ -343,7 +356,11 @@ Hard from seat 0 now wins 45% against the new Normal (the previous pair: 30%) an
   narrowed, not closed; a player who wants a sure win must move up to Hard, where the same column wins
   one battle in eight.
 - **The adaptive commander still does not punish a repeated plan.** Against the tank column it matches
-  the fixed commander; against the siege it is 12 points worse (37% against 25%, outside the noise).
+  the fixed commander, and against the siege too once seize was removed (24% against 25%).
   It no longer adds nothing because it knows less; it now adds nothing because the base commander
   already answers what it sees. Its distinct value has to come from the memory across waves and the
   plans (flanks, raids), not from the mix, and no measurement yet shows that.
+
+**Verification (final build).** `npm run check`: all checks passed. `npm run campaign-sweep`: 279 battles,
+every mission won at every difficulty by at least one plan (Hard: hold-the-ford 7/12, blackout 5/12, fireline
+6/12, iron-coast 4/12, firestorm 5/12, last-light 5/12). `drive-adaptive.ts`: 168 assertions, 0 failed.
