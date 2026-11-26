@@ -29,7 +29,8 @@ import { cutOff, supplied } from '../src/sim/supply';
 import { crewNeed, housed, staffed, technicians as techCount } from '../src/sim/territory';
 import { projectProblem } from '../src/sim/production';
 import { linkRangeOf, serveRangeOf } from '../src/sim/supply';
-import { PREFAB_HOUSING, PROJECTS, SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, TECHNICIANS_PER_CENTRE } from '../src/sim/rules';
+import { INFANTRY_FOOD, PREFAB_HOUSING, PROJECTS, SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, TECHNICIANS_PER_CENTRE } from '../src/sim/rules';
+import { goodsFor } from '../src/sim/commands';
 import { unitSpecOf } from '../src/sim/specs';
 import type { GameState } from '../src/sim/types';
 
@@ -272,10 +273,30 @@ const projects = quiet((ok: Ok): void => {
   ok(linkRangeOf(m, 0) === SUPPLY_LINK_RANGE + 3 && serveRangeOf(m, 0) === SUPPLY_SERVE_RANGE + 2 && linkRangeOf(m, 1) === SUPPLY_LINK_RANGE, 'Long relays: further links and supply, its owner alone');
 });
 
+const soldiersEat = quiet((ok: Ok): void => {
+  const { s, at } = arena('eat');
+  const b = at(5, 4);
+  addBuilding(s, 0, 'barracks', b.x, b.y);
+  ok(goodsFor(s, 0, 'rifleman').food === INFANTRY_FOOD && goodsFor(s, 0, 'grenadier').food === INFANTRY_FOOD, `a soldier costs ${INFANTRY_FOOD} food`);
+  ok(!goodsFor(s, 0, 'tank').food && !goodsFor(s, 0, 'hauler').food, 'vehicles eat nothing');
+  const terr = fresh({ ...ALL, production: false }, 'eat');
+  ok(!goodsFor(terr, 0, 'rifleman').food, 'without advanced production soldiers cost no food');
+  s.players[0].food = INFANTRY_FOOD - 1;
+  ok(processAction(s, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === s, 'short of food: no soldier, the same state back');
+  s.players[0].food = 10;
+  const q = processAction(s, { type: 'queue', category: 'infantry', kind: 'rifleman' });
+  ok(q.players[0].food === 10 - INFANTRY_FOOD && q.players[0].queues.infantry[0].food === INFANTRY_FOOD, 'queued: the food is paid and recorded on the item');
+  const back = processAction(q, { type: 'cancel', category: 'infantry', kind: 'rifleman' });
+  ok(back.players[0].food === 10, 'cancelled: the food comes back');
+  const saved = migrateState(JSON.parse(JSON.stringify(q)))!;
+  ok(saved.players[0].queues.infantry[0].food === INFANTRY_FOOD, 'a save keeps the food on the queue item');
+});
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Production: the setup', setup],
   ['Production: food, meals and hunger', food],
   ['Production: munitions, made and spent', munitions],
+  ['Production: soldiers eat', soldiersEat],
   ['Production: the Supply Truck fetches stranded goods', truck],
   ['Production: Technicians and the Training Centre', technicians],
   ['Production: Industry projects', projects],

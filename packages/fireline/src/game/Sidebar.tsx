@@ -826,6 +826,7 @@ export function BuildButton({
             {cost}
             {goods.alloys > 0 && <span className="fl-build-goods" data-good="alloys" title="Alloys">{` ${goods.alloys}A`}</span>}
             {goods.fuel > 0 && <span className="fl-build-goods" data-good="fuel" title="Fuel">{` ${goods.fuel}F`}</span>}
+            {(goods.food ?? 0) > 0 && <span className="fl-build-goods" data-good="food" title="Food">{` ${goods.food} food`}</span>}
           </span>
           {isHead && !isReady && (
             <span className="fl-build-prog" aria-hidden="true">
@@ -1184,6 +1185,7 @@ export function BuildTipFooter({
   if (!missing.length && !p.queues[tab].some(q => q.kind === kind)) {
     if (goods.alloys > (p.alloys ?? 0)) notes.push(`Need ${goods.alloys - (p.alloys ?? 0)} more alloys: a Foundry smelts them.`);
     if (goods.fuel > (p.fuel ?? 0)) notes.push(`Need ${goods.fuel - (p.fuel ?? 0)} more fuel: a Fuel Well pumps it.`);
+    if ((goods.food ?? 0) > (p.food ?? 0)) notes.push(`Need ${(goods.food ?? 0) - (p.food ?? 0)} more food: a Farm grows it.`);
   }
   if (lowPower) notes.push('Power is low: everything builds at half speed.');
   const k = hotkey?.toUpperCase();
@@ -1774,8 +1776,8 @@ function Bar({ frac }: { frac: number }) {
 
 
 /** ", and 24 alloys and 14 fuel" for a price paid partly in goods; empty otherwise. */
-function goodsWords(g: { alloys: number; fuel: number }): string {
-  const parts = [g.alloys ? `${g.alloys} alloys` : '', g.fuel ? `${g.fuel} fuel` : ''].filter(Boolean);
+function goodsWords(g: { alloys: number; fuel: number; food?: number }): string {
+  const parts = [g.alloys ? `${g.alloys} alloys` : '', g.fuel ? `${g.fuel} fuel` : '', g.food ? `${g.food} food` : ''].filter(Boolean);
   return parts.length ? ` and ${parts.join(' and ')}` : '';
 }
 

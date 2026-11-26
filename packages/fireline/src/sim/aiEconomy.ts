@@ -46,6 +46,8 @@ export function industryPlanFor(s: GameState, owner: Owner): [BuildingKind, numb
   // haulers lived on and the second Foundry turned its income into stock, and in seat 0, without the
   // computer seat's income bonus, it won 15% against Normal (fireline-design.md, 2026-11-21).
   return [
+    // Advanced production: soldiers eat, so a Farm before anything else in the chain.
+    ...(productionOn(s) ? ([['farm', 1]] as [BuildingKind, number][]) : []),
     ['fuelwell', wellWanted ? 1 : 0],
     // Advanced production: the Training Centre first, since the Foundry needs a Technician.
     ...centreFirst(s),
@@ -120,9 +122,11 @@ function productionPlanFor(s: GameState, owner: Owner): [BuildingKind, number][]
   const users =
     s.units.some(u => u.owner === owner && (MUNITION_UNITS.includes(u.kind) || UNITS[u.kind].category === 'air')) ||
     (['vehicle', 'naval', 'air'] as const).some(c => s.players[owner].queues[c]?.some(q => MUNITION_UNITS.includes(q.kind as UnitKind) || c === 'air'));
-  // Farms only as Quarters would go hungry: the opening food feeds the first for half an hour.
+  // Farms: one for the Barracks (soldiers eat 2 each), and one more per three Quarters; another
+  // whenever the store runs low.
   const food = s.players[owner].food ?? 0;
-  const farms = quarters >= 2 || food < FOOD_LOW ? Math.ceil(quarters / 3) : 0;
+  const standing = countOwn(s, owner, 'farm');
+  const farms = Math.min(MAX_FARMS, Math.max(1, Math.ceil(quarters / 3), food < FOOD_LOW ? standing + 1 : 0));
   // A Training Centre once something needing Technicians is wanted or stands (Munitions Works,
   // Helipad, Research Lab), or once the commander is ready for Industry projects.
   const techWanted = users || s.buildings.some(b => b.owner === owner && (b.kind === 'helipad' || b.kind === 'researchlab')) || s.tick >= PROJECT_FROM;
@@ -140,6 +144,8 @@ const PROJECT_RESERVE = 2500;
 const PROJECT_FROM = 9000;
 /** Food below which the computer builds its first Farm even with one Quarters. */
 const FOOD_LOW = 15;
+/** Most Farms the computer builds. */
+const MAX_FARMS = 4;
 
 /** Advanced production: the next Industry project once it can spare the credits. */
 function projectPlan(s: GameState, owner: Owner): void {
@@ -304,3 +310,16 @@ export function depotToward(s: GameState, owner: Owner, target: Pt): Pt | null {
       }
   return best;
 }
+
+/**
+ * Advanced production: food nearly gone and a Farm to spare under the cap, so a Farm goes ahead of
+ * everything else in the plan. Without it, Hard's bigger infantry appetite stalled its Barracks
+ * while its credits piled up unspent (fireline-design.md, 2026-11-26).
+ */
+export function farmUrgent(s: GameState, owner: Owner): boolean {
+  if (!productionOn(s)) return false;
+  const p = s.players[owner];
+  return (p.food ?? 0) < FOOD_URGENT && countOwn(s, owner, 'farm') < MAX_FARMS && !p.queues.building.some(q => q.kind === 'farm');
+}
+/** Food below which a Farm jumps the plan: five soldiers' worth. */
+const FOOD_URGENT = 10;

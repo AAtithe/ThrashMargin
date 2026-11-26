@@ -228,6 +228,8 @@ export interface QueueItem {
   /** Industry: alloys and fuel paid for it on top of its credits; refunded with it. Absent: 0. */
   alloys?: number;
   fuel?: number;
+  /** Advanced production: food paid for an infantryman; refunded with it. Absent: 0. */
+  food?: number;
 }
 
 export interface PlayerState {

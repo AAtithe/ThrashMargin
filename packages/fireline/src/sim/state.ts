@@ -897,10 +897,12 @@ function migrateIndustry(out: GameState): void {
       for (const cat of Object.keys(q) as (keyof typeof q)[])
         if (Array.isArray(q[cat]))
           q[cat] = q[cat].map(it => {
-            if (!it || typeof it !== 'object' || (!('alloys' in it) && !('fuel' in it))) return it;
-            const { alloys: a, fuel: f, ...item } = it;
+            if (!it || typeof it !== 'object' || (!('alloys' in it) && !('fuel' in it) && !('food' in it))) return it;
+            const { alloys: a, fuel: f, food: fd, ...item } = it;
             if (on && clean(a)) (item as QueueItem).alloys = clean(a);
             if (on && clean(f)) (item as QueueItem).fuel = clean(f);
+            // Advanced production's food on an infantryman (read directly: the setup says whether it is on).
+            if (on && out.setup?.production === true && out.setup.territory === true && out.setup.supply === true && clean(fd)) (item as QueueItem).food = clean(fd);
             return item as QueueItem;
           });
     if (!on) return rest as PlayerState;

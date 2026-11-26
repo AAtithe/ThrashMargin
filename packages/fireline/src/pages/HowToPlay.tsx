@@ -39,6 +39,7 @@ import {
   WELL_HOLD,
   CLAIM_RADIUS,
   FARM_TICKS,
+  INFANTRY_FOOD,
   FOOD_TICKS,
   QUARTERS_FOOD,
   MUNITIONS_ALLOYS,
@@ -726,7 +727,8 @@ function ProductionPanel() {
         <li>
           A <strong>{BUILDINGS.farm.name}</strong> grows {perMin(1, FARM_TICKS)} food a minute. Every Quarters eats{' '}
           {perMin(QUARTERS_FOOD, FOOD_TICKS)} a minute; one that finds no food at its meal is HUNGRY and houses half its workers
-          until it eats again. Your yards feed their own. One Farm feeds three Quarters.
+          until it eats again. Your yards feed their own. Every soldier costs {INFANTRY_FOOD} food to train (heroes and the General
+          excepted): an army of riflemen needs Farms as tanks need a Foundry.
         </li>
         <li>
           A <strong>{BUILDINGS.munitions.name}</strong> turns {MUNITIONS_ALLOYS} alloys and {MUNITIONS_FUEL} fuel into {MUNITIONS_MADE}{' '}

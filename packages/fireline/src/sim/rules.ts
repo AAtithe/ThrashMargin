@@ -1147,7 +1147,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     power: 0,
     sight: 4,
     requires: [],
-    blurb: 'Advanced production on only. Grows 30 food a minute. Every Quarters eats 10 a minute; hungry Quarters house half their workers.',
+    blurb: 'Advanced production on only. Grows 30 food a minute. Every soldier costs 2 food to train and every Quarters eats 10 a minute; hungry Quarters house half their workers.',
   },
   // round7:structures begin. Strategic structures: refused by techAllowed unless setup.strategicBuildings
   // is on (structures.ts). Each is built round one dilemma (fireline-round7-structures.md).
@@ -2936,6 +2936,8 @@ export const QUARTERS_FOOD = 1;
 export const FOOD_STORE_BASE = 60;
 export const FOOD_STORE_PER_FARM = 60;
 export const START_FOOD = 30;
+/** Food a soldier costs to train (every infantry kind bar the heroes and the General). */
+export const INFANTRY_FOOD = 2;
 /** A Munitions Works' cycle: every MUNITIONS_TICKS, MUNITIONS_ALLOYS and MUNITIONS_FUEL into MUNITIONS_MADE munitions. */
 export const MUNITIONS_TICKS = 60;
 export const MUNITIONS_ALLOYS = 5;

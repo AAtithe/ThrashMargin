@@ -3309,3 +3309,47 @@ stranded. Built in two steps, each measured.
   figures of the Industry gauge on two rows on a 390px phone in dark mode, no sideways scroll.
 - **Known limit.** With Ashen, Heroes and Advanced production all on, the Vehicles list is fifteen
   long and the Supply Truck, last, has no hotkey (it is clicked).
+
+### 2026-11-26: The economy on the first screen, and soldiers eat
+
+The player asked whether the economy was on main and said they could not play it. Industry, Supply
+lines and Territory had merged (pull requests 55 and 58) and production was live with them; but all
+three were off by default and lived at the foot of the customise step, so nothing on the first
+screen said they existed. Advanced production had not merged at all.
+
+- **The Economy step.** The lobby's first screen gains step 2, Economy, between Game size and Enemy
+  commander: five cards, Classic, Industry, Supply lines, Territory and Full economy. The four
+  toggles nest (each needs the one before), so these are the only combinations that mean anything;
+  picking a card writes all four (`src/components/EconomyPicker.tsx`). The customise step keeps the
+  four toggles for anyone who wants them there. Remembered with the rest of the setup.
+- **Soldiers eat** (Advanced production only). The 150-seed read had the commander that ignores the
+  economy winning 61%. Measured over 12 battles: at minute 8 it had 23 more units than the new one,
+  having put the 2,550 credits the new one spent on its Fuel Well, Foundry, Quarters and Farm into
+  riflemen, which asked nothing of any economy. While infantry were free of it, ignoring the economy
+  and massing infantry was the dominant play, a fault in the design, not in the commander. Now every
+  infantry kind bar the heroes and the General costs 2 food to train (`INFANTRY_FOOD`; on the queue
+  item, refunded with it, kept by a save), so the Barracks hangs on the Farms as vehicles hang on
+  the Foundry and the heavy guns on the Munitions Works. The computer builds a Farm first in its
+  chain, one more per three Quarters and another when the store runs low, at most four. Over the
+  same 12 battles the new commander then led by 2 units at minute 8 and 11 at minute 16, and won all
+  12.
+- **One Farm too many.** The first version of the computer's Farm plan (a Farm first in the chain and
+  one more than its Quarters needed) put Hard in seat 0 at 34% against Normal. Measured one change at
+  a time over 150 seeds: food was never short (both sides held 100 to 180), food at no cost still gave
+  34%, the merge with main's adaptive work moved nothing (territory alone 41%, as before it; classic
+  47%, as before it), and a Farm jumping the plan when food ran low moved nothing. Dropping the extra
+  Farm (one first, then one per three Quarters) gave 45%. One 400-credit building and a crew of two,
+  early, was the whole difference.
+- **Ladder, final** (150 seeds, seat 0 wins; classic / full economy): Hard v Normal 47% / 45%; Normal v
+  Hard 15% / 21%; Normal v Easy 100% / 97%; Normal v Normal 45% / 45%; new Normal v previous Normal 65%
+  / 76% (39% before soldiers ate). The commander that plays the economy now beats the one that
+  ignores it. 29 of those 150 went to the 100-minute cap: the previous commander, starved, holds
+  behind its turrets and the new one does not finish it. That is the next item.
+- **Checks.** Eight new assertions in `drive-production.ts` (a soldier's food; none for vehicles or
+  without production; refused short of food with the same state back; paid, recorded on the queue
+  item, refunded on cancel and kept by a save). A test from main's round 7 that listed what follows
+  Point Defence in the build menu now names advanced production's three as well. `npm run check`
+  all passed bar that line, now passing; `campaign-check` 7,713 of 7,713; `drive:planet` 33,557 of
+  33,557; `check:ui fireline` 32 of 32; the Fireline tour ok. In Chromium the Economy step at 1,280
+  and 390 wide, light and dark, no sideways scroll; Full economy writes all four toggles and Classic
+  clears them.
