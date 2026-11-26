@@ -54,7 +54,15 @@ import type { GameState } from '../src/sim/types';
 type Ok = (cond: unknown, what: string) => void;
 
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
-const hash = (x: unknown): string => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+// round7:review begin. A battle's after-action history (src/sim/history.ts) is a record of play, not
+// play: it is left out of the pinned hashes, which date from before it. Recording never changes
+// play (scripts/drive-review.ts plays battles with and without it and compares them).
+const hash = (x: unknown): string =>
+  createHash('sha256')
+    .update(JSON.stringify(x, (k, v) => (k === 'history' ? undefined : v)))
+    .digest('hex')
+    .slice(0, 16);
+// round7:review end.
 /**
  * A battle state as hashed before the merge with the armies' round 6 (fireline-round6-design.md,
  * section 10). A skirmish setup now states every seat's army, heroes, Generals and each seat's
@@ -72,7 +80,10 @@ const round6Off = (s: GameState): boolean => {
   }
 };
 const preRound6 = (s: GameState): GameState => {
-  if (s.sidePerks !== undefined) throw new Error('a battle gained perks for another side');
+  // Round 7 (battle rules 3, link 1): a planet battle's attacker may harvest at a reduced rate, which
+  // for seats 1 to 3 lives in sidePerks. Allowed only as a harvest rate on otherwise default perks.
+  const harvestOnly = (p: object) => Object.entries(p).every(([k, v]) => (k === 'harvestMul' ? v > 0 && v <= 1 : v === (k === 'extraStartCredits' ? 0 : 1)));
+  if (s.sidePerks !== undefined && !(s.planet && Object.values(s.sidePerks).every(p => p && harvestOnly(p)))) throw new Error('a battle gained perks for another side');
   if (s.squads !== undefined) throw new Error('a battle formed a squad');
   const players = s.players.map(p => {
     if (p.faction !== undefined && p.faction !== 'meridian') throw new Error(`side ${p.owner} fields ${p.faction}`);
@@ -84,12 +95,19 @@ const preRound6 = (s: GameState): GameState => {
   if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
   if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
   if (!s.setup) return { ...s, players };
-  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, ...setup } = s.setup;
+  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, structureUpgrades, strategicBuildings, adaptive, ...setup } = s.setup;
   if (territory !== undefined && territory !== false) throw new Error('setup territory on');
+  // Round 7's options: a war on battle rules 3 turns them on in its planet battles, so they are checked
+  // off only outside a planet battle (an older war's planet battles are held to their recorded hashes).
+  const r7 = !s.planet;
+  // round7:structures: off is the earlier battle exactly.
+  if (r7 && ((structureUpgrades !== undefined && structureUpgrades !== false) || (strategicBuildings !== undefined && strategicBuildings !== false))) throw new Error('setup structure options on');
   if (production !== undefined && production !== false) throw new Error('setup production on');
   // Industry and supply lines (2026-11-21): off is the earlier battle exactly.
   if (industry !== undefined && industry !== false) throw new Error('setup industry on');
   if (supply !== undefined && supply !== false) throw new Error('setup supply lines on');
+  // round7:adaptive: round 7's adaptive commander, stated off, means the earlier battle exactly.
+  if (r7 && adaptive !== undefined && adaptive !== false) throw new Error('setup adaptive commander on');
   if (factions !== undefined && (factions.length !== s.players.length || factions.some(f => f !== 'meridian'))) throw new Error(`setup armies ${factions}`);
   if (heroes !== undefined && heroes !== false) throw new Error('setup heroes on');
   if (generals !== undefined && generals !== false) throw new Error('setup Generals on');
@@ -104,7 +122,11 @@ const preRound6 = (s: GameState): GameState => {
  */
 const preSize = (s: GameState): unknown => {
   if (!s.setup) return s;
-  const { pace, size, sites, ...rest } = s.setup;
+  // round7:fortification: the Fortification line's toggle, after the hashes were recorded. Its value is
+  // the default's (on) wherever it can apply (advanced tech, development lines) and off elsewhere; no
+  // hashed battle is a Long or Epic one, so no commander researches it, and it is left out of the hash.
+  const { pace, size, sites, fortification, ...rest } = s.setup;
+  if (fortification !== (s.setup.tech === 'advanced' && s.setup.research === 'lines')) throw new Error(`skirmish recorded fortification ${fortification}`);
   if (pace !== 'quick') throw new Error(`skirmish recorded pace ${pace}, expected quick`);
   if (size !== 'standard') throw new Error(`skirmish recorded map size ${size}, expected standard`);
   if (sites !== false) throw new Error(`skirmish recorded sites ${sites}, expected false`);
@@ -117,8 +139,20 @@ const preSize = (s: GameState): unknown => {
  */
 const preNaval = (s: GameState): unknown => {
   if (s.ai.some(m => m.navalShore !== undefined || m.landing !== undefined)) throw new Error('a planet battle looked for a sea');
+  // round7:fortification begin. A planet battle states the Fortification line off: checked, then left
+  // out of the hash (recorded before the toggle existed).
+  let setup = s.setup;
+  if (setup && 'fortification' in setup) {
+    // Round 7: a war on battle rules 3 turns the line on (with the other three round 7 options, which
+    // preRound6 has already taken out); an older war states it off. A boolean either way.
+    if (typeof setup.fortification !== 'boolean') throw new Error('a planet battle states no Fortification line');
+    const { fortification: _f, ...rest } = setup;
+    setup = rest as GameState['setup'];
+  }
+  // round7:fortification end.
   return {
     ...s,
+    ...(setup ? { setup } : {}),
     players: s.players.map(p => {
       if (p.queues.naval === undefined || p.queues.naval.length) throw new Error(`side ${p.owner}'s Naval queue is not empty`);
       const { naval: _drop, ...queues } = p.queues;
@@ -875,7 +909,7 @@ function storyTests(ok: Ok): void {
       for (const map of PRE_NAVAL_MAPS) {
         if (sides === 2 && mode === 'teams') continue;
         k++;
-        let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic' } });
+        let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic', adaptive: false } });
         ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
         s = tick(s, 1500);
         ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
@@ -886,7 +920,7 @@ function storyTests(ok: Ok): void {
     for (const mode of ['ffa', 'teams'] as const) {
       if (sides === 2 && mode === 'teams') continue;
       c++;
-      let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic' } });
+      let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic', adaptive: false } });
       ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:0`], `skirmish ${sides} ${mode} coast byte-identical at tick 0`);
       s = tick(s, 1500);
       ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:1500`], `skirmish ${sides} ${mode} coast byte-identical after 1,500 ticks`);
@@ -1113,14 +1147,16 @@ function mapSizeTests(ok: Ok): void {
     }
   }
 
-  // New wars are on battle rules 2 and size every setup by its stakes; a war without battleRules
-  // (one saved before larger maps) makes exactly the same setups without a map size.
+  // New wars are on battle rules 3 (round 7), which sizes the map as 2 does. A war on battle rules 2
+  // sizes every setup by its stakes; a war without battleRules (one saved before larger maps) makes
+  // exactly the same setups without a map size.
   const fresh = newPlanetState({ seedText: 'maps-fresh', preset: 'short', difficulty: 'normal', commander: 'Tester', createdAt: 0 });
-  ok(fresh.battleRules === 2, 'a new war is on battle rules 2');
+  ok(fresh.battleRules === 3, 'a new war is on battle rules 3');
   const seen = new Set<string>();
   let compared = 0;
   for (let k = 0; k < 12; k++) {
     const w = openWar(`maps-war-${k}`, k % 3 === 1 ? [[0, 2]] : k % 3 === 2 ? [[0, 2], [1, 3]] : []);
+    w.battleRules = 2;
     const old: PlanetState = copy(w);
     delete old.battleRules;
     for (const f of w.factions)
@@ -1227,14 +1263,14 @@ function mapSizeTests(ok: Ok): void {
     ok(hash(run.w) === OLD_WAR_HASHES[`${preset}War`], `${preset} war on battle rules 1: the war byte-identical after 25 turns`);
   }
 
-  // New saves: a war on battle rules 2 replays byte-identically, a large battle builds and runs the
+  // New saves: a war on battle rules 3 replays byte-identically, a large battle builds and runs the
   // same twice, and a save holding a large pending battle migrates to itself.
   for (const preset of ['short', 'long'] as const) {
     const mk = () => warWithSetups(newPlanetState({ seedText: `newhash-${preset}`, preset, difficulty: 'normal', commander: 'Tester', createdAt: 0 }), 25, st => st.mapSize === 'large');
     const a = mk();
     const b = mk();
-    ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 2 replays byte-identically`);
-    ok(a.w.battleRules === 2 && a.built.length > 0, `${preset} war on battle rules 2 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
+    ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 3 replays byte-identically`);
+    ok(a.w.battleRules === 3 && a.built.length > 0, `${preset} war on battle rules 3 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
   }
   const big = { ...craftSetup(1), mapSize: 'large' as const };
   const r1 = processAction(buildPlanetBattle(big, ids(1), { autopilot: true }), { type: 'tick', n: 600 });

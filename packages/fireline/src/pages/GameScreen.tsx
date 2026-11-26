@@ -1,4 +1,6 @@
 import { boardProblem, canRide } from '../sim/transport';
+// round7:structures.
+import { canGarrison, garrisonProblem } from '../sim/structures';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
@@ -14,6 +16,9 @@ import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+// round7:review begin. The after-action review: its button, on the end card, the paused card and the menu.
+import { ReviewButton } from '../components/Review';
+// round7:review end.
 import BuildWindow from '../game/BuildWindow';
 import { airRoom } from '../sim/air';
 import { researchProblem } from '../sim/research';
@@ -23,6 +28,7 @@ import CampaignFlow from './Campaign';
 import PlanetFlow from './Planet';
 import { campaignSaves } from './campaignSaves';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { easeOut, paced, usePace } from '../lib/motion';
 import { clearToken, getStoredUser } from '../lib/portalAuth';
 import { processAction } from '../sim/actions';
 import { placementProblem } from '../sim/commands';
@@ -190,6 +196,8 @@ export function Battle({
   const acc = useRef(0);
   const renderer = useRef<Renderer | null>(null);
   if (!renderer.current) renderer.current = new Renderer(initial.tiles, undefined, initial.mapW, initial.mapH);
+  // The ground's painter is a worker that lives as long as the battle screen: let it go on leaving.
+  useEffect(() => () => renderer.current?.dispose(), []);
   // Open on the Command Yard; in a mission with no base, on the middle of our units.
   const hq = initial.buildings.find(b => b.owner === 0 && b.kind === 'hq');
   const ours = initial.units.filter(u => u.owner === 0);
@@ -600,6 +608,18 @@ export function Battle({
         }
         return;
       }
+      // round7:structures begin. Infantry on one of our own Fortified Bunkers: they walk to it and go in.
+      if (targetBuilding && targetBuilding.owner === 0 && targetBuilding.kind === 'bunker') {
+        const riders = mine.filter(canGarrison).map(u => u.id);
+        if (riders.length) {
+          const rest = mine.filter(u => !canGarrison(u)).map(u => u.id);
+          if (dispatch({ type: 'garrison', ids: riders, bunker: targetBuilding.id })) ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
+          else showToast(garrisonProblem(s, 0, riders, targetBuilding.id) ?? 'Cannot garrison');
+          if (rest.length) dispatch({ type: 'move', ids: rest, x: wx, y: wy, queue });
+          return;
+        }
+      }
+      // round7:structures end.
       // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
       if (targetUnit && targetUnit.owner === 0 && UNITS[targetUnit.kind].carries) {
         const riders = mine.filter(u => canRide(u, targetUnit)).map(u => u.id);
@@ -1437,6 +1457,13 @@ export function Battle({
       <span className="fl-d-btn-label">{paused ? 'Resume' : 'Pause'}</span>
     </button>
   );
+  // On a touch screen the slider draws its own track and a 24px thumb (styles.css), and the track's
+  // filled part follows the volume through `--vol`; a mouse keeps the browser's own slider.
+  const rangeStyle = layout.touch
+    ? ({ ...(layout.compact ? { width: 110 } : null), '--vol': soundPrefs.volume } as CSSProperties)
+    : layout.compact
+      ? { width: 110 }
+      : undefined;
   const soundControls = (
     <div className="fl-d-sound">
       <button
@@ -1461,7 +1488,7 @@ export function Battle({
         aria-label="Volume"
         disabled={soundPrefs.muted}
         onChange={e => changeSound({ volume: Number(e.target.value) })}
-        style={layout.compact ? { width: 110 } : undefined}
+        style={rangeStyle}
       />
     </div>
   );
@@ -1647,7 +1674,15 @@ export function Battle({
 
       {menu && (layout.compact || layout.touch) && (
         <div style={menuScrim} onClick={() => setMenu(false)}>
-          <div role="dialog" aria-label="Battle menu" style={menuSheet} onClick={e => e.stopPropagation()} data-testid="menu">
+          <div
+            role="dialog"
+            aria-label="Battle menu"
+            className="fl-d-sheet"
+            data-touch={layout.touch ? '1' : '0'}
+            style={menuSheet}
+            onClick={e => e.stopPropagation()}
+            data-testid="menu"
+          >
             <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
               {s.name} · {DIFFICULTIES[s.difficulty].label}
             </div>
@@ -1673,6 +1708,9 @@ export function Battle({
               <FullscreenToggle style={sheetViewBtn} />
             </div>
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
+              {/* round7:review begin. The review of the battle so far. */}
+              <ReviewButton s={s} label="Review so far" style={touchBtn} />
+              {/* round7:review end. */}
               {layout.compact && tourButton}
               {layout.compact && (
                 <button
@@ -1765,50 +1803,60 @@ export function Battle({
             <div style={modal ? { ...commandBar, left: 'auto' } : commandBar} data-testid="command-bar">
               {modal ? (
                 <button
-                  style={barBtn(false)}
+                  type="button"
+                  className="fl-cmd"
                   onClick={() => {
                     setPlacing(null);
                     setTargeting(null);
                   }}
                 >
+                  <CmdGlyph name="clear" />
                   {placing ? 'Stop placing' : 'Cancel'}
                 </button>
               ) : (
                 <>
                   <button
-                    style={barBtn(boxMode)}
+                    type="button"
+                    className="fl-cmd"
                     aria-pressed={boxMode}
                     data-testid="box-mode"
                     title="Then drag on the map to select the units inside the box"
                     onClick={() => setBoxMode(b => !b)}
                   >
+                    <CmdGlyph name="box" />
                     Box
                   </button>
-                  <button style={barBtn(false)} id="fl-select-army" data-testid="select-army" onClick={selectArmy}>
+                  <button type="button" className="fl-cmd" id="fl-select-army" data-testid="select-army" onClick={selectArmy}>
+                    <CmdGlyph name="army" />
                     Army
                   </button>
                   <button
-                    style={barBtn(attackMode)}
+                    type="button"
+                    className="fl-cmd"
                     aria-pressed={attackMode}
                     data-testid="attack-move"
                     title="Attack-move: then tap where to go, and they fight anything met on the way"
                     disabled={!ownSelected}
                     onClick={() => setAttackMode(a => !a)}
                   >
+                    <CmdGlyph name="attack" />
                     Attack
                   </button>
                   <button
-                    style={barBtn(false)}
+                    type="button"
+                    className="fl-cmd"
                     disabled={!ownSelected}
                     onClick={() => {
                       const ids = ownSelectedUnits().map(u => u.id);
                       if (ids.length) dispatch({ type: 'stop', ids });
                     }}
                   >
+                    <CmdGlyph name="stop" />
                     Stop
                   </button>
                   <button
-                    style={barBtn(false)}
+                    type="button"
+                    className="fl-cmd"
                     disabled={overlay.current.selected.size === 0}
                     onClick={() => {
                       overlay.current.selected = new Set();
@@ -1816,9 +1864,11 @@ export function Battle({
                       refresh();
                     }}
                   >
+                    <CmdGlyph name="clear" />
                     Clear
                   </button>
-                  <button style={barBtn(false)} onClick={goHome}>
+                  <button type="button" className="fl-cmd" onClick={goHome}>
+                    <CmdGlyph name="base" />
                     Base
                   </button>
                 </>
@@ -1849,11 +1899,18 @@ export function Battle({
             aria-label="Battle feed"
             data-testid="battle-feed"
           >
-            {(layout.stacked || phoneDock ? recent.slice(0, 3) : recent).map(l => (
-              <div key={`${l.tick}-${l.text}`} data-tone={l.tone ?? 'info'} style={{ opacity: Math.max(0.3, 1 - (s.tick - l.tick) / 300) }}>
-                {l.text}
-              </div>
-            ))}
+            {(layout.stacked || phoneDock ? recent.slice(0, 3) : recent).map(l => {
+              const tone = l.tone ?? 'info';
+              return (
+                <div key={`${l.tick}-${l.text}`} data-tone={tone} data-age={feedAge(s.tick - l.tick)}>
+                  <span className="fl-feed-ico" aria-hidden="true">
+                    {FEED_GLYPH[tone] ?? FEED_GLYPH.info}
+                  </span>
+                  <span className="fl-feed-t">{battleTime(l.tick)}</span>
+                  <span className="fl-feed-text">{l.text}</span>
+                </div>
+              );
+            })}
           </div>
           {/* round6:B begin. Heroes in free play: the hero bar also shows in a skirmish with heroes on; B may
               change the two bars from here to "round6:B end". */}
@@ -1942,7 +1999,7 @@ export function Battle({
               Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
               implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
           {/* round6:C end. */}
-          {buildOpen && !paused && !help && !ended && (
+          {buildOpen && !help && !ended && (
             <BuildWindow
               state={s}
               tab={tab}
@@ -1958,18 +2015,29 @@ export function Battle({
               }}
             />
           )}
+          {/* round7:pause begin. A tactical pause: the battle holds but the map stays live, so
+              orders, selections, queues and placements can be given while time stands still. A
+              banner, not a scrim, so nothing on the battlefield is covered. */}
           {paused && !help && !ended && (
-            <div style={scrim}>
-              <div className="fl-d-card fl-d-paused" role="dialog" aria-label="Paused">
+            <div style={pauseBanner}>
+              <div className="fl-d-card fl-d-paused" role="status" aria-label="Paused" style={pauseCard}>
                 <span className="fl-d-glyph fl-d-paused-glyph" data-glyph="pause" aria-hidden="true" />
-                <h2 className="fl-d-card-title">Paused</h2>
-                <p className="fl-d-card-sub">The battle is holding. Your progress has been saved.</p>
+                <div>
+                  <h2 className="fl-d-card-title" style={{ margin: 0 }}>Paused</h2>
+                  <p className="fl-d-card-sub" style={{ margin: 0 }}>
+                    Time is holding and your progress is saved. Orders, queues and placements still work: plan, then resume.
+                  </p>
+                </div>
                 <button type="button" className="fl-d-btn fl-d-primary" onClick={() => setPaused(false)}>
                   Resume <kbd>P</kbd>
                 </button>
+                {/* round7:review begin. The review of the battle so far. */}
+                <ReviewButton s={s} label="Review so far" />
+                {/* round7:review end. */}
               </div>
             </div>
           )}
+          {/* round7:pause end */}
           {help && (
             <div style={scrim} onClick={() => setHelp(false)}>
               <div className="fl-d-card fl-d-help-card fl-scroll" role="dialog" aria-label="Controls" onClick={e => e.stopPropagation()}>
@@ -1995,7 +2063,7 @@ export function Battle({
         {tourOpen && (
           <GuidedTour
             key={tourRun}
-            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !paused && !help && !ended, sheet }}
+            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !help && !ended, sheet }}
             onFinish={() => setTourOpen(false)}
             hidden={paused || help || menu || ended}
           />
@@ -2032,7 +2100,7 @@ export function Battle({
               setTab(t);
               setBuildOpen(true);
             }}
-            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
+            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} selected={overlay.current.selected} />}
           />
           {s.units.some(u => u.owner === 0) && (
             <section className="fl-d-sel" aria-label="Forces">
@@ -2223,7 +2291,69 @@ function winningLine(state: GameState): string | null {
   return left.length ? `Still standing: ${names(left)}.` : null;
 }
 
+/** A feed line's age, for its fade in CSS: just in, a few seconds old, or old (still readable). */
+function feedAge(ticks: number): 'new' | 'mid' | 'old' {
+  return ticks < 3 * TICKS_PER_SECOND ? 'new' : ticks < 20 * TICKS_PER_SECOND ? 'mid' : 'old';
+}
+
+const FEED_GLYPH: Record<string, string> = { good: '▲', bad: '▼', info: '•' };
+
+/** Battle time as the top bar shows it, m:ss. */
+function battleTime(tick: number): string {
+  const secs = Math.floor(tick / TICKS_PER_SECOND);
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+/** "36 seconds", "1 minute 5 seconds", "12 minutes" for the end card's sentence. */
+function spokenDuration(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const r = secs % 60;
+  const sec = `${r} ${r === 1 ? 'second' : 'seconds'}`;
+  if (!m) return sec;
+  const min = `${m} ${m === 1 ? 'minute' : 'minutes'}`;
+  return r ? `${min} ${sec}` : min;
+}
+
+/** How long the end card's figures take to count up, at full pace (motion.ts scales it). */
+const END_COUNT_MS = 1100;
+/** Each row of the table starts this fraction of the run after the one above it. */
+const END_ROW_STAGGER = 0.08;
+
+/**
+ * Raw progress, 0 to 1, of the end card's count-up: run once, on its own frame loop, and ended at
+ * once (1) when motion is off. Every figure it scales lands on its exact value at 1.
+ */
+function useEndProgress(): number {
+  const pace = usePace();
+  const [t, setT] = useState(() => (paced(END_COUNT_MS, pace) <= 0 ? 1 : 0));
+  useEffect(() => {
+    const dur = paced(END_COUNT_MS, pace);
+    if (dur <= 0) {
+      setT(1);
+      return;
+    }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / dur);
+      setT(k);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // Run once: a pace change mid-count only matters for the first second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return t;
+}
+
+/** A row's share of the count-up, eased, starting a little after the row above. */
+function rowShare(t: number, i: number): number {
+  return easeOut(Math.max(0, Math.min(1, (t - i * END_ROW_STAGGER) / (1 - 4 * END_ROW_STAGGER))));
+}
+
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
+  const t = useEndProgress();
   const won = wonBy(state, 0);
   const secs = Math.floor(state.tick / TICKS_PER_SECOND);
   // One column per side: You and Enemy in a two-sided battle, each side by name with more.
@@ -2234,15 +2364,23 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
     colour: two ? (o === 0 ? UI.team : UI.enemy) : UI.side[o],
   }));
   const stat = (k: keyof GameState['players'][number]['stats']) => state.players.map(p => p.stats[k]);
-  const rows: [string, number[]][] = [
-    ['Structures built', stat('built')],
-    ['Units trained', stat('trained')],
-    ['Enemy destroyed', stat('killed')],
-    ['Losses', stat('lost')],
-    ['Credits harvested', stat('harvested')],
+  // The third field: true when fewer is better (the side with the fewest losses leads that row).
+  const rows: [string, number[], boolean][] = [
+    ['Structures built', stat('built'), false],
+    ['Units trained', stat('trained'), false],
+    ['Enemy destroyed', stat('killed'), false],
+    ['Losses', stat('lost'), true],
+    ['Credits harvested', stat('harvested'), false],
   ];
   const line = winningLine(state);
-  const minutes = Math.floor(secs / 60);
+  const mine = state.players[0].stats;
+  const ratio = mine.killed / Math.max(1, mine.lost);
+  const head = rowShare(t, 0);
+  const heads: [string, string, string][] = [
+    ['Battle time', battleTime(Math.round(state.tick * head)), 'time'],
+    ['Kills per loss', (Math.round(ratio * head * 10) / 10).toFixed(1), 'ratio'],
+    ['Credits harvested', Math.round(Math.floor(mine.harvested) * head).toLocaleString('en-GB'), 'credits'],
+  ];
   return (
     <div style={scrim} className="fl-d-end-scrim">
       <div className="fl-d-end" role="dialog" aria-label={won ? 'Victory' : 'Defeat'} data-won={won ? '1' : '0'} data-testid="end-card" data-status={statusOf(state)}>
@@ -2252,8 +2390,8 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           </p>
           <h2 className="fl-d-end-title">{won ? 'VICTORY' : 'DEFEAT'}</h2>
           <p className="fl-d-end-sub">
-            {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {minutes}{' '}
-            {minutes === 1 ? 'minute' : 'minutes'} {secs % 60} seconds.
+            {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after{' '}
+            {spokenDuration(secs)}.
           </p>
           {line && (
             <p className="fl-d-end-team" data-testid="winning-team">
@@ -2262,6 +2400,14 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           )}
         </div>
         <div className="fl-d-end-body">
+          <div className="fl-d-end-heads" data-testid="end-headlines">
+            {heads.map(([label, value, key]) => (
+              <div key={key} className="fl-d-end-head" data-key={key}>
+                <span className="fl-d-end-head-val">{value}</span>
+                <span className="fl-d-end-head-label">{label}</span>
+              </div>
+            ))}
+          </div>
           <h3 className="fl-d-sect">After-action report</h3>
           <table className="fl-d-end-stats">
             <thead>
@@ -2277,19 +2423,34 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
               </tr>
             </thead>
             <tbody>
-              {rows.map(([l, vals]) => {
-                const top = Math.max(1, ...cols.map(c => vals[c.o] ?? 0));
+              {rows.map(([l, vals, fewer], i) => {
+                const shown = cols.map(c => Math.floor(vals[c.o] ?? 0));
+                const top = Math.max(1, ...shown);
+                const empty = shown.every(v => v === 0);
+                const best = fewer ? Math.min(...shown) : Math.max(...shown);
+                const leads = !empty && shown.filter(v => v === best).length === 1;
+                const k = rowShare(t, i);
                 return (
-                  <tr key={l}>
+                  <tr key={l} data-empty={empty ? '1' : undefined}>
                     <th scope="row">{l}</th>
-                    {cols.map(c => {
-                      const v = vals[c.o] ?? 0;
+                    {cols.map((c, ci) => {
+                      const v = shown[ci];
+                      const lead = leads && v === best;
                       return (
-                        <td key={c.o}>
-                          <span className="fl-d-end-val">{Math.floor(v).toLocaleString('en-GB')}</span>
-                          <span className="fl-d-end-bar" aria-hidden="true">
-                            <span style={{ width: `${Math.round((v / top) * 100)}%`, background: c.colour }} />
+                        <td key={c.o} data-lead={lead ? '1' : undefined} style={lead ? ({ '--d-col': c.colour } as CSSProperties) : undefined}>
+                          <span className="fl-d-end-val">
+                            {lead && (
+                              <span className="fl-d-end-chev" aria-hidden="true">
+                                ▸
+                              </span>
+                            )}
+                            {Math.round(v * k).toLocaleString('en-GB')}
                           </span>
+                          {!empty && (
+                            <span className="fl-d-end-bar" aria-hidden="true">
+                              <span style={{ width: `${((v / top) * 100 * k).toFixed(1)}%`, background: c.colour }} />
+                            </span>
+                          )}
                         </td>
                       );
                     })}
@@ -2300,6 +2461,9 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           </table>
         </div>
         <div className="fl-d-end-foot">
+          {/* round7:review begin. The after-action review. */}
+          <ReviewButton s={state} />
+          {/* round7:review end. */}
           <button type="button" className="fl-d-btn fl-d-primary" onClick={onLobby} autoFocus>
             Back to the lobby
           </button>
@@ -2350,23 +2514,23 @@ const commandBar: CSSProperties = {
   justifyContent: 'center',
 };
 
-const barBtn = (on: boolean): CSSProperties => ({
-  flex: '1 1 0',
-  minWidth: 0,
-  maxWidth: 110,
-  minHeight: 44,
-  padding: '6px 4px',
-  fontFamily: 'inherit',
-  fontSize: '0.8rem',
-  fontWeight: 600,
-  // Sits on the battlefield, which is the same canvas art in both modes, so like the hint and the
-  // feed it keeps one dark backing; only the "on" edge takes the theme's accent.
-  border: `1px solid ${on ? UI.accent : 'rgba(255,255,255,0.22)'}`,
-  background: on ? 'rgba(60,44,16,0.88)' : 'rgba(8,12,12,0.78)',
-  color: '#e9f0ec',
-  borderRadius: 6,
-  cursor: 'pointer',
-});
+/** The phone command bar's pictures: simple strokes in the button's own colour (styles.css .fl-cmd). */
+const CMD_PATHS: Record<'box' | 'army' | 'attack' | 'stop' | 'clear' | 'base', string> = {
+  box: 'M3 3h4M9 3h4M3 13h4M9 13h4M3 3v4M3 9v4M13 3v4M13 9v4',
+  army: 'M5 6.5a2 2 0 1 0 0-.01M11 6.5a2 2 0 1 0 0-.01M1.5 13c.5-2.5 2-3.5 3.5-3.5S8 10.5 8.5 13M7.5 13c.5-2.5 2-3.5 3.5-3.5s3 1 3.5 3.5',
+  attack: 'M8 2v4M8 10v4M2 8h4M10 8h4M8 4.5a3.5 3.5 0 1 0 .01 0',
+  stop: 'M4 4h8v8H4z',
+  clear: 'M4 4l8 8M12 4l-8 8',
+  base: 'M2.5 8L8 3l5.5 5M4 7v6h8V7M6.5 13v-3.5h3V13',
+};
+
+function CmdGlyph({ name }: { name: keyof typeof CMD_PATHS }) {
+  return (
+    <svg className="fl-cmd-ico" viewBox="0 0 16 16" width={16} height={16} aria-hidden="true" focusable="false">
+      <path d={CMD_PATHS[name]} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const menuScrim: CSSProperties = {
   position: 'fixed',
@@ -2416,6 +2580,31 @@ const scrim: CSSProperties = {
   justifyContent: 'center',
   padding: 16,
 };
+
+// round7:pause begin
+/** The tactical pause's banner: across the top of the battlefield, letting clicks through beside it. */
+const pauseBanner: CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 0,
+  right: 0,
+  display: 'flex',
+  justifyContent: 'center',
+  padding: '0 16px',
+  pointerEvents: 'none',
+};
+const pauseCard: CSSProperties = {
+  pointerEvents: 'auto',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  textAlign: 'left',
+  gap: 14,
+  padding: '12px 18px',
+  maxWidth: 680,
+  width: 'auto',
+};
+// round7:pause end
 
 const errorStrip: CSSProperties = {
   padding: '6px 12px',

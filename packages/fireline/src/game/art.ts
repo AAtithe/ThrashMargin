@@ -1719,6 +1719,25 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     case 'quarters':
       drawQuarters(ctx, w, h, team, pose);
       break;
+    // round7:fortification begin. The Point Defence emplacement.
+    case 'pointdefence':
+      drawPointDefence(ctx, w, h, team, pose);
+      break;
+    // round7:fortification end.
+    // round7:structures begin. Strategic structures.
+    case 'bunker':
+      drawBunker(ctx, w, h, team, pose);
+      break;
+    case 'supplycache':
+      drawSupplyCache(ctx, w, h, team, pose);
+      break;
+    case 'intelcentre':
+      drawIntelCentre(ctx, w, h, team, pose);
+      break;
+    case 'decoy':
+      drawDecoy(ctx, w, h, team, pose);
+      break;
+    // round7:structures end.
     // Advanced production (2026-11-22).
     case 'farm':
       drawFarm(ctx, w, h, team, pose);
@@ -6140,6 +6159,284 @@ export function drawBorders(ctx: Ctx, grid: Int8Array, mapW: number, tx0: number
     }
   ctx.restore();
 }
+// round7:fortification begin.
+/**
+ * The Point Defence emplacement (fireline-round7-fortification.md): a squat sloped concrete block, and
+ * on it a domed mount in team colours with a short rotary barrel that turns to the last shot, a
+ * search radar spinning behind it (slower while power is short) and a blue lamp. The barrel flashes
+ * for a moment as it fires.
+ */
+function drawPointDefence(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  const cx = w / 2;
+  const cy = h / 2;
+  // The block: a sloped concrete apron with a darker top.
+  ctx.fillStyle = '#8d918a';
+  rrect(ctx, 1.5, 2.5, w - 3, h - 3, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = '#6e726c';
+  rrect(ctx, 5, 5.5, w - 10, h - 10, 3);
+  ctx.fill();
+  // Hazard corners.
+  ctx.fillStyle = 'rgba(230,190,60,0.8)';
+  for (const [x, y] of [[3, 4], [w - 6, 4], [3, h - 4], [w - 6, h - 4]]) ctx.fillRect(x, y - 1, 3, 1.4);
+  // The radar, behind the mount.
+  const spin = p.t * (p.lowPower ? 0.8 : 3);
+  ctx.save();
+  ctx.translate(cx + 7, cy - 7);
+  ctx.fillStyle = '#2a2e2f';
+  ctx.fillRect(-0.7, -0.5, 1.4, 4);
+  ctx.rotate(spin);
+  ctx.fillStyle = '#d4d9db';
+  ctx.fillRect(-4.5, -1, 9, 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(-4.5, -1, 9, 2);
+  ctx.restore();
+  // The mount and barrel, turned to the last shot.
+  ctx.save();
+  ctx.translate(cx, cy + 1);
+  ctx.rotate(p.turret);
+  const firing = p.sinceShot < 0.25;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(3, -2, 11, 5);
+  ctx.fillStyle = '#25292b';
+  ctx.fillRect(3, -1.8, 10, 3.6);
+  ctx.fillStyle = '#141617';
+  for (const by of [-1.1, 0, 1.1]) ctx.fillRect(12, by - 0.35, 2.2, 0.7);
+  if (firing) {
+    ctx.fillStyle = `rgba(190,240,255,${1 - p.sinceShot * 4})`;
+    ctx.beginPath();
+    ctx.arc(15.5, 0, 2.6, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = litGrad(ctx, p.turret, 7, team.light, team.dark);
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.arc(-1.8, -1.8, 2.4, 0, TAU);
+  ctx.fill();
+  emblem(ctx, team, -1, 1, 1.3);
+  ctx.restore();
+  lamp(ctx, cx - 9, cy + 9, !p.lowPower, '#5ad0ff', p.t, 4, true);
+}
+// round7:fortification end.
+
+// round7:structures begin. Strategic structures (fireline-round7-structures.md): their art.
+
+/** The Fortified Bunker: a low concrete pillbox ringed with sandbags, firing slits that flash while its garrison fights. */
+function drawBunker(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  // Sandbags round the edge.
+  ctx.fillStyle = '#9a8a62';
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU;
+    const x = w / 2 + Math.cos(a) * (w / 2 - 5);
+    const y = h / 2 + Math.sin(a) * (h / 2 - 5);
+    ctx.beginPath();
+    ctx.ellipse(x, y, 5, 3.4, a + Math.PI / 2, 0, TAU);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(60,48,30,0.55)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU;
+    ctx.beginPath();
+    ctx.ellipse(w / 2 + Math.cos(a) * (w / 2 - 5), h / 2 + Math.sin(a) * (h / 2 - 5), 5, 3.4, a + Math.PI / 2, 0, TAU);
+    ctx.stroke();
+  }
+  // The dome.
+  const cx = w / 2;
+  const cy = h / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = litGrad(ctx, -Math.PI * 0.75, w * 0.32, ART.concreteLight, ART.concreteDark);
+  circle(ctx, 0, 0, w * 0.32);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  circle(ctx, cx, cy, w * 0.32);
+  ctx.stroke();
+  // Firing slits, one each way.
+  const firing = !!p.working && Math.sin(p.t * 22) > 0.2;
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * TAU + Math.PI / 4;
+    ctx.save();
+    ctx.translate(cx + Math.cos(a) * w * 0.22, cy + Math.sin(a) * h * 0.22);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillStyle = firing && k % 2 === Math.floor(p.t * 3) % 2 ? 'rgba(255,214,120,0.95)' : '#1c1f1d';
+    ctx.fillRect(-4, -1.1, 8, 2.2);
+    ctx.restore();
+  }
+  // A team band on the roof.
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, w * 0.16, 0, TAU);
+  ctx.stroke();
+  emblem(ctx, team, cx, cy, 5);
+}
+
+/** The Supply Cache: crates under a team tarpaulin, with a mending cross that glows while it is at work. */
+function drawSupplyCache(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(4, 6, w - 6, h - 7);
+  const crate = (x: number, y: number, s: number, tone: string) => {
+    ctx.fillStyle = tone;
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+  };
+  crate(3, h - 14, 11, '#9c8458');
+  crate(15, h - 14, 11, '#8a744b');
+  ctx.fillStyle = shade(ctx, 5, 4, w - 10, 13, team.light, team.dark);
+  rrect(ctx, 5, 4, w - 10, 13, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.stroke();
+  const glow = p.working ? 0.65 + 0.35 * Math.sin(p.t * 5) : 0.85;
+  ctx.fillStyle = ART.hpGood;
+  alpha(ctx, glow);
+  ctx.fillRect(w / 2 - 1.5, 6, 3, 9);
+  ctx.fillRect(w / 2 - 4.5, 9, 9, 3);
+  alpha(ctx, 1);
+}
+
+/** The Intelligence Centre: a sealed block under a turning radar dish and an aerial array; dark when short of power. */
+function drawIntelCentre(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  block(ctx, 7, 9, w - 14, h - 18, shade(ctx, 7, 9, w - 14, h - 18, ART.metal, ART.metalDark), '#2f3437', 4);
+  // A row of lit screens along the front.
+  const on = !p.lowPower;
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = on ? (i + Math.floor(p.t * 2)) % 4 === 0 ? 'rgba(160,255,190,0.95)' : 'rgba(110,200,255,0.8)' : 'rgba(40,46,48,0.9)';
+    ctx.fillRect(11 + i * ((w - 22) / 4), h - 16, (w - 22) / 4 - 2, 4);
+  }
+  // The aerial array.
+  ctx.strokeStyle = '#2a2e2c';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(w - 13 + i * 3, 12);
+    ctx.lineTo(w - 13 + i * 3, 3);
+    ctx.stroke();
+  }
+  // The dish, turning while powered.
+  const ang = on ? p.t * 1.4 : 0.6;
+  const cx = w * 0.4;
+  const cy = h * 0.42;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.fillStyle = litGrad(ctx, -Math.PI * 0.75 - ang, 11, '#e2e6e1', '#8d938f');
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11, 6, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.stroke();
+  ctx.strokeStyle = '#3c403d';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(9, 0);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = team.main;
+  circle(ctx, cx, cy, 2.4);
+  ctx.fill();
+  lamp(ctx, w - 10, 4, on, '#ff6a5a', p.t, 1.5, true);
+}
+
+/** The Decoy, as its owner sees it: an inflatable in the team colour, pegged down at the corners. */
+function drawDecoy(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  const sway = Math.sin(p.t * 1.7) * 0.8;
+  ctx.strokeStyle = 'rgba(30,30,30,0.6)';
+  ctx.lineWidth = 0.8;
+  for (const [x, y] of [[4, 4], [w - 4, 4], [4, h - 4], [w - 4, h - 4]]) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(w / 2 + (x < w / 2 ? -9 : 9) + sway, h / 2 + (y < h / 2 ? -8 : 8));
+    ctx.stroke();
+    ctx.fillStyle = '#4b4f4c';
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  ctx.save();
+  ctx.translate(w / 2 + sway, h / 2);
+  ctx.fillStyle = litGrad(ctx, -Math.PI * 0.75, w * 0.36, team.light, team.dark);
+  rrect(ctx, -w * 0.34, -h * 0.3, w * 0.68, h * 0.6, 10);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.stroke();
+  // Seams.
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.12, -h * 0.28);
+  ctx.lineTo(-w * 0.12, h * 0.28);
+  ctx.moveTo(w * 0.12, -h * 0.28);
+  ctx.lineTo(w * 0.12, h * 0.28);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Your own Decoy on the battlefield: what it passes for, half seen through, with a dashed outline. */
+export function drawOwnDecoy(ctx: Ctx, look: BuildingKind, owner: Owner, x: number, y: number, pose: BuildingPose, t: number): void {
+  const spec = BUILDINGS.decoy;
+  const before = ctx.globalAlpha;
+  ctx.globalAlpha = before * 0.55;
+  drawBuilding(ctx, look, owner, x, y, pose);
+  ctx.globalAlpha = before;
+  ctx.save();
+  ctx.setLineDash([4, 3]);
+  ctx.lineDashOffset = -((t * 8) % 7);
+  ctx.strokeStyle = TEAM[owner].light;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + 2.5, y + 2.5, spec.w * TILE - 5, spec.h * TILE - 5);
+  ctx.restore();
+}
+
+/** A structure's level, as gold chevrons in its top-left corner: one for level 2, two for level 3. */
+export function drawLevelChevrons(ctx: Ctx, x: number, y: number, level: number): void {
+  const n = Math.max(0, level - 1);
+  if (!n) return;
+  ctx.save();
+  ctx.lineJoin = 'miter';
+  for (let i = 0; i < n; i++) {
+    const cy = y + 8 - i * 3.8;
+    ctx.beginPath();
+    ctx.moveTo(x + 2, cy - 2.4);
+    ctx.lineTo(x + 6, cy + 0.8);
+    ctx.lineTo(x + 10, cy - 2.4);
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 3.2;
+    ctx.stroke();
+    ctx.strokeStyle = ART.hazard;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Work under way on a structure: a hazard-striped bar along its foot, filling as the upgrade goes. */
+export function drawUpgradeBar(ctx: Ctx, x: number, y: number, w: number, frac: number): void {
+  const f = Math.max(0, Math.min(1, frac));
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(x - 1, y - 1, w + 2, 5);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w * f, 3);
+  ctx.clip();
+  hazardStripe(ctx, x, y, w, 3, 4);
+  ctx.restore();
+}
+// round7:structures end.
 
 // ---------------------------------------------------------------------------------------------
 // Advanced production (2026-11-22, setup.production)

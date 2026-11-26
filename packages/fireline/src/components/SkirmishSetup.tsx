@@ -61,6 +61,8 @@ import { SUPPLY_LINK_RANGE, SUPPLY_SERVE_RANGE, INDUSTRY_AIR_FUEL_SHARE, INDUSTR
 import ArmyField from './ArmyField';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsSetup } from './Generals';
+// round7:structures.
+import { StructuresSetup } from './StructuresSetup';
 
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
@@ -94,6 +96,14 @@ function industryNote(setup: SkirmishSetup): string {
 
 /** What the Neutral sites field says each side gets at this map size. */
 // round6:B begin. Heroes in free play: the Heroes field's note.
+// round7:adaptive begin
+/** What the Adaptive commander field does, for the note under it. */
+function adaptiveNote(setup: SkirmishSetup): string {
+  if (setup.adaptive === false) return 'The computer keeps to its usual play, whatever you field.';
+  return 'On Normal and Hard the computer remembers what its scouts have seen of your forces, shifts its army toward what beats them, and changes its line of attack when you keep stopping it in the same place. Easy keeps to its usual play.';
+}
+// round7:adaptive end
+
 function heroesNote(setup: SkirmishSetup): string {
   if (setup.tech !== 'advanced') return 'Advanced tech only.';
   if (!setup.heroes) return 'The Spy, Commando, Engineer and Ace stay in the campaign.';
@@ -101,6 +111,14 @@ function heroesNote(setup: SkirmishSetup): string {
   return `A ${BUILDINGS[HERO_ACADEMY].name} (after a Tech Centre) recruits the campaign's heroes, one of each: ${price.join(', ')} credits. A fallen hero can come back after ${HERO_REVIVE_TICKS / TICKS_PER_SECOND} seconds at half price. The computer recruits them too.`;
 }
 // round6:B end.
+
+// round7:fortification begin. The Fortification field's note.
+function fortificationNote(setup: SkirmishSetup, lines: boolean): string {
+  if (!lines) return 'Development lines only.';
+  if (!setup.fortification) return 'Five research lines. Structures stand as built.';
+  return 'A sixth research line: tougher structures, shelters against blasts, then a choice between Counter-battery (enemy guns that fire on you are marked for your artillery) and Point Defence emplacements that shoot down shells, missiles and bombs.';
+}
+// round7:fortification end.
 
 function sitesNote(setup: SkirmishSetup): string {
   if (!setup.sites) return 'No sites: ore is the only income.';
@@ -155,6 +173,8 @@ export function readStoredSetup(): SkirmishSetup {
           : LOBBY_DEFAULT_PACE,
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
       sites: r.sites !== false,
+      // round7:fortification: on unless the player turned it off (a setup stored before round 7 gets it on).
+      fortification: r.fortification !== false,
       factions: r6.factions,
       heroes: r6.heroes,
       generals: r6.generals,
@@ -162,6 +182,12 @@ export function readStoredSetup(): SkirmishSetup {
       industry: r.industry === true,
       supply: r.industry === true && r.supply === true,
       territory: r.industry === true && r.supply === true && r.territory === true,
+      // round7:structures: on unless the player turned them off (a setup stored before them reads as on, the lobby's default).
+      structureUpgrades: r.structureUpgrades !== false,
+      strategicBuildings: r.strategicBuildings !== false,
+      // round7:adaptive begin. On unless the player turned it off.
+      adaptive: r.adaptive !== false,
+      // round7:adaptive end.
       production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
     };
   } catch {
@@ -374,6 +400,27 @@ export default function SkirmishSetupPanel({
           </div>
           {value.tech === 'standard' && <p className="fl-setup-note">Advanced tech only.</p>}
         </div>
+        {/* round7:fortification begin. The Fortification line (Off, On; greyed without development lines). */}
+        <div className="fl-setup-field" data-testid="setup-fortification" data-disabled={lines ? '0' : '1'}>
+          <Label>Fortification</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Fortification">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={lines && !!value.fortification === on}
+                disabled={!lines}
+                data-testid={`fortification-${on ? 'on' : 'off'}`}
+                onClick={() => set({ fortification: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{fortificationNote(value, lines)}</p>
+        </div>
+        {/* round7:fortification end. */}
         {/* round6:A begin. Two armies (fireline-round6-design.md): the Army row, one choice per seat, goes below. */}
         <ArmyField value={value} onPick={factions => set({ factions })} />
         {/* round6:A end. */}
@@ -401,6 +448,29 @@ export default function SkirmishSetupPanel({
         {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
         <GeneralsSetup value={value} set={set} />
         {/* round6:C end. */}
+        {/* round7:structures begin. Structure upgrades and strategic structures (greyed on standard tech). */}
+        <StructuresSetup value={value} set={set} />
+        {/* round7:structures end. */}
+        {/* round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): Off, On. */}
+        <div className="fl-setup-field">
+          <Label>Adaptive commander</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Adaptive commander">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={(value.adaptive !== false) === on}
+                data-testid={`adaptive-${on ? 'on' : 'off'}`}
+                onClick={() => set({ adaptive: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{adaptiveNote(value)}</p>
+        </div>
+        {/* round7:adaptive end. */}
       </SetupStep>
 
       <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">

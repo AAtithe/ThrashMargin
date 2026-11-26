@@ -339,7 +339,8 @@ function computerFormations(ok: Ok): void {
       s = processAction(s, { type: 'tick', n: 100 });
       for (const q of s.squads ?? []) {
         shapes.add(q.shape);
-        const owners = new Set(q.members.map(id => s.units.find(u => u.id === id)?.owner));
+        // Fallen members stay listed until the next command prunes the squad (pruneSquads); only the living count.
+        const owners = new Set(q.members.map(id => s.units.find(u => u.id === id)?.owner).filter(o => o !== undefined));
         if (owners.size > 1) wrong++;
       }
     }

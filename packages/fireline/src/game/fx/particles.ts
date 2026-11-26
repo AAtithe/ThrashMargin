@@ -11,7 +11,7 @@ import { sprites } from './sprites';
  * without bound.
  */
 
-export type AirKind = 'fire' | 'fireball' | 'smoke' | 'dust' | 'debris' | 'spark' | 'ember';
+export type AirKind = 'fire' | 'fireball' | 'smoke' | 'dust' | 'debris' | 'spark' | 'ember' | 'wake';
 
 export interface AirParticle {
   kind: AirKind;
@@ -244,10 +244,36 @@ export class Particles {
     this.add({ kind: 'fire', x, y, z: Math.random() * 4, vx: (Math.random() - 0.5) * 10, vz: 18 + Math.random() * 20, life: 0.35 + Math.random() * 0.4, size: 3 + Math.random() * 3, grow: 0.5 });
   }
 
+  /** A hot spark thrown up and out; it arcs under gravity and is drawn as a short streak. */
   spark(x: number, y: number): void {
     const a = Math.random() * Math.PI * 2;
     const v = 30 + Math.random() * 50;
-    this.add({ kind: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6, size: 2 });
+    this.add({ kind: 'spark', x, y, z: 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: 40 + Math.random() * 60, life: 0.6, size: 2 });
+  }
+
+  /**
+   * A round striking home: a few sparks thrown in a cone away from the shooter (along dirX, dirY,
+   * any length; zero for no direction) and a small puff of dust. Kept small, since sparks are not
+   * thinned by busy(); the pool's cap trims the oldest in a huge fight.
+   */
+  impact(x: number, y: number, dirX: number, dirY: number): void {
+    const d = Math.hypot(dirX, dirY);
+    const base = d > 0 ? Math.atan2(dirY, dirX) : Math.random() * Math.PI * 2;
+    const cone = d > 0 ? 1.1 : Math.PI;
+    const n = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const a = base + (Math.random() - 0.5) * cone;
+      const v = 45 + Math.random() * 70;
+      this.add({ kind: 'spark', x, y, z: 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.75, vz: 50 + Math.random() * 70, life: 0.35 + Math.random() * 0.25, size: 2 });
+    }
+    if (!this.busy()) this.add({ kind: 'dust', x, y, z: 1, vx: (Math.random() - 0.5) * 8, vz: 6 + Math.random() * 6, life: 0.5 + Math.random() * 0.3, size: 2.6, grow: 2.2 });
+    this.trim();
+  }
+
+  /** A spreading ring of disturbed water behind a torpedo, flat on the surface. */
+  wake(x: number, y: number, angle: number): void {
+    if (this.busy()) return;
+    this.add({ kind: 'wake', x, y, life: 0.9 + Math.random() * 0.3, size: 2, grow: 3.2, rot: angle });
   }
 
   dust(x: number, y: number, scale: number): void {
@@ -302,8 +328,12 @@ export class Particles {
         p.vz *= 1 - 0.25 * dt;
         p.vx += 2.5 * dt; // A light breeze carries smoke east.
       } else if (p.kind === 'spark') {
-        p.vx *= 0.92;
-        p.vy *= 0.92;
+        // Air drag that does not depend on the frame rate, and gravity; a spark dies on landing.
+        const drag = Math.pow(0.006, dt);
+        p.vx *= drag;
+        p.vy *= drag;
+        p.vz -= GRAVITY * dt;
+        if (p.z <= 0) continue;
       }
       air[n++] = p;
     }
@@ -373,10 +403,21 @@ export class Particles {
     for (let i = 0; i < air.length; i++) {
       const p = air[i];
       if (p.delay > 0) continue;
-      if (p.kind !== 'debris' && p.kind !== 'dust' && p.kind !== 'smoke') continue;
+      if (p.kind !== 'debris' && p.kind !== 'dust' && p.kind !== 'smoke' && p.kind !== 'wake') continue;
       if (!inView(p.x, p.y - p.z, 40)) continue;
       const f = p.life / p.max;
-      if (p.kind === 'debris') {
+      if (p.kind === 'wake') {
+        // A pale ellipse on the water, stretched along the torpedo's run, widening as it fades.
+        const s = p.size * (1 + (p.grow - 1) * (1 - f));
+        const c = Math.cos(p.rot);
+        const sn = Math.sin(p.rot);
+        ctx.globalAlpha = 0.45 * f;
+        ctx.strokeStyle = '#dff3f5';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, s * 1.6, s * 0.8, Math.atan2(sn, c), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (p.kind === 'debris') {
         if (p.z > 1) {
           ctx.globalAlpha = 0.3 * Math.min(1, f * 3);
           ctx.fillStyle = '#000';
@@ -398,12 +439,17 @@ export class Particles {
         ctx.drawImage(img, p.x - s, p.y - p.z - s, s * 2, s * 2);
       }
     }
-    // Pass 2, additive: fire, fireballs, sparks, embers.
+    // Pass 2, additive: fire, fireballs, embers; sparks are gathered for pass 3.
     ctx.globalCompositeOperation = 'lighter';
+    let sparks = false;
     for (let i = 0; i < air.length; i++) {
       const p = air[i];
       if (p.delay > 0) continue;
-      if (p.kind === 'debris' || p.kind === 'dust' || p.kind === 'smoke') continue;
+      if (p.kind === 'debris' || p.kind === 'dust' || p.kind === 'smoke' || p.kind === 'wake') continue;
+      if (p.kind === 'spark') {
+        sparks = true;
+        continue;
+      }
       if (!inView(p.x, p.y - p.z, 60)) continue;
       const f = p.life / p.max;
       if (p.kind === 'fireball' || p.kind === 'fire') {
@@ -414,11 +460,38 @@ export class Particles {
         ctx.globalAlpha = f;
         ctx.fillStyle = '#ffb04a';
         ctx.fillRect(p.x - 1, p.y - p.z - 1, p.size, p.size);
-      } else {
-        ctx.globalAlpha = f;
-        ctx.fillStyle = '#ffe68a';
-        ctx.fillRect(p.x, p.y, 2, 2);
       }
+    }
+    // Pass 3, sparks as hot streaks along their flight, one path per band of remaining life so a
+    // shower of them costs four strokes.
+    if (sparks) {
+      ctx.strokeStyle = '#ffe68a';
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = 'round';
+      for (let band = 0; band < 4; band++) {
+        const lo = band / 4;
+        const hi = lo + 0.25;
+        let open = false;
+        for (let i = 0; i < air.length; i++) {
+          const p = air[i];
+          if (p.kind !== 'spark' || p.delay > 0) continue;
+          const f = p.life / p.max;
+          if (f < lo || f >= hi) continue;
+          const sy = p.y - p.z;
+          if (!inView(p.x, sy, 20)) continue;
+          if (!open) {
+            ctx.beginPath();
+            open = true;
+          }
+          ctx.moveTo(p.x - p.vx * 0.025, sy - p.vy * 0.025 + p.vz * 0.025);
+          ctx.lineTo(p.x, sy);
+        }
+        if (open) {
+          ctx.globalAlpha = Math.min(1, hi + 0.1);
+          ctx.stroke();
+        }
+      }
+      ctx.lineCap = 'butt';
     }
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;

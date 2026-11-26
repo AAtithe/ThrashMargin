@@ -39,20 +39,25 @@ export function rankName(kills: number): string {
 
 export const stanceName = (st: Stance): string => (st === 'war' ? 'war' : TREATY_NAMES[st]);
 
-/** The faction's swatch: its colour as the edge, its letter inside, so it never relies on colour alone. */
-export function Swatch({ s, f }: { s: PlanetState; f: number }) {
-  const style: CSSProperties = f >= 0 ? { borderColor: PL.faction[f] } : {};
+/** A faction's colour as the --fac custom property (a var() string, never a literal), for cards and swatches. */
+export const facStyle = (f: number): CSSProperties => (f >= 0 && PL.faction[f] ? ({ '--fac': PL.faction[f] } as CSSProperties) : {});
+
+/**
+ * The faction's swatch: its colour as the edge (and a light tint of it inside), its letter inside,
+ * so it never relies on colour alone. `lg` is the shield-shaped badge used on faction cards.
+ */
+export function Swatch({ s, f, size }: { s: PlanetState; f: number; size?: 'lg' }) {
   return (
-    <span className="fl-pl-swatch" style={style} aria-hidden="true">
+    <span className="fl-pl-swatch" data-size={size} data-faction={f >= 0 ? f : undefined} style={facStyle(f)} aria-hidden="true">
       {ownerLetter(s, f)}
     </span>
   );
 }
 
-export function FactionName({ s, f }: { s: PlanetState; f: number }) {
+export function FactionName({ s, f, size }: { s: PlanetState; f: number; size?: 'lg' }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-      <Swatch s={s} f={f} />
+    <span className="fl-pl-facname">
+      <Swatch s={s} f={f} size={size} />
       {f < 0 ? 'Independents' : factionName(s, f)}
     </span>
   );
@@ -66,15 +71,21 @@ export function StancePill({ st }: { st: Stance }) {
   );
 }
 
-/** Odds as a percentage, coloured by how they lean. */
-export function Odds({ p, label = 'Odds' }: { p: number; label?: string }) {
+/** Odds as a percentage, coloured by how they lean; `bar` adds a two-part bar (us against them) beside it. */
+export function Odds({ p, label = 'Odds', bar = false }: { p: number; label?: string; bar?: boolean }) {
   const tone = p >= 0.6 ? 'good' : p >= 0.4 ? 'even' : 'bad';
+  const pct = Math.round(p * 100);
   return (
-    <span className="fl-small" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+    <span className="fl-small fl-pl-oddsline">
       {label}
       <span className="fl-pl-odds" data-tone={tone} data-testid="planet-odds">
-        {Math.round(p * 100)}%
+        {pct}%
       </span>
+      {bar && (
+        <span className="fl-pl-oddsbar" aria-hidden="true" data-tone={tone}>
+          <span style={{ width: `${pct}%` }} />
+        </span>
+      )}
     </span>
   );
 }

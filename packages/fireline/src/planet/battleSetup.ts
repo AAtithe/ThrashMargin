@@ -11,7 +11,9 @@ import { armyCounts } from './economy';
 import { hopsFrom, planetMapOf } from './map';
 import { ATTACK_CREDITS, DEFENCE_TERRAIN, SIDE_UNITS_MAX, structureValue, unitValue, vetMul } from './rules';
 import { aliveFaction, allied, atWar, garrisonUnits } from './state';
-import { hasPort } from './supply';
+import { hasPort, suppliedRegions } from './supply';
+import { arrivalHp, attackerBase, isShaken, linksOn, reinforceWave, shakenUnits, suppliedCredits, supplyOf, supportFor, timeLimitFor, wallsFor } from './links';
+import { DEF_CUT_CREDITS, SHAKEN_SHARE, SUPPLY_EFFECT, WALL_VALUE, WALLS_PER_FORT_MK, WOUNDED_HP } from './rules';
 import {
   ARMY_KINDS,
   NEUTRAL,
@@ -31,7 +33,8 @@ import {
 
 export function strengthOf(units: BattleUnit[] | CoreUnit[]): number {
   let t = 0;
-  for (const u of units as { kind: CoreUnit['kind']; kills: number }[]) t += unitValue(u.kind) * vetMul(u.kills);
+  // A wounded vehicle (battle rules 3, `w`) counts at WOUNDED_HP per cent; no older war has one.
+  for (const u of units as { kind: CoreUnit['kind']; kills: number; w?: 1 }[]) t += unitValue(u.kind) * vetMul(u.kills) * (u.w ? WOUNDED_HP / 100 : 1);
   return t;
 }
 
@@ -307,9 +310,11 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
   if (atkAlly !== null) sides.push(allySide(atkAlly, 0));
   if (defAlly !== null) sides.push(allySide(defAlly, 1));
   const human = sides.some(x => x.human);
-  // Section 9.7: a war on battle rules 2 sizes the map by the stakes; an older war never sets it.
+  // Round 7: battle rules 3 links the war to the battle (links.ts); an older war never runs this.
+  const links = linksOn(s) ? warIntoBattle(s, attacker, target, cost, atk, def, sides) : undefined;
+  // Section 9.7: a war on battle rules 2 (or 3) sizes the map by the stakes; an older war never sets it.
   const mapSize =
-    s.battleRules === 2 ? battleMapSize({ sides: sides.length, cityLevel: reg.city.level, capital: defender !== NEUTRAL && s.factions[defender].capital === target }) : 'standard';
+    s.battleRules === 2 || s.battleRules === 3 ? battleMapSize({ sides: sides.length, cityLevel: reg.city.level, capital: defender !== NEUTRAL && s.factions[defender].capital === target }) : 'standard';
 
   return {
     battleId,
@@ -322,12 +327,81 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
     difficulty: s.difficulty,
     sides,
     defenderSeat: sides.indexOf(def),
-    timeLimit: s.options.battleMinutes * 60 * TICKS_PER_SECOND,
+    timeLimit: links ? timeLimitFor(s.options.battleMinutes * 60 * TICKS_PER_SECOND, reg.city.level) : s.options.battleMinutes * 60 * TICKS_PER_SECOND,
     cityLevel: reg.city.level,
     cityBuildings: { ...reg.city.b },
     ...(human ? perksFor(s) : { perks: null, powers: [] }),
     ...(mapSize !== 'standard' ? { mapSize } : {}),
+    ...(links ? { links } : {}),
   };
+}
+
+/**
+ * Battle rules 3 (round 7): what the war brings into the battle. Edits the two principal sides in
+ * place (the attacker's base, credits and vehicles' health; the defender's credits, shaken garrison
+ * and wounded vehicles) and returns the links frozen into the setup. Links 1 to 4.
+ */
+function warIntoBattle(s: PlanetState, attacker: FactionId, target: RegionId, cost: Stock, atk: BattleSide, def: BattleSide, sides: BattleSide[]): NonNullable<BattleSetup['links']> {
+  const army = s.factions[attacker].army!;
+  const from = army.region;
+  const reg = s.regions[target];
+  const defender = reg.owner;
+  // Link 4: the base the staging region can field (the helipad rule stays).
+  const base = attackerBase(s, from);
+  if (atk.structures.includes('helipad')) base.push('helipad');
+  atk.structures = base;
+  atk.cityTags = base.map(() => null);
+  // Link 1: supply. Credits, harvest rate and the vehicles' health on arrival; wounded vehicles arrive at half.
+  const supply = supplyOf(s, attacker, from, cost);
+  const eff = SUPPLY_EFFECT[supply];
+  const credits = suppliedCredits(atk.credits, supply);
+  const creditsLost = atk.credits - credits;
+  atk.credits = credits;
+  atk.units = atk.units.map(u => withHp(u, u.core !== null ? army.units[u.core] : undefined, eff.vehicleHp));
+  // The defender: a city cut off from its capital fights with less; a shaken garrison with fewer.
+  let defCut = false;
+  let defCreditsLost = 0;
+  if (defender !== NEUTRAL) {
+    const dfac = s.factions[defender];
+    defCut = dfac.capital !== target && !suppliedRegions(s, defender)[target];
+    if (defCut) {
+      const c = Math.round(def.credits * DEF_CUT_CREDITS);
+      defCreditsLost = def.credits - c;
+      def.credits = c;
+    }
+    const darmy = dfac.army;
+    def.units = def.units.map(u => withHp(u, darmy && u.core !== null ? darmy.units[u.core] : undefined, 100));
+  }
+  // Link 8: a shaken garrison (a heavy defeat next door) brings three quarters of its units.
+  if (isShaken(s, target)) {
+    const garrison = def.units.filter(u => u.core === null);
+    def.units = [...shakenUnits(garrison), ...def.units.filter(u => u.core !== null)];
+  }
+  // Link 2: support from regions near the battle, for both principals.
+  const atkSeat = sides.indexOf(atk);
+  const defSeat = sides.indexOf(def);
+  const support = [...supportFor(s, attacker, target, atkSeat, atk.structures), ...(defender !== NEUTRAL ? supportFor(s, defender, target, defSeat, def.structures) : [])];
+  // Link 1: a depot sends a wave from the staging garrison partway through.
+  const limit = timeLimitFor(s.options.battleMinutes * 60 * TICKS_PER_SECOND, reg.city.level);
+  const reinforce = supply === 'depot' ? reinforceWave(s, from, limit) : null;
+  return {
+    from,
+    supply,
+    defCut,
+    creditsLost,
+    defCreditsLost,
+    trickle: eff.trickle,
+    support,
+    reinforce,
+    // Link 3: prepared defences.
+    walls: wallsFor(reg.city.b.fortifications ?? 0),
+  };
+}
+
+/** A battle unit with its health on arrival (link 1 and link 7), when below full. */
+function withHp(u: BattleUnit, core: CoreUnit | undefined, supplyHp: number): BattleUnit {
+  const hp = arrivalHp({ kind: u.kind, w: core?.w }, supplyHp, WOUNDED_HP);
+  return hp === undefined ? u : { ...u, hp };
 }
 
 /**
@@ -336,7 +410,10 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
  */
 export function defenceEstimate(s: PlanetState, target: RegionId): number {
   const reg = s.regions[target];
-  let d = garrisonStrength(reg.garrison);
+  // Battle rules 3: a shaken garrison brings three quarters, and prepared defences add their walls.
+  const v3 = linksOn(s);
+  let d = garrisonStrength(reg.garrison) * (v3 && isShaken(s, target) ? SHAKEN_SHARE : 1);
+  if (v3) d += WALLS_PER_FORT_MK * (reg.city.b.fortifications ?? 0) * WALL_VALUE;
   if (reg.owner === NEUTRAL) {
     d += structureValue('hq') + structureValue('power') + structureValue('barracks') + structureValue('refinery') + reg.city.level * structureValue('turret');
   } else {

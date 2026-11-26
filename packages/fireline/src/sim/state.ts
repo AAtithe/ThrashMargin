@@ -1,3 +1,4 @@
+import { unpackState } from './pack';
 import { migrateAir } from './air';
 import { productionOn, startProduction } from './production';
 import { migrateNaval } from './naval';
@@ -69,8 +70,19 @@ import { PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
+// round7:structures begin.
+import { STRATEGIC_BUILDINGS, cloneStructureFields, markIntel, migrateStructures, strategicOn } from './structures';
+// round7:structures end.
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
+// round7:planet begin
+import { migratePlanetLinks, supportHeld } from './planetLinks';
+// round7:planet end
+// round7:review begin. The after-action review: the history (src/sim/history.ts).
+import { cloneHistory, migrateHistory, newHistory } from './history';
+// round7:review end.
+// round7:fortification. The Fortification line (fireline-round7-fortification.md).
+import { fortificationOn, structureMaxHp } from './fortify';
 
 export { startOf };
 // Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
@@ -127,6 +139,10 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // base from before round 5 has none: 'standard'); sites are on only when exactly true.
   const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
   const sites = typeof r.sites === 'boolean' ? r.sites : (base.sites ?? false);
+  // round7:fortification begin. The Fortification line: advanced tech and development lines only;
+  // anything but a boolean takes the base's (a save's base, LEGACY_SETUP, has it off).
+  const fortification = tech === 'advanced' && research === 'lines' && (typeof r.fortification === 'boolean' ? r.fortification : (base.fortification ?? false));
+  // round7:fortification end.
   // Round 6: one army and one doctrine General per seat; heroes and field Generals on only when
   // exactly true. Anything else falls back to the base's (a base from before round 6 has none:
   // 'meridian', off, no General). A General from the other army reads as none.
@@ -147,9 +163,18 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const supply = industry && (typeof r.supply === 'boolean' ? r.supply : (base.supply ?? false));
   // Territory and workforce (2026-11-21): on only when exactly true, and only with supply lines.
   const territory = supply && (typeof r.territory === 'boolean' ? r.territory : (base.territory ?? false));
+  // round7:structures begin. Structure upgrades and strategic structures: on only when exactly true,
+  // and only with advanced tech. Absent reads as off whatever the base, so every older setup and every
+  // partial one plays exactly as before; the lobby states them (DEFAULT_SETUP has them on).
+  const structureUpgrades = tech === 'advanced' && r.structureUpgrades === true;
+  const strategicBuildings = tech === 'advanced' && r.strategicBuildings === true;
+  // round7:structures end.
+  // round7:adaptive begin. The adaptive commander: on only when exactly true, else the base's (off for a base without it).
+  const adaptive = typeof r.adaptive === 'boolean' ? r.adaptive : (base.adaptive ?? false);
+  // round7:adaptive end.
   // Advanced production (2026-11-22): on only when exactly true, and only with territory.
   const production = territory && (typeof r.production === 'boolean' ? r.production : (base.production ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production };
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, structureUpgrades, strategicBuildings, adaptive };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -193,6 +218,13 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   if (kind === 'depot') return supplyOn(s);
   // Territory and workforce (2026-11-21): the Watchtower and the Quarters only with setup.territory.
   if (kind === 'watchtower' || kind === 'quarters') return territoryOn(s);
+  // round7:fortification begin. Point Defence: offered only in a battle that plays the Fortification
+  // line (built only once the side has the Point Defence doctrine: canQueue).
+  if (kind === 'pointdefence' && !fortificationOn(s)) return false;
+  // round7:fortification end.
+  // round7:structures begin. The four strategic structures only with setup.strategicBuildings (advanced tech).
+  if (STRATEGIC_BUILDINGS.includes(kind as BuildingKind)) return strategicOn(s);
+  // round7:structures end.
   // Advanced production (2026-11-22): the Farm, the Munitions Works and the Supply Truck only with setup.production.
   if (kind === 'farm' || kind === 'munitions' || kind === 'supplytruck' || kind === 'trainingcentre') return productionOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
@@ -226,6 +258,9 @@ export function syncSkirmishPowers(s: GameState): void {
       if (has === held) continue;
       // A planet battle: side 0's perk powers stay without their structure.
       if (!has && owner === 0 && s.planet?.perkPowers?.includes(power)) continue;
+      // round7:planet begin. A planet battle: any seat's support powers from the war stay too.
+      if (!has && supportHeld(s, owner, power)) continue;
+      // round7:planet end
       side = { ...side };
       if (has) side[power] = POWERS[power].cooldown;
       else delete side[power];
@@ -358,6 +393,9 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     }
   }
   updateExplored(s);
+  // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
+  s.history = newHistory(s.players.length);
+  // round7:review end.
   return s;
 }
 
@@ -380,6 +418,9 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
     tx: aim.x,
     ty: aim.y,
   };
+  // round7:fortification begin. Reinforced concrete: a new structure stands at its raised full health.
+  if (s.players[owner]?.upgrades?.includes('concrete')) b.hp = structureMaxHp(s, b);
+  // round7:fortification end.
   s.buildings.push(b);
   return b;
 }
@@ -443,7 +484,8 @@ export function cloneState(s: GameState): GameState {
       if (u.hero) c.hero = u.hero.active ? { ...u.hero, active: { ...u.hero.active } } : { ...u.hero };
       return c;
     }),
-    buildings: s.buildings.map(b => ({ ...b, rally: b.rally ? { ...b.rally } : null })),
+    // round7:structures: an upgrade under way and a Bunker's garrison copied too (cloneStructureFields).
+    buildings: s.buildings.map(b => cloneStructureFields({ ...b, rally: b.rally ? { ...b.rally } : null })),
     players: s.players.map(p => ({
       ...p,
       queues: {
@@ -479,6 +521,8 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    // round7:fortification: counter-battery reveals, tuples never edited in place.
+    ...(s.reveals ? { reveals: s.reveals.slice() } : {}),
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
     ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
@@ -487,6 +531,9 @@ export function cloneState(s: GameState): GameState {
     ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
     // round6:D begin. Formations and squads: anything else of D's that cloneState must copy.
     // round6:D end.
+    // round7:review begin. The after-action review: the history, copied where the tick changes it.
+    ...(s.history ? { history: cloneHistory(s.history) } : {}),
+    // round7:review end.
     ...(s.planet
       ? {
           planet: {
@@ -509,7 +556,7 @@ export function powerOf(s: GameState, owner: Owner): { made: number; used: numbe
     if (b.owner !== owner) continue;
     const spec = buildingSpecOf(s, b);
     const p = spec.power;
-    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / spec.hp));
+    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / /* round7:fortification */ structureMaxHp(s, b)));
     else used -= p;
   }
   // A Spy on a Generator: the side's power has failed, whatever it has standing.
@@ -658,6 +705,8 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
   for (const u of s.units) if (u.owner === owner) mark(u.x, u.y, unitSpecOf(s, u).sight);
   // Recon sweeps are side 0's, and show their area until they run out.
   if (owner === 0 && s.recon) for (const r of s.recon) if (s.tick < r[3]) mark(r[0], r[1], r[2]);
+  // round7:fortification: counter-battery reveals belong to the side that traced the battery.
+  if (s.reveals) for (const r of s.reveals) if (r[4] === owner && s.tick < r[3]) mark(r[0], r[1], r[2]);
   for (const b of s.buildings)
     if (b.owner === owner) {
       const spec = buildingSpecOf(s, b);
@@ -666,6 +715,9 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
   // round5:D begin. A Comms Relay this side holds reveals its area (one loop calling mark).
   if (s.sites) for (const c of relaysOf(s, owner)) mark(c.x, c.y, RELAY_RADIUS);
   // round5:D end.
+  // round7:structures begin. A working Intelligence Centre reveals enemy structures within its reach.
+  if (s.setup?.strategicBuildings) markIntel(s, owner, k => (vis[k] = 1));
+  // round7:structures end.
   return vis;
 }
 
@@ -715,7 +767,8 @@ export function alarm(s: GameState, key: string, text: string, gap: number, tone
  * a battle in progress keeps loading. Returns a new object; the input is not modified.
  */
 export function migrateState(raw: unknown): GameState | null {
-  const s = raw as Partial<GameState> | null;
+  // A vast battle's save has its per-tile fields packed (pack.ts): unpacked before anything reads them.
+  const s = unpackState(raw) as Partial<GameState> | null;
   if (!s || typeof s !== 'object' || s.version !== 1) return null;
   if (typeof s.tiles !== 'string' || !Array.isArray(s.ore) || typeof s.explored !== 'string') return null;
   if (!Array.isArray(s.units) || !Array.isArray(s.buildings) || !Array.isArray(s.players)) return null;
@@ -794,6 +847,9 @@ export function migrateState(raw: unknown): GameState | null {
   // round5:D end.
   // Round 6: a side's army, its perks, and squads, repaired or dropped, never trusted blind.
   migrateRound6(s, out);
+  // round7:fortification begin. Counter-battery reveals and the commander's shelling counts.
+  migrateFortification(out);
+  // round7:fortification end.
   // Only two sides may fall back on the original start sites.
   if (n > 2 && !out.starts) return null;
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
@@ -807,6 +863,14 @@ export function migrateState(raw: unknown): GameState | null {
       result: m.result === 'won' || m.result === 'lost' ? m.result : null,
     };
   }
+  // round7:review begin. The after-action review: a history kept only when well formed, else dropped.
+  // A save from before it has none and is not given one: it plays on exactly as it did.
+  if (s.history !== undefined) {
+    const h = migrateHistory(s.history, n);
+    if (h) out.history = h;
+    else delete out.history;
+  }
+  // round7:review end.
   // A planet battle: kept only when well formed, else dropped (the battle then plays as a skirmish).
   if (s.planet !== undefined) {
     const p = migratePlanetBattle(s.planet, n);
@@ -816,6 +880,9 @@ export function migrateState(raw: unknown): GameState | null {
   // Industry (2026-11-21): each side's fuel and alloys kept only with industry on, and only as
   // whole numbers of at least nought; a store and a queue item without industry lose them.
   migrateIndustry(out);
+  // round7:structures begin. Levels, upgrades, garrisons, disguises and captures kept only where they may be.
+  migrateStructures(out);
+  // round7:structures end.
   return out;
 }
 
@@ -882,6 +949,32 @@ function migrateIndustry(out: GameState): void {
 
 const AI_MODES: AiMode[] = ['normal', 'defend', 'raid', 'passive'];
 
+// round7:fortification begin.
+/**
+ * The Fortification line's fields on the copy migrateState builds: counter-battery reveals kept only
+ * when well formed (and only in a battle that plays the line), the commander's shelling counts only
+ * when finite. A state without them is left exactly as it was.
+ */
+function migrateFortification(out: GameState): void {
+  if (out.reveals !== undefined) {
+    const n = out.players.length;
+    const ok = (r: unknown): r is NonNullable<GameState['reveals']>[number] =>
+      Array.isArray(r) && r.length === 6 && r.every(v => Number.isFinite(v)) && Number.isInteger(r[4]) && r[4] >= 0 && r[4] < n && Number.isInteger(r[5]);
+    const kept = fortificationOn(out) && Array.isArray(out.reveals) ? out.reveals.filter(ok).map(r => r.slice() as typeof r) : [];
+    if (kept.length || (fortificationOn(out) && Array.isArray(out.reveals))) out.reveals = kept;
+    else delete out.reveals;
+  }
+  const keys = ['shellGround', 'shellAir', 'shellTick', 'shellX', 'shellY'] as const;
+  if (out.ai.some(m => m && typeof m === 'object' && keys.some(k => k in m)))
+    out.ai = out.ai.map(m => {
+      if (!m || typeof m !== 'object' || !keys.some(k => k in m)) return m;
+      const c = { ...m };
+      for (const k of keys) if (k in c && (!fortificationOn(out) || !Number.isFinite(c[k]))) delete c[k];
+      return c;
+    });
+}
+// round7:fortification end.
+
 /** A planet battle's runtime from a save, or null when it is not well formed for n sides. */
 function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
   const p = raw as Partial<PlanetBattle> | null;
@@ -903,6 +996,9 @@ function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
     out.fallen = fallen;
   }
   if (Array.isArray(p.perkPowers)) out.perkPowers = p.perkPowers.filter((x, i, all) => x in POWERS && all.indexOf(x) === i);
+  // round7:planet begin. Battle rules 3: support powers and reinforcement waves, kept when well formed.
+  migratePlanetLinks(p, out, n);
+  // round7:planet end
   return out;
 }
 

@@ -33,6 +33,20 @@ import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
 import { canCancelResearch, canResearch, doCancelResearch, doDoctrine, doResearch, doctrineProblem } from './research';
 import { doLoadout, loadoutProblem } from './loadout';
 import { cloneState } from './state';
+// round7:structures begin.
+import {
+  cancelUpgradeProblem,
+  disguiseProblem,
+  doCancelUpgrade,
+  doDisguise,
+  doGarrison,
+  doUngarrison,
+  doUpgrade,
+  garrisonProblem,
+  ungarrisonProblem,
+  upgradeProblem,
+} from './structures';
+// round7:structures end.
 import { step } from './tick';
 import type { GameAction, GameState } from './types';
 
@@ -239,6 +253,38 @@ export function processAction(s: GameState, a: GameAction): GameState {
       doUnload(c, 0, a.id);
       return c;
     }
+    // round7:structures begin. Structure upgrades and strategic structures (structures.ts).
+    case 'upgradeStructure': {
+      if (!Number.isInteger(a.id) || upgradeProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doUpgrade(c, 0, a.id);
+      return c;
+    }
+    case 'cancelUpgrade': {
+      if (!Number.isInteger(a.id) || cancelUpgradeProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doCancelUpgrade(c, 0, a.id);
+      return c;
+    }
+    case 'garrison': {
+      if (!Number.isInteger(a.bunker) || garrisonProblem(s, 0, ids(a.ids), a.bunker) !== null) return s;
+      const c = cloneState(s);
+      doGarrison(c, 0, ids(a.ids), a.bunker);
+      return c;
+    }
+    case 'ungarrison': {
+      if (!Number.isInteger(a.id) || ungarrisonProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doUngarrison(c, 0, a.id);
+      return c;
+    }
+    case 'disguise': {
+      if (!Number.isInteger(a.id) || disguiseProblem(s, 0, a.id, a.as) !== null) return s;
+      const c = cloneState(s);
+      doDisguise(c, 0, a.id, a.as);
+      return c;
+    }
+    // round7:structures end.
     default:
       return s;
   }

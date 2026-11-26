@@ -166,7 +166,7 @@ function climb(s: GameState, line: LineId, branch?: UpgradeId): GameState {
 }
 
 /** The setup fields of the armies' round 6, in order, after the pace (fireline-round6-design.md, section 10). */
-const ROUND6_ARMY_FIELDS = ['factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production'];
+const ROUND6_ARMY_FIELDS = ['factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'structureUpgrades', 'strategicBuildings'];
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
 const mctx = (): MissionContext => ({ id: 'm1', name: 'Mission', createdAt: 0, perks: { ...PERKS0 }, heroes: {}, extraTech: [], extraPowers: [] });
@@ -183,12 +183,15 @@ function rulesAndPresets(ok: Ok): void {
   // Round 6 added the pace after research (fireline-round6b-design.md); drive-size.ts checks it in full.
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace.
   ok(keys.indexOf('pace') === keys.indexOf('research') + 1, 'research comes just before pace');
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace') + 1)) === JSON.stringify(ROUND6_ARMY_FIELDS), "after the pace come round 6's armies, heroes and Generals fields, then industry, supply lines and territory");
+  // round7:adaptive begin. Round 7's adaptive comes after round 6's four.
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace') + 1)) === JSON.stringify([...ROUND6_ARMY_FIELDS, 'adaptive']), "after the pace come round 6's armies, heroes and Generals fields, then round 7's adaptive");
+  // round7:adaptive end.
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every setup field, research included`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
   }
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup normalises to the default');
+  // round7:structures: the two structure toggles read absent as off, whatever the base.
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup normalises to the default, bar the structure toggles');
   ok(normaliseSetup({ research: 'junk' as never }).research === DEFAULT_SETUP.research, 'junk research takes the default\'s value');
   ok(normaliseSetup({ research: 'junk' as never }, LEGACY_SETUP).research === LEGACY_SETUP.research, 'junk research takes the legacy base\'s value');
   ok(normaliseSetup({ tech: 'standard', research: 'lines' }).research === 'classic', 'standard tech is always classic');
@@ -212,7 +215,8 @@ function rulesAndPresets(ok: Ok): void {
   const seen = new Map<UpgradeId, number>();
   for (const line of LINE_ORDER) for (const id of [...LINES[line].marks, ...LINES[line].fork]) seen.set(id, (seen.get(id) ?? 0) + 1);
   ok(LINE_ORDER.length === 5 && new Set(LINE_ORDER).size === 5 && LINE_ORDER.every(l => l in LINES), 'five lines, each listed once');
-  ok(ALL_UPGRADES.length === 21, `twenty-one upgrades (${ALL_UPGRADES.length})`);
+  // round7:fortification: the Fortification line's four (drive-fortification.ts) on top of round 5's twenty-one.
+  ok(ALL_UPGRADES.length === 25, `twenty-five upgrades (${ALL_UPGRADES.length})`);
   // Countermeasures (the air war, merged 2026-11-11) is classic only and belongs to no line:
   // Armoured cockpits, the air line's Mk III, is its lines counterpart.
   ok(!seen.has('countermeasures') && !UPGRADE_LINE.countermeasures && isClassicUpgrade('countermeasures'), 'countermeasures: classic only, in no line');
@@ -1080,7 +1084,8 @@ function commanderProblem(s: GameState, owner: Owner, diff: Difficulty, mode: Re
 const ARMED_GROUND = (u: Unit) => !!UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air' && !UNITS[u.kind].hero;
 
 function battleFor(seed: string, diff: Difficulty, research: ResearchMode): GameState {
-  const s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research } });
+  // round7:adaptive: adaptive off, so these seeds play as recorded (the adaptive commander has drive-adaptive.ts).
+  const s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research, adaptive: false } });
   s.autopilotDifficulty = diff;
   return s;
 }
@@ -1161,7 +1166,7 @@ function computer(ok: Ok): void {
       let pacedLoadouts = 0;
       for (let i = 1; i <= 3 && pacedLoadouts === 0 && fitted.size === 0; i++) {
         const seed = `ai-${diff}-paced-${i}`;
-        let s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research: 'lines', pace: 'standard' } });
+        let s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research: 'lines', pace: 'standard', adaptive: false } });
         s.autopilotDifficulty = diff;
         while (s.winner === null && s.tick < LADDER_CAP) {
           s = processAction(s, { type: 'tick', n: 50 });

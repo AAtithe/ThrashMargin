@@ -8,7 +8,7 @@
  * existing save queue. A fought battle is the skirmish <Battle> on the generated GameState, saved
  * every 15 seconds of play as campaign battles are; its outcome comes back as a BattleReport.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/ThemeToggle';
 import ArmyTab from '../components/planet/ArmyTab';
@@ -36,6 +36,11 @@ import { DIFFICULTIES } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import type { GameState } from '../sim/types';
 import { Battle } from './GameScreen';
+// round7:review begin. The after-action review: its button on a fought battle's result.
+import { ReviewButton } from '../components/Review';
+import { reviewLines, reviewOf } from '../sim/review';
+import { REVIEW_LINES_MAX, REVIEW_LINE_CHARS } from '../planet/journal';
+// round7:review end.
 import { LiveRegion } from '../lib/Kit';
 
 type Tab = PlanetTabKey;
@@ -192,6 +197,14 @@ export default function PlanetFlow({
     if (!pb) return;
     const report = planetBattleReport(pb.setup, g, { retreat });
     if (!report) return;
+    // round7:review begin. The after-action review: a fought battle's turning points travel with its
+    // report to its journal entry (the history itself is never copied into the war's save).
+    if (report.how === 'fought') {
+      const r = reviewOf(g);
+      const lines = r ? reviewLines(r.review, REVIEW_LINES_MAX, REVIEW_LINE_CHARS) : [];
+      if (lines.length) report.review = lines;
+    }
+    // round7:review end.
     sessionRef.current += 1;
     setSession(sessionRef.current);
     act({ type: 'battleResult', report });
@@ -321,22 +334,55 @@ export default function PlanetFlow({
         )}
         {tab === 'map' && (
           <div className="fl-pl-mapview">
-            <div>
+            <div className="fl-pl-mapcol">
               <PlanetMapCanvas s={s} map={map} selected={selected} targets={targets} moves={moves} onSelect={setSelected} />
               <div className="fl-pl-legend" aria-label="Legend">
-                {s.factions.map(f => (
-                  <span key={f.id} style={{ display: 'inline-flex', alignItems: 'center', opacity: f.alive ? 1 : 0.5 }}>
-                    <span className="fl-pl-swatch" style={{ borderColor: `var(--pl-f${f.id})` }}>
-                      {f.name.charAt(0)}
+                <div className="fl-pl-legend-row">
+                  {s.factions.map(f => (
+                    <span key={f.id} className="fl-pl-legend-faction" data-out={f.alive ? undefined : '1'} style={{ '--fac': `var(--pl-f${f.id})` } as CSSProperties}>
+                      <span className="fl-pl-swatch">{f.name.charAt(0)}</span>
+                      {f.name}
+                      {f.alive ? '' : ' (out)'}
                     </span>
-                    {f.name}
-                    {f.alive ? '' : ' (out)'}
+                  ))}
+                  <span className="fl-pl-legend-faction">
+                    <span className="fl-pl-swatch">N</span>Independents
                   </span>
-                ))}
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <span className="fl-pl-swatch">N</span>Independents
-                </span>
-                <span>Ringed in red: attack now. Dashed: sea crossings. Hatched: cut off.</span>
+                </div>
+                <ul className="fl-pl-legend-row fl-pl-legend-keys">
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-target" aria-hidden="true" />
+                    Ringed in red: attack now
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-move" aria-hidden="true" />
+                    Dotted ring: can move
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-sea" aria-hidden="true" />
+                    Dashed: sea crossing
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-cut" aria-hidden="true" />
+                    Hatched: cut off
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-capital" aria-hidden="true" />
+                    Capital
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-army" aria-hidden="true" />
+                    Field army, with its units
+                  </li>
+                  <li className="fl-pl-legend-key">
+                    <span className="fl-pl-key fl-pl-key-pips" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    City level
+                  </li>
+                </ul>
               </div>
             </div>
             <RegionPanel {...props} region={selected} onSelect={setSelected} />
@@ -392,7 +438,10 @@ function BattleOver({ g, onDone }: { g: GameState; onDone: () => void }) {
         <p className="fl-small" style={{ margin: 0 }}>
           {g.log[g.log.length - 1]?.text ?? ''} The survivors return to the planet, with their kills.
         </p>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* round7:review begin. The after-action review of the battle, before it folds back into the war. */}
+          <ReviewButton s={g} className="fl-camp-btn" />
+          {/* round7:review end. */}
           <button type="button" className="fl-camp-btn primary" onClick={onDone} data-testid="back-to-planet">
             Back to the planet
           </button>

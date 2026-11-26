@@ -76,7 +76,7 @@ function play(s: GameState, until: number, each?: (s: GameState) => void): GameS
 const strip = (k: string, v: unknown) =>
   (k === 'pace' || k === 'size') && typeof v === 'string'
     ? undefined
-    : k === 'sites' && typeof v === 'boolean'
+    : (k === 'sites' || /* round7:fortification: the toggle, which no Quick battle researches */ k === 'fortification') && typeof v === 'boolean'
       ? undefined
       : // The naval war (main's 1608d33 and 62f30b6): every player's empty Naval queue, and the
         // computer's note that there is no sea to sail, are left out too.
@@ -89,10 +89,19 @@ const strip = (k: string, v: unknown) =>
             (k === 'factions' && Array.isArray(v) && v.every(x => x === 'meridian')) ||
             ((k === 'heroes' || k === 'generals') && v === false) ||
             // Industry (2026-11-21): off is the earlier battle exactly.
+            // round7:structures: off is the earlier battle exactly.
+            ((k === 'structureUpgrades' || k === 'strategicBuildings') && v === false) ||
+            // round7:adaptive: the adaptive commander off is the earlier battle exactly.
+            (k === 'adaptive' && v === false) ||
             ((k === 'industry' || k === 'supply' || k === 'territory' || k === 'production') && v === false) ||
             (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
           ? undefined
-          : v;
+          : // round7:review begin. The after-action history (src/sim/history.ts) records play and
+            // never changes it (scripts/drive-review.ts), so it is left out of the pinned hashes.
+            k === 'history' && !!v && typeof v === 'object' && !Array.isArray(v)
+            ? undefined
+            : // round7:review end.
+              v;
 const hashOf = (s: GameState) => createHash('sha256').update(JSON.stringify(s, strip)).digest('hex').slice(0, 16);
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
@@ -181,13 +190,14 @@ function rulesAndPresets(ok: Ok): void {
   const keys = Object.keys(normaliseSetup({}));
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace,
   // and industry (2026-11-21) follows them.
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production']), "pace is the last field of a normalised setup before round 6's four and the economy's four");
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'structureUpgrades', 'strategicBuildings', 'adaptive']), "pace is the last field of a normalised setup before round 6's four, the economy's four and round 7's");
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
     ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
   }
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup normalises to the default, Quick included');
+  // round7:structures: the two structure toggles read absent as off, whatever the base.
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup normalises to the default, Quick included, bar the structure toggles');
   ok(normaliseSetup({ pace: 'junk' as never }).pace === DEFAULT_SETUP.pace, 'a junk pace takes the base\'s');
   ok(normaliseSetup({ pace: 'junk' as never }, { ...LEGACY_SETUP, pace: 'epic' }).pace === 'epic', 'a junk pace takes the base\'s, whatever the base says');
   ok(normaliseSetup({ pace: 7 as never }).pace === 'quick' && normaliseSetup({ pace: null as never }).pace === 'quick', 'a pace that is not a string reads Quick');
@@ -342,10 +352,11 @@ const PRE_ROUND6: Record<string, string> = {
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
-  lines: { map: 'random', tech: 'advanced', research: 'lines' },
-  classic: { map: 'random', tech: 'advanced', research: 'classic' },
-  standard: { map: 'random', tech: 'standard' },
-  three: { map: 'random', tech: 'advanced', research: 'lines', sides: 3 },
+  // round7:adaptive: each states the adaptive commander off, as every battle was before round 7.
+  lines: { map: 'random', tech: 'advanced', research: 'lines', adaptive: false },
+  classic: { map: 'random', tech: 'advanced', research: 'classic', adaptive: false },
+  standard: { map: 'random', tech: 'standard', adaptive: false },
+  three: { map: 'random', tech: 'advanced', research: 'lines', sides: 3, adaptive: false },
 };
 /** A battle as the pre-round-6 constants were made: autopiloted, side 0 at the default difficulty. */
 const hashBattle = (seed: string, d: Difficulty, setup: Partial<SkirmishSetup> | undefined): GameState =>
@@ -525,7 +536,9 @@ function computer(ok: Ok): void {
 
   /** Side 1 at d, side 0 at d0 (default d), side 0's first attack scaled as the ladder does. */
   const battle = (seed: string, d: Difficulty, setup: Partial<SkirmishSetup>, d0: Difficulty = d): GameState => {
-    const s = createInitialState(seed, seed, { seed, difficulty: d, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', ...setup } });
+    // round7:fortification: these battles check round 6's paced lists, so the Fortification line is stated off
+    // (drive-fortification.ts checks the commander with it on).
+    const s = createInitialState(seed, seed, { seed, difficulty: d, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', fortification: false, ...setup } });
     s.autopilotDifficulty = d0;
     s.ai[0].nextAttack = difficultyForPace(d0, s.setup!.pace).firstAttack;
     return s;

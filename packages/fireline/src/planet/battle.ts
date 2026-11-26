@@ -11,11 +11,14 @@ import { processAction } from '../sim/actions';
 import { fitModules } from '../sim/loadout';
 import { focusFor, placeHeroes, placeNear, placeUnits, startCentre, toward } from '../sim/mission';
 import { upgradeNewUnit } from '../sim/research';
-import { BUILDINGS, MODULES, MODULE_SLOTS, POWERS, UNITS, vetFor, type MapSize, type ModuleId, type Owner, type SupportPower, type UnitKind } from '../sim/rules';
+import { BUILDINGS, MODULES, MODULE_SLOTS, POWERS, UNITS, vetFor, type BuildingKind, type MapSize, type ModuleId, type Owner, type SupportPower, type UnitKind } from '../sim/rules';
+import { WOUNDED_BELOW } from './rules';
 import { teamOf } from '../sim/sides';
-import { createInitialState, syncSkirmishPowers, updateExplored } from '../sim/state';
+import { createInitialState, maxHpOf, syncSkirmishPowers, updateExplored } from '../sim/state';
+import { grantSupport } from '../sim/planetLinks';
+import { NO_PERKS } from '../campaign/progression';
 import type { GameState } from '../sim/types';
-import { ARMY_KINDS, type ArmyKind, type BattleReport, type BattleSetup, type BattleUnit, type CityBuildingId } from './types';
+import { ARMY_KINDS, type ArmyKind, type BattleReport, type BattleSetup, type BattleUnit, type CityBuildingId, type ReportLinks } from './types';
 
 /** Most survivors a report carries per side (section 4). */
 export const REPORT_SURVIVORS_MAX = 60;
@@ -49,7 +52,7 @@ export interface BattleStakes {
  * runs close to the 256 KB limit, so the biggest stakes (a capital with three or more sides) are
  * large too, which with four sides is already a 128-tile map. Pure.
  */
-export function battleMapSize(k: BattleStakes): MapSize {
+export function battleMapSize(k: BattleStakes): 'standard' | 'large' {
   if (k.capital || k.cityLevel >= BIG_CITY_LEVEL || k.sides >= 3) return 'large';
   return 'standard';
 }
@@ -76,6 +79,12 @@ function cleanLoadout(kind: UnitKind, mods: ModuleId[] | undefined): ModuleId[] 
 export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: string; createdAt: number }, opts?: { autopilot?: boolean }): GameState {
   const n = setup.sides.length;
   const human = setup.sides.some(x => x.human);
+  // round7:planet begin. Battle rules 3: the setup carries the war's links (fireline-round7-planet.md).
+  // Round 7's battle-side features (the Fortification line, structure upgrades, strategic structures
+  // and the adaptive commander) are on in a war on battle rules 3 and off in every older war, so an
+  // older war's battles play exactly as they always did.
+  const rules3 = setup.links !== undefined;
+  // round7:planet end
   const s = createInitialState(ids.id, ids.name, {
     seed: setup.seedText,
     difficulty: setup.difficulty,
@@ -95,10 +104,19 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       pace: 'quick',
       size: battleMapSizeOf(setup),
       sites: false,
+      // round7:fortification: on in a war on battle rules 3.
+      fortification: rules3,
       factions: setup.sides.map(() => 'meridian' as const),
       heroes: false,
       generals: false,
       generalPicks: setup.sides.map(() => null),
+      // round7:structures begin. On in a war on battle rules 3; off is a planet battle exactly as before.
+      structureUpgrades: rules3,
+      strategicBuildings: rules3,
+      // round7:structures end.
+      // round7:adaptive begin. On in a war on battle rules 3.
+      adaptive: rules3,
+      // round7:adaptive end.
     },
     teams: setup.sides.map(x => x.team),
   });
@@ -149,8 +167,15 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       if (bu.core !== null && Number.isInteger(bu.core) && bu.core >= 0) u.core = bu.core;
       upgradeNewUnit(s, u);
       if (UNITS[u.kind].category === 'vehicle') fitModules(u, loadouts[u.kind]);
+      // round7:planet begin. Battle rules 3: a wounded or badly supplied vehicle arrives below full health.
+      if (rules3 && Number.isInteger(bu.hp) && bu.hp! >= 1 && bu.hp! < 100) u.hp = Math.max(1, Math.round((maxHpOf(u) * bu.hp!) / 100));
+      // round7:planet end
     }
     placeHeroes(s, owner, side.heroes.map(h => ({ kind: h.kind, xp: h.xp, wounded: h.wounded })), muster.x, muster.y);
+    // round7:planet begin. Battle rules 3, link 3: prepared defences, a staggered sandbag line across
+    // the approach about nine tiles in front of the defender's Command Yard.
+    if (rules3 && i === setup.defenderSeat && setup.links!.walls > 0) placeWalls(s, owner, home, centre, setup.links!.walls);
+    // round7:planet end
   });
 
   if (perkPowers.length) {
@@ -167,10 +192,81 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
     city,
     ...(perkPowers.length ? { perkPowers } : {}),
   };
+  // round7:planet begin. Battle rules 3: support powers (link 2), the reinforcement wave (link 1) and
+  // the attacker's harvest rate (link 1) from the setup's links.
+  if (rules3) applyLinks(s, setup);
+  // round7:planet end
   syncSkirmishPowers(s);
   updateExplored(s);
   return s;
 }
+
+// round7:planet begin. Battle rules 3 helpers.
+
+/** A staggered sandbag line across the approach (walls keep a lane between them, so it is staggered). */
+function placeWalls(s: GameState, owner: Owner, home: { x: number; y: number }, centre: { x: number; y: number }, n: number): void {
+  const front = toward(home, centre, 9);
+  const dx = centre.x - home.x;
+  const dy = centre.y - home.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const px = -dy / d;
+  const py = dx / d;
+  for (let k = 0; k < n; k++) {
+    const off = (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 2;
+    placeNear(s, owner, 'wall', { x: front.x + px * off, y: front.y + py * off });
+  }
+}
+
+/** The setup's links laid over a built battle: support powers, the wave, and the attacker's harvest rate. */
+function applyLinks(s: GameState, setup: BattleSetup): void {
+  const links = setup.links!;
+  const p = s.planet!;
+  const seats = setup.sides.length;
+  const support = links.support.filter(g => Number.isInteger(g.seat) && g.seat >= 0 && g.seat < seats && g.power in POWERS).map(g => ({ seat: g.seat as Owner, power: g.power as SupportPower, ...(g.uses !== undefined ? { uses: g.uses } : {}) }));
+  if (support.length) {
+    p.support = support;
+    grantSupport(s, support);
+  }
+  const atk = setup.sides.findIndex(x => x.role === 'attacker');
+  if (links.reinforce && links.reinforce.units.length && atk >= 0) p.reinforce = [{ seat: atk as Owner, at: links.reinforce.at, units: links.reinforce.units.filter(isArmyKind) }];
+  if (atk >= 0 && links.trickle !== 100) {
+    const mul = Math.max(0, links.trickle) / 100;
+    if (atk === 0) s.perks = { ...(s.perks ?? NO_PERKS), harvestMul: (s.perks ?? NO_PERKS).harvestMul * mul };
+    else s.sidePerks = { ...s.sidePerks, [atk]: { ...(s.sidePerks?.[atk as Owner] ?? NO_PERKS), harvestMul: mul } };
+  }
+}
+
+const SEED_KIND: [BuildingKind, CityBuildingId][] = [['refinery', 'refinery'], ['factory', 'factory'], ['researchlab', 'institute']];
+
+/** What a battle on battle rules 3 sends back (links 5 to 7), read from the battle at its end. */
+function reportLinks(setup: BattleSetup, s: GameState, sides: { survivors: BattleUnit[] }[]): ReportLinks {
+  const atk = setup.sides.findIndex(x => x.role === 'attacker');
+  const built: CityBuildingId[] = [];
+  if (atk >= 0) {
+    for (const [kind, tag] of SEED_KIND) {
+      const now = s.buildings.filter(b => b.owner === atk && b.kind === kind && b.hp > 0).length;
+      const brought = setup.sides[atk].structures.filter(k => k === kind).length;
+      if (now > brought) built.push(tag);
+    }
+  }
+  const clamp = (v: number) => Math.max(0, Math.min(1e6, Math.floor(Number.isFinite(v) ? v : 0)));
+  const wounded = setup.sides.map((_, i) => {
+    const present = new Set(sides[i].survivors.filter(u => u.core !== null).map(u => u.core as number));
+    const out: number[] = [];
+    for (const u of s.units) {
+      if (u.owner !== i || u.hp <= 0 || u.core === undefined || u.hero || !isArmyKind(u.kind) || UNITS[u.kind].category !== 'vehicle') continue;
+      if (u.hp < WOUNDED_BELOW * maxHpOf(u) && present.has(u.core) && !out.includes(u.core)) out.push(u.core);
+    }
+    return out.sort((a, b) => a - b);
+  });
+  return {
+    built,
+    credits: setup.sides.map((_, i) => clamp(s.players[i]?.credits ?? 0)),
+    harvested: setup.sides.map((_, i) => clamp(s.players[i]?.stats.harvested ?? 0)),
+    wounded,
+  };
+}
+// round7:planet end
 
 /**
  * Survivors of one seat: infantry and vehicles of ARMY_KINDS alive now, core units first, at most 60.
@@ -245,6 +341,9 @@ export function planetBattleReport(setup: BattleSetup, s: GameState, opts?: { re
     sides,
     cityDamage,
     cityLevelLost: winner === 'attacker' ? 1 : 0,
+    // round7:planet begin
+    ...(setup.links ? { links: reportLinks(setup, s, sides) } : {}),
+    // round7:planet end
   };
 }
 

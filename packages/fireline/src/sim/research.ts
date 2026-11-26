@@ -40,6 +40,11 @@ import {
   type WeaponKind,
 } from './rules';
 import { hasBuilding, log, maxHpOf, researchModeOf, paceOf, techAllowed } from './state';
+// round7:fortification begin. The Fortification line: its lines, its upgrades' places, and concrete's health.
+import { BATTLE_LINES, upgradeLineOf, type BattleLineId } from './rules';
+import { fortificationOn, linesFor, structureMaxHp } from './fortify';
+import { buildingSpecOf } from './specs';
+// round7:fortification end.
 import { unitSpecOf } from './specs';
 import type { GameState, PlayerState, Unit } from './types';
 
@@ -61,7 +66,7 @@ import type { GameState, PlayerState, Unit } from './types';
  */
 
 const isUpgrade = (v: unknown): v is UpgradeId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(UPGRADES, v);
-const isLine = (v: unknown): v is LineId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(LINES, v);
+const isLine = (v: unknown): v is BattleLineId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(/* round7:fortification */ BATTLE_LINES, v);
 
 /** True once this side has finished researching this upgrade. */
 export function hasUpgrade(s: GameState, owner: Owner, id: UpgradeId): boolean {
@@ -75,7 +80,7 @@ export function hasUpgrade(s: GameState, owner: Owner, id: UpgradeId): boolean {
  */
 export function researchCostOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].cost;
-  const pos = UPGRADE_LINE[id];
+  const pos = /* round7:fortification */ upgradeLineOf(id);
   if (researchModeOf(s) !== 'lines' || !pos) return base; // Countermeasures belongs to no line.
   const m = GAME_PACES[paceOf(s)].researchCost[pos.mark - 1];
   if (m === 1) return base;
@@ -85,7 +90,7 @@ export function researchCostOf(s: GameState, id: UpgradeId): number {
 /** How many ticks of progress this upgrade takes in this battle (round 6). Classic and 'quick': UPGRADES[id].ticks exactly. */
 export function researchTicksOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].ticks;
-  const pos = UPGRADE_LINE[id];
+  const pos = /* round7:fortification */ upgradeLineOf(id);
   if (researchModeOf(s) !== 'lines' || !pos) return base; // Countermeasures belongs to no line.
   const m = GAME_PACES[paceOf(s)].researchTicks[pos.mark - 1];
   if (m === 1) return base;
@@ -103,10 +108,13 @@ export function researchProblem(s: GameState, owner: Owner, id: UpgradeId): stri
   if (lines) {
     // Development lines: marks in order; a Mk III branch only once its line's doctrine names it.
     // Countermeasures belongs to no line: a classic upgrade only (Armoured cockpits is its counterpart).
-    const pos = UPGRADE_LINE[id];
+    const pos = /* round7:fortification */ upgradeLineOf(id);
     if (!pos) return 'Not in this battle';
     const { line, mark } = pos;
-    const l = LINES[line];
+    // round7:fortification begin. The sixth line exists only in a battle that plays it.
+    if (line === 'fortification' && !fortificationOn(s)) return 'Not in this battle';
+    // round7:fortification end.
+    const l = BATTLE_LINES[line];
     if (mark === 2 && !hasUpgrade(s, owner, l.marks[0])) return 'Needs Mk I';
     if (mark === 3) {
       if (!hasUpgrade(s, owner, l.marks[1])) return 'Needs Mk II';
@@ -159,6 +167,15 @@ export function researchStep(s: GameState, owner: Owner, lowPower: boolean): voi
   p.research = null;
   // Health upgrades reach every unit the side already has, keeping the damage each has taken.
   for (const u of s.units) if (u.owner === owner && u.hp > 0) raiseHealth(u, hpMulFor(s, r.id, u));
+  // round7:fortification begin. Reinforced concrete reaches every structure the side has, keeping the damage each has taken.
+  if (r.id === 'concrete')
+    for (const b of s.buildings) {
+      if (b.owner !== owner || b.hp <= 0) continue;
+      const after = structureMaxHp(s, b);
+      const before = buildingSpecOf(s, b).hp;
+      b.hp = Math.min(after, b.hp + (after - before));
+    }
+  // round7:fortification end.
   if (owner === 0) log(s, `${UPGRADES[r.id].name} researched.`, 'good');
 }
 
@@ -247,12 +264,15 @@ export function damageTakenMul(s: GameState, u: Unit, kind: WeaponKind): number 
 }
 
 /** The branch this side has committed this line to, or null. */
-export const doctrineOf = (s: GameState, owner: Owner, line: LineId): UpgradeId | null => s.players[owner]?.doctrines?.[line] ?? null;
+export const doctrineOf = (s: GameState, owner: Owner, line: /* round7:fortification */ BattleLineId): UpgradeId | null => s.players[owner]?.doctrines?.[line] ?? null;
 
 /** Why this side cannot commit this line to this branch, or null. No Lab needed: it is a decision, not work. */
-export function doctrineProblem(s: GameState, owner: Owner, line: LineId, branch: UpgradeId): string | null {
+export function doctrineProblem(s: GameState, owner: Owner, line: /* round7:fortification */ BattleLineId, branch: UpgradeId): string | null {
   if (researchModeOf(s) !== 'lines' || !isLine(line) || !techAllowed(s, owner, 'researchlab')) return 'Not in this battle';
-  const l = LINES[line];
+  // round7:fortification begin.
+  if (!linesFor(s).includes(line)) return 'Not in this battle';
+  const l = BATTLE_LINES[line];
+  // round7:fortification end.
   if (branch !== l.fork[0] && branch !== l.fork[1]) return 'No such doctrine';
   if (s.players[owner].doctrines?.[line]) return 'Already chosen';
   if (!hasUpgrade(s, owner, l.marks[1])) return 'Needs Mk II';
@@ -260,10 +280,10 @@ export function doctrineProblem(s: GameState, owner: Owner, line: LineId, branch
 }
 
 /** Commits the line to the branch: free and permanent. */
-export function doDoctrine(s: GameState, owner: Owner, line: LineId, branch: UpgradeId): void {
+export function doDoctrine(s: GameState, owner: Owner, line: /* round7:fortification */ BattleLineId, branch: UpgradeId): void {
   const p = s.players[owner];
   p.doctrines = { ...(p.doctrines ?? {}), [line]: branch };
-  if (owner === 0) log(s, `${LINES[line].name} doctrine: ${UPGRADES[branch].name}.`);
+  if (owner === 0) log(s, `${/* round7:fortification */ BATTLE_LINES[line].name} doctrine: ${UPGRADES[branch].name}.`);
 }
 
 type ResearchFields = Pick<PlayerState, 'upgrades' | 'research' | 'doctrines'>;
@@ -277,22 +297,25 @@ export function migrateResearch(
   p: { upgrades?: unknown; research?: unknown; doctrines?: unknown },
   mode: ResearchMode = 'classic',
   ticksOf: (id: UpgradeId) => number = id => UPGRADES[id].ticks,
+  // round7:fortification: the lines the battle offers (linesFor); the five by default.
+  lines: readonly BattleLineId[] = LINE_ORDER,
 ): { upgrades?: UpgradeId[]; research?: { id: UpgradeId; progress: number } | null; doctrines?: ResearchFields['doctrines'] | null } {
   const out: { upgrades?: UpgradeId[]; research?: { id: UpgradeId; progress: number } | null; doctrines?: ResearchFields['doctrines'] | null } = {};
-  const doctrines: Partial<Record<LineId, UpgradeId>> = {};
+  const doctrines: Partial<Record<BattleLineId, UpgradeId>> = {};
   if (mode === 'lines' && p.doctrines && typeof p.doctrines === 'object') {
     const raw = p.doctrines as Record<string, unknown>;
-    for (const line of LINE_ORDER) {
+    for (const line of lines) {
       const v = raw[line];
-      if (isUpgrade(v) && (LINES[line].fork[0] === v || LINES[line].fork[1] === v)) doctrines[line] = v;
+      if (isUpgrade(v) && (BATTLE_LINES[line].fork[0] === v || BATTLE_LINES[line].fork[1] === v)) doctrines[line] = v;
     }
   }
   // Allowed in this mode: classic ids only in 'classic'; in 'lines', a branch only when it is its line's doctrine.
   const allowed = (id: UpgradeId): boolean => {
     if (mode === 'classic') return isClassicUpgrade(id);
-    const pos = UPGRADE_LINE[id];
+    const pos = /* round7:fortification */ upgradeLineOf(id);
     if (!pos) return false; // Countermeasures: classic only.
     const { line, mark } = pos;
+    if (!lines.includes(line)) return false; // round7:fortification: a line this battle does not offer.
     return mark !== 3 || doctrines[line] === id;
   };
   if (p.upgrades !== undefined) {

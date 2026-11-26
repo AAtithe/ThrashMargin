@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, Faction, FormationShape, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BattleLineId, BuildingKind, Category, Difficulty, Faction, FormationShape, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -96,6 +96,10 @@ export interface Unit {
   drop?: true;
   /** Infantry only: the Troop Carrier it is walking to, to climb in when it is close. */
   boarding?: number;
+  // round7:structures begin.
+  /** Infantry only: the Fortified Bunker it is walking to, to go in when it is close. */
+  entering?: number;
+  // round7:structures end.
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
   // round5:C end.
   // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).
@@ -175,6 +179,21 @@ export interface Building {
   // round6:C end.
   /** Supply lines: what a cut-off Refinery (credits) or Fuel Well (fuel) holds on site. Absent: nothing. */
   held?: number;
+  // round7:structures begin. Structure upgrades and strategic structures: optional Building fields.
+  /** Structure upgrades: the level reached, 2 or more (STRUCTURE_LEVELS). Absent: level 1. */
+  level?: number;
+  /**
+   * Structure upgrades: the work toward the next level, already paid for (credits, and alloys with
+   * industry), refunded in full if cancelled. Ticks of work done. Absent: none under way.
+   */
+  upgrade?: { progress: number; credits: number; alloys?: number };
+  /** A Fortified Bunker: the infantry inside, oldest first, each as it was when it went in. Absent: empty. */
+  garrison?: Unit[];
+  /** A Decoy: the structure kind enemies see. Absent on every other structure. */
+  disguise?: BuildingKind;
+  /** A Supply Cache: the side taking it over and its progress from 0 to 1. Absent: nobody is. */
+  capture?: { by: Owner; progress: number };
+  // round7:structures end.
   /** Advanced production: a Quarters that could not eat at its last meal (houses half). Absent: fed. */
   hungry?: boolean;
 }
@@ -247,7 +266,7 @@ export interface PlayerState {
   generalLostAt?: number;
   // round6:C end.
   /** Lines battles: the branch each line is committed to. Absent: none chosen. Permanent. */
-  doctrines?: Partial<Record<LineId, UpgradeId>>;
+  doctrines?: Partial<Record</* round7:fortification */ BattleLineId, UpgradeId>>;
   /** Lines battles: the loadout per vehicle kind. Absent or missing kind: no modules. */
   loadouts?: Partial<Record<UnitKind, ModuleId[]>>;
   /** Industry (setup.industry): fuel and alloys in store. Absent on every other battle. */
@@ -305,6 +324,10 @@ export interface Effect {
     // round6:A end.
     // round6:C begin. Generals: its effect kinds (the aura, for instance).
     // round6:C end.
+    // round7:fortification begin. A Point Defence shot at a projectile: (x, y) the point in the air,
+    // (x2, y2) the emplacement; size 1 brought it down, 0 missed.
+    | 'intercept'
+    // round7:fortification end.
     ;
   x: number;
   y: number;
@@ -352,6 +375,15 @@ export interface AiMemory {
   nextAirStrike?: number;
   /** Paced research (round 6): credits the commander is saving for its next research, or absent. */
   researchFor?: number;
+  // round7:fortification begin. Indirect fire on its structures (fortify.ts notePressure): blasts from
+  // ground guns, and from the air or a support power, counted while the Fortification line is in play;
+  // and the tick and place of the last. Absent: none yet, and always absent with the line off.
+  shellGround?: number;
+  shellAir?: number;
+  shellTick?: number;
+  shellX?: number;
+  shellY?: number;
+  // round7:fortification end.
   /** The tick before which no new airlift sets out. */
   nextAirlift?: number;
   /**
@@ -432,7 +464,62 @@ export interface AiMemory {
   // round6:C end.
   // round6:D begin. Formations and squads: optional AiMemory fields (its wave's squad).
   // round6:D end.
+  // round7:structures begin. Strategic structures: optional AiMemory fields (aiStructures.ts).
+  /** The last tick enemy artillery was seen within reach of home: the Bunker is manned until it has been quiet a while. */
+  pressureAt?: number;
+  // round7:structures end.
+  // round7:adaptive begin. The adaptive commander (aiAdapt.ts, fireline-round7-adaptive.md): what it
+  // has seen of its enemies and the plan it follows. Absent: the commander has not adapted (the
+  // setup's `adaptive` is off, Easy, a mission, or a save from before round 7).
+  adapt?: AdaptMemory;
+  // round7:adaptive end.
 }
+
+// round7:adaptive begin. The adaptive commander's memory (aiAdapt.ts).
+/** The strategic plan an adaptive commander follows. */
+export type AdaptPlan = 'direct' | 'flank' | 'raid' | 'expand' | 'siege';
+/** An enemy unit the commander has seen: id, owner, composition class (ADAPT_CLASSES), worth in credits, tick last seen, where. */
+export interface AdaptSighting {
+  id: number;
+  o: number;
+  c: number;
+  v: number;
+  t: number;
+  x: number;
+  y: number;
+}
+/** An enemy structure the commander has seen: id, owner, kind, tick last seen, its centre. */
+export interface AdaptSite {
+  id: number;
+  o: number;
+  k: string;
+  t: number;
+  x: number;
+  y: number;
+}
+export interface AdaptMemory {
+  /** Tick of the last look round (every ADAPT_SAMPLE ticks). */
+  at: number;
+  /** Enemy units seen, newest sighting kept per unit; they fade with age and are forgotten when old. */
+  seen: AdaptSighting[];
+  /** Enemy structures seen. */
+  sites: AdaptSite[];
+  /** The composition it is answering, per class (ADAPT_CLASSES), moved gradually toward what it has seen. */
+  lean: number[];
+  plan: AdaptPlan;
+  /** Tick the plan last changed. */
+  planAt: number;
+  /** The second staging point for a flank (tile centre), worked out when the plan turns to it; null for none. */
+  flank: [number, number] | null;
+  /** Where its recent waves were broken: x, y, tick; oldest first, at most four. */
+  breaks: [number, number, number][];
+  /** The wave's phase at the last decision, and where its middle was while it attacked. */
+  phase: number;
+  waveAt: [number, number];
+  /** The last change it let side 0 read in the log, so the same news is never repeated. */
+  told: string;
+}
+// round7:adaptive end.
 
 export interface GameState {
   version: 1;
@@ -519,6 +606,13 @@ export interface GameState {
   blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
+  // round7:fortification begin.
+  /**
+   * Counter-battery: firing positions revealed to a side's team until a tick: [x, y, radius, until,
+   * side, shooter] (shooter 0 for a support power). Absent unless the Fortification line is in play.
+   */
+  reveals?: [number, number, number, number, number, number][];
+  // round7:fortification end.
 
   // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
   /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
@@ -536,7 +630,64 @@ export interface GameState {
   // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
   /** A battle generated from the planet war (fireline-planet-design.md, section 14). */
   planet?: PlanetBattle;
+
+  // round7:review begin. The after-action review (fireline-round7-review.md): what the battle recorded.
+  /**
+   * Samples of every side every HISTORY_SAMPLE_TICKS and the battle's key events (src/sim/history.ts).
+   * Created for every new battle; absent on saves from before it, which never start one. Read by
+   * nothing in the battle itself: recording never changes play.
+   */
+  history?: BattleHistory;
+  // round7:review end.
 }
+
+// round7:review begin. The after-action review: the recorded history, compact (src/sim/history.ts).
+/**
+ * Each series is a string of small integers (history.ts, encodeInts): income in tens of credits, other money in fifties,
+ * counts as they are, ore control in thousandths. Read it through decodeHistory, never directly.
+ */
+export interface BattleHistory {
+  v: 1;
+  /** Ticks between samples. */
+  every: number;
+  /** Samples taken, at every, 2 * every, ... */
+  n: number;
+  /**
+   * Per side, per stored column (history.ts, COLUMNS: credits, income, army, structures, losses and
+   * kills packed together, power made, power used, ore): the encoded series.
+   */
+  s: string[][];
+  /** Per side, per field of HISTORY_FIELDS: the last value stored (delta-encoded fields are stored against it). */
+  last: number[][];
+  /** Events, comma-separated, each "tick in base 36.side code argument" (history.ts, HistoryEvent). */
+  ev: string;
+  /** The kind names events refer to, by index: a dictionary built as the battle goes. */
+  dict: string[];
+  /** The tick the first event was left out to keep the record small (history.ts, EVENTS_SOFT). Absent: none was. */
+  capped?: number;
+  /**
+   * Per side, running tallies since the last sample: [harvested at the last sample, other income,
+   * lost by category (5), killed by category (5)]. Categories in HISTORY_CATS order.
+   */
+  acc: number[][];
+  /** Per side, the unit kinds lost since the last sample, and what killed them: [victims, killers]. */
+  win: [Record<string, number>, Record<string, number>][];
+  /**
+   * What has been seen, so new things are told apart: upgrades finished per side, each side's power
+   * cooldowns, site owners, structure kinds built per side, and the tick of the last structure scan.
+   * Absent until the first tick recorded (taken then, so a battle built in steps starts clean).
+   */
+  seen?: {
+    up: number[];
+    pw: Record<string, number>[];
+    site: (number | null)[];
+    kinds: string[][];
+    scan: number;
+    /** Per site, a bit for each side that has held it: only a side's first capture of a site is an event. */
+    held?: number[];
+  };
+}
+// round7:review end.
 
 /** What a planet battle adds to a GameState. Every field is read only when `s.planet` is set. */
 export interface PlanetBattle {
@@ -556,6 +707,12 @@ export interface PlanetBattle {
    * in a skirmish (syncSkirmishPowers leaves them be). Absent: none.
    */
   perkPowers?: SupportPower[];
+  // round7:planet begin. Battle rules 3 (fireline-round7-planet.md): the war's links into the battle.
+  /** Support powers from the war's neighbouring regions, by seat: kept without their structure; `uses` absent: unlimited. */
+  support?: { seat: Owner; power: SupportPower; uses?: number }[];
+  /** Reinforcement waves still to arrive: the seat, the tick, and the garrison's unit kinds. */
+  reinforce?: { seat: Owner; at: number; units: UnitKind[] }[];
+  // round7:planet end
 }
 
 /**
@@ -674,6 +831,8 @@ export interface MissionSpec {
   tech: (BuildingKind | UnitKind)[];
   /** Research mode for this mission. Always 'classic': missions never use development lines. */
   research: 'classic';
+  // round7:fortification: stated off by every campaign mission (the line needs development lines).
+  fortification?: false;
   powers: SupportPower[];
   objectives: ObjectiveSpec[];
   /** Optional objectives: each one done earns a star (the mission itself earns the first). */
@@ -783,7 +942,7 @@ export type GameAction =
   | { type: 'power'; power: SupportPower; x: number; y: number }
   | { type: 'research'; upgrade: UpgradeId }
   | { type: 'cancelResearch' }
-  | { type: 'doctrine'; line: LineId; branch: UpgradeId }
+  | { type: 'doctrine'; line: /* round7:fortification */ BattleLineId; branch: UpgradeId }
   | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] }
   // round5:C begin. Engineering vehicles: deploying a Forward Base truck, packing up a Field Yard.
   | { type: 'deploy'; id: number }
@@ -797,4 +956,16 @@ export type GameAction =
   // 'none' takes the units out of their squads, leaving their orders as they are.
   | { type: 'formation'; ids: number[]; shape: FormationShape | 'none' }
   // round6:D end.
+  // round7:structures begin. Structure upgrades and strategic structures (structures.ts).
+  /** Starts the work toward a structure's next level, paid at once. */
+  | { type: 'upgradeStructure'; id: number }
+  /** Stops it, refunded in full. */
+  | { type: 'cancelUpgrade'; id: number }
+  /** Infantry walk to a Fortified Bunker and go in. */
+  | { type: 'garrison'; ids: number[]; bunker: number }
+  /** Everyone inside a Bunker comes out. */
+  | { type: 'ungarrison'; id: number }
+  /** What a Decoy looks like to enemies. */
+  | { type: 'disguise'; id: number; as: BuildingKind }
+  // round7:structures end.
   ;

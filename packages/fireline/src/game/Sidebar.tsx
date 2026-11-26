@@ -79,6 +79,14 @@ import { disbandQuestion, isSupport, selectionActions, type Selection } from './
 import { canDisband } from '../sim/commands';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralNote } from '../components/Generals';
+// round7:fortification. The Fortification line: the sixth line, structures' full health, Point Defence.
+import { BATTLE_LINES, POINT_DEFENCE_CHANCE, POINT_DEFENCE_COOLDOWN, POINT_DEFENCE_RADIUS, upgradeLineOf, type BattleLineId } from '../sim/rules';
+import { linesFor, structureMaxHp } from '../sim/fortify';
+// round7:structures begin.
+import { IntelPanel, StructureNotes } from './StructurePanel';
+import { structureStatRows } from './structureStats';
+import { apparentHp, apparentKind, apparentSpecOf } from '../sim/structures';
+// round7:structures end.
 
 /** A tab of the build window: a build list, or Research once a Research Lab stands. */
 export type Tab = Category | 'research';
@@ -301,6 +309,15 @@ export function statsOf(
   if (kind === 'shipyard')
     rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
+  // round7:fortification begin.
+  if (kind === 'pointdefence') {
+    rows.push({
+      label: 'Intercepts',
+      value: `Shells, Missile Carrier missiles, bombs and the missile strike landing within ${POINT_DEFENCE_RADIUS} tiles: one shot every ${secs(POINT_DEFENCE_COOLDOWN)}, ${Math.round(POINT_DEFENCE_CHANCE * 100)}% to bring it down`,
+    });
+    rows.push({ label: 'Note', value: 'Never fires at units. Needs the Point Defence doctrine researched (Fortification line).' });
+  }
+  // round7:fortification end.
   if (kind === 'barracks' || kind === 'factory' || kind === 'helipad' || kind === 'shipyard')
     rows.push({ label: 'Each one', value: `adds a production line, building alongside the others, and ${MAX_QUEUE} queue places` });
   if (kind === 'researchlab')
@@ -314,6 +331,9 @@ export function statsOf(
   if (kind === 'repairbay')
     rows.push({ label: 'Repairs', value: `Vehicles within ${REPAIR_BAY_RANGE} tile: ${REPAIR_BAY_HP} hp every ${secs(REPAIR_BAY_TICKS)}, paid as it goes` });
   if (b?.wall) rows.push({ label: 'Note', value: 'Blocks movement. Does not extend the build area or count as a structure.' });
+  // round7:structures begin. The four strategic structures, and the levels a structure can rise to.
+  rows.push(...structureStatRows(kind, state));
+  // round7:structures end.
   const grants = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).find(([, k]) => k === kind);
   if (grants) rows.push({ label: 'Grants', value: `${POWERS[grants[0]].name} (skirmish, advanced tech)` });
   if (spec.requires.length) rows.push({ label: 'Needs', value: spec.requires.map(r => BUILDINGS[r].name).join(', ') });
@@ -534,6 +554,8 @@ export function BuildPanel({
 
       {/* Industry (2026-11-21): fuel and alloys in store, against what this side may hold. */}
       {industryOn(state) && <IndustryGauge state={state} />}
+      {/* round7:structures: every enemy's research and production, while an Intelligence Centre of yours works. */}
+      <IntelPanel state={state} />
 
       {!compact && (
         <section className="fl-d-block" aria-label="Radar">
@@ -718,7 +740,9 @@ export function BuildButton({
   const head = tab === 'building' ? q[0] : q.slice(0, lineCount(state, 0, tab)).filter(i => i.kind === kind).sort((a, b) => b.progress - a.progress)[0];
   const isHead = !!head && head.kind === kind;
   const progress = isHead ? head.progress / buildTicksFor(state, 0, kind) : 0;
-  const open = unlocked(state, 0, kind);
+  // round7:fortification: Point Defence waits for its doctrine as well as its structures.
+  const doctrineLocked = kind === 'pointdefence' && !hasUpgrade(state, 0, 'pointdef');
+  const open = unlocked(state, 0, kind) && !doctrineLocked;
   // Vehicles carry the loadout's modules in their price (development lines only).
   const cost = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
@@ -833,6 +857,12 @@ export function BuildButton({
           Needs {missing.map(r => BUILDINGS[r].name).join(', ')}
         </span>
       )}
+      {/* round7:fortification */}
+      {missing.length === 0 && doctrineLocked && (
+        <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
+          Needs Point Defence research
+        </span>
+      )}
     </div>
   );
 }
@@ -853,7 +883,7 @@ export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState;
         {busy && lowPower && <span className="fl-research-slow">half speed: power low</span>}
       </h3>
       {lines
-        ? LINE_ORDER.map(line => <LineRow key={line} state={state} line={line} dispatch={dispatch} />)
+        ? /* round7:fortification */ linesFor(state).map(line => <LineRow key={line} state={state} line={line} dispatch={dispatch} />)
         : UPGRADE_ORDER.map(id => {
         const spec = UPGRADES[id];
         const done = hasUpgrade(state, 0, id);
@@ -908,10 +938,10 @@ function nodeState(state: GameState, id: UpgradeId): NodeState {
   const p = state.players[0];
   if (hasUpgrade(state, 0, id)) return 'done';
   if (p.research?.id === id) return 'running';
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   if (mark === 3) {
     const chosen = doctrineOf(state, 0, line);
-    if (!chosen) return hasUpgrade(state, 0, LINES[line].marks[1]) ? 'choose' : 'blocked';
+    if (!chosen) return hasUpgrade(state, 0, BATTLE_LINES[line].marks[1]) ? 'choose' : 'blocked';
     if (chosen !== id) return 'closed';
   }
   return researchProblem(state, 0, id) ? 'blocked' : 'ready';
@@ -920,7 +950,7 @@ function nodeState(state: GameState, id: UpgradeId): NodeState {
 /** What the caption line says about one node: its effect, price and time, and what stands in the way. */
 function nodeCaption(state: GameState, id: UpgradeId): string {
   const spec = UPGRADES[id];
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   const head = `${spec.name}, ${MARK_NAME[mark]}: ${spec.blurb}`;
   const st = nodeState(state, id);
   if (st === 'done') return `${head} Done.`;
@@ -934,8 +964,8 @@ function nodeCaption(state: GameState, id: UpgradeId): string {
 }
 
 /** The node the caption describes when nothing is pointed at: the one under way, or the next step. */
-function defaultNode(state: GameState, line: LineId): UpgradeId | null {
-  const l = LINES[line];
+function defaultNode(state: GameState, line: /* round7:fortification */ BattleLineId): UpgradeId | null {
+  const l = BATTLE_LINES[line];
   const ids = [...l.marks, ...l.fork];
   const running = ids.find(id => state.players[0].research?.id === id);
   if (running) return running;
@@ -949,9 +979,9 @@ function defaultNode(state: GameState, line: LineId): UpgradeId | null {
  * One development line: Mk I, Mk II, then the doctrine fork. The caption under the nodes describes
  * whichever node is pointed at or focused, and otherwise the next step.
  */
-function LineRow({ state, line, dispatch }: { state: GameState; line: LineId; dispatch: (a: GameAction) => boolean }) {
+function LineRow({ state, line, dispatch }: { state: GameState; line: /* round7:fortification */ BattleLineId; dispatch: (a: GameAction) => boolean }) {
   const [hover, setHover] = useState<UpgradeId | null>(null);
-  const l = LINES[line];
+  const l = BATTLE_LINES[line];
   const chosen = doctrineOf(state, 0, line);
   const shown = hover ?? defaultNode(state, line);
   const node = (id: UpgradeId) => (
@@ -993,7 +1023,7 @@ function LineNode({
   onPoint: (id: UpgradeId | null) => void;
 }) {
   const spec = UPGRADES[id];
-  const { line, mark } = UPGRADE_LINE[id]!;
+  const { line, mark } = /* round7:fortification */ upgradeLineOf(id)!;
   const st = nodeState(state, id);
   const busy = state.players[0].research;
   const problem = st === 'ready' || st === 'blocked' ? researchProblem(state, 0, id) : null;
@@ -1174,6 +1204,99 @@ export function BuildTipFooter({
   );
 }
 
+/** For the first three minutes of a battle the Orders card opens itself; after that it stays folded. */
+const LEGEND_OPEN_TICKS = 3 * 60 * TICKS_PER_SECOND;
+const LEGEND_KEY = 'fl_orders_open';
+
+/**
+ * The key bindings, folded into one line once the player has had time to learn them. Opening or
+ * closing it is remembered on this device (a convenience only: the default is fine without it).
+ */
+function OrdersLegend({ early }: { early: boolean }) {
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(LEGEND_KEY);
+      if (v === '1' || v === '0') return v === '1';
+    } catch {
+      // Storage blocked: fall back to the battle's age.
+    }
+    return early;
+  });
+  return (
+    <div className="fl-d-legend-box">
+      <p className="fl-d-legend-prompt">Nothing selected: click a unit or drag a box.</p>
+      <details
+        className="fl-d-legend-wrap"
+        open={open}
+        onToggle={e => {
+          const now = (e.currentTarget as HTMLDetailsElement).open;
+          if (now === open) return;
+          setOpen(now);
+          try {
+            localStorage.setItem(LEGEND_KEY, now ? '1' : '0');
+          } catch {
+            // Not remembered; nothing else changes.
+          }
+        }}
+      >
+        <summary>Key bindings</summary>
+          <dl className="fl-d-legend" aria-label="Orders">
+            <div>
+              <dt>Click, drag a box</dt>
+              <dd>Select</dd>
+            </div>
+            <div>
+              <dt>Right-click</dt>
+              <dd>Move or attack</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>A</kbd>
+              </dt>
+              <dd>Attack-move</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>S</kbd>
+              </dt>
+              <dd>Stop</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
+              </dt>
+              <dd>Make a group</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>.</kbd>
+              </dt>
+              <dd>Formation: line, column, wedge, box</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
+              </dt>
+              <dd>Build the item with that letter</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Tab</kbd>
+              </dt>
+              <dd>Next build list</dd>
+            </div>
+            <div>
+              <dt>
+                <kbd>Space</kbd>
+              </dt>
+              <dd>Jump to the last alert</dd>
+            </div>
+          </dl>
+      </details>
+    </div>
+  );
+}
+
 // round6:D. Formations and squads: the formation row and the touch group chips (fireline-round6-design.md).
 import { FormationControls } from './Formations';
 
@@ -1204,77 +1327,29 @@ export function SelectionPanel({
         </p>
       );
     }
-    return (
-      <dl className="fl-d-legend" aria-label="Orders">
-        <div>
-          <dt>Click, drag a box</dt>
-          <dd>Select</dd>
-        </div>
-        <div>
-          <dt>Right-click</dt>
-          <dd>Move or attack</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>A</kbd>
-          </dt>
-          <dd>Attack-move</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>S</kbd>
-          </dt>
-          <dd>Stop</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
-          </dt>
-          <dd>Make a group</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>.</kbd>
-          </dt>
-          <dd>Formation: line, column, wedge, box</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
-          </dt>
-          <dd>Build the item with that letter</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Tab</kbd>
-          </dt>
-          <dd>Next build list</dd>
-        </div>
-        <div>
-          <dt>
-            <kbd>Space</kbd>
-          </dt>
-          <dd>Jump to the last alert</dd>
-        </div>
-      </dl>
-    );
+    return <OrdersLegend early={state.tick < LEGEND_OPEN_TICKS} />;
   }
   if (building) {
-    const spec = buildingSpecOf(state, building);
+    // round7:structures: an enemy Decoy shows as what it passes for (apparentSpecOf; the spec itself otherwise).
+    const spec = building.owner === 0 ? buildingSpecOf(state, building) : apparentSpecOf(state, building, 0);
     const mine = building.owner === 0;
-    const refund = Math.floor((spec.cost * 0.5 * (building.hp / spec.hp)) / 10) * 10;
+    // round7:fortification: full health is Reinforced concrete's where the side has it.
+    const fullHp = structureMaxHp(state, building);
+    const refund = Math.floor((spec.cost * 0.5 * (building.hp / fullHp)) / 10) * 10;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Portrait kind={building.kind} enemy={!mine} repairing={building.repairing} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(building.kind)}>
+          <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(mine ? building.kind : apparentKind(state, building, 0))}>
             {mine ? '' : 'Enemy '}
             {spec.name}
           </strong>
           <span style={{ fontFamily: FONT.mono, fontSize: '0.72rem', color: UI.textSoft }}>
-            {Math.ceil(building.hp)}/{spec.hp}
+            {/* round7:structures + fortification: an enemy Decoy shows its disguise's health; full health is concrete's and the level's. */}
+            {Math.ceil(mine ? building.hp : apparentHp(state, building, 0))}/{mine || building.kind !== 'decoy' ? fullHp : spec.hp}
           </span>
         </div>
-        <Bar frac={building.hp / spec.hp} />
+        <Bar frac={(mine ? building.hp : apparentHp(state, building, 0)) / (mine || building.kind !== 'decoy' ? fullHp : spec.hp)} />
         {tipCard}
         {mine && (
           <>
@@ -1283,13 +1358,16 @@ export function SelectionPanel({
               {(building.kind === 'barracks' || building.kind === 'factory') && (touch ? ' Tap the map to set where new units gather.' : ' Right-click the map to set where new units gather.')}
             </p>
             {supplyOn(state) && isProducer(building.kind) && <SupplyNote state={state} building={building} />}
+            {territoryOn(state) && CREW[building.kind] !== undefined && <CrewNote state={state} building={building} />}
+            {/* round7:structures: its level and the next, a Bunker's garrison, a Cache being taken, a Decoy's look. */}
+            <StructureNotes state={state} building={building} dispatch={dispatch} touch={touch} />
             {territoryOn(state) && (CREW[building.kind] !== undefined || techNeed(state, building.kind) > 0) && <CrewNote state={state} building={building} />}
             {productionOn(state) && building.kind === 'trainingcentre' && <ProjectsPanel state={state} dispatch={dispatch} />}
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 className="fl-d-sbtn"
                 aria-pressed={building.repairing}
-                disabled={building.hp >= spec.hp && !building.repairing}
+                disabled={building.hp >= fullHp && !building.repairing}
                 onClick={() => dispatch({ type: 'repair', id: building.id })}
                 title="Repair (G), paid for as the work is done"
               >
@@ -1319,6 +1397,7 @@ export function SelectionPanel({
   const one = units.length === 1 ? units[0] : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {one && <Portrait kind={one.kind} enemy={!mine} rank={one.hero ? 'hero' : one.vet > 0 ? one.vet : 0} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {[...counts].map(([kind, n]) =>
           mine && onSelect && counts.size > 1 ? (
@@ -1357,13 +1436,14 @@ export function SelectionPanel({
           ),
         )}
       </div>
+      <Bar frac={hp / Math.max(1, max)} />
+      {mine && onSelect && units.length >= 2 && units.length <= GRID_MAX && <UnitGrid units={units} counts={counts} onSelect={onSelect} touch={touch} />}
       {mine && onSelect && counts.size > 1 && (
         <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
           {touch ? 'Tap a kind to take it out of the selection.' : 'Click a kind to take it out of the selection; Ctrl+click to keep only that kind.'}
           {units.some(isSupport) && units.some(u => !isSupport(u)) ? ' On an attack, Medics and Repair Trucks hold back behind the fighting.' : ''}
         </span>
       )}
-      <Bar frac={hp / Math.max(1, max)} />
       {tipCard}
       {one && one.kind === 'hauler' && mine && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
@@ -1590,6 +1670,7 @@ export function ForcesPanel({
             title={`Select all ${units.length} ${UNITS[k].name} on the map (Shift adds them). Click again to go to them.`}
             onClick={e => pick(units, e.shiftKey)}
           >
+            <img className="fl-d-chip-pic" src={iconFor(k)} alt="" width={24} height={16} draggable={false} />
             {units.length > 1 ? `${units.length}× ` : ''}
             {UNITS[k].name}
           </button>
@@ -1614,6 +1695,72 @@ const STANCE_BUTTONS: ['aggressive' | 'guard' | 'hold', string, string][] = [
   ['guard', 'Guard', 'Fire at enemies in range and answer fire from close by (default)'],
   ['hold', 'Hold fire', 'Never fire or chase unless ordered to attack'],
 ];
+
+/** The most units the selection shows one by one; a bigger selection keeps to the kind chips. */
+const GRID_MAX = 24;
+
+/** good, warn or bad, by the same thresholds as Bar. */
+function hpTone(f: number): 'good' | 'warn' | 'bad' {
+  return f > 0.6 ? 'good' : f > 0.3 ? 'warn' : 'bad';
+}
+
+/**
+ * A picture of the one thing selected (the build menu's own cached art), with a rank badge for a
+ * hero or a veteran, and a sweep across it while a building is under repair.
+ */
+function Portrait({ kind, enemy, rank = 0, repairing = false }: { kind: BuildingKind | UnitKind; enemy: boolean; rank?: number | 'hero'; repairing?: boolean }) {
+  return (
+    <div className="fl-sel-hero" data-enemy={enemy ? '1' : '0'} data-repairing={repairing ? '1' : undefined} aria-hidden="true">
+      <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+      {rank !== 0 && <span className="fl-sel-rank">{rank === 'hero' ? '★' : '›'.repeat(rank)}</span>}
+    </div>
+  );
+}
+
+/**
+ * Every unit of a mixed selection as a small picture with its own health bar, grouped by kind, so a
+ * wounded tank stands out from a healthy one. Click: that unit alone. Ctrl or Cmd: that kind alone.
+ * Shift: take that one unit out.
+ */
+function UnitGrid({ units, counts, onSelect, touch }: { units: Unit[]; counts: Map<UnitKind, number>; onSelect: (ids: number[]) => void; touch: boolean }) {
+  const order = [...counts.keys()];
+  const sorted = [...units].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.id - b.id);
+  return (
+    <div className="fl-sel-grid" role="group" aria-label="Selected units" data-testid="selection-grid">
+      {sorted.map(u => {
+        const f = Math.max(0, Math.min(1, u.hp / Math.max(1, maxHpOf(u))));
+        const name = UNITS[u.kind].name;
+        const rank = u.hero ? '★' : u.vet > 0 ? '›'.repeat(u.vet) : '';
+        return (
+          <button
+            key={u.id}
+            type="button"
+            className="fl-sel-cell"
+            data-tone={hpTone(f)}
+            data-kind={u.kind}
+            title={`${name}, ${Math.ceil(u.hp)} of ${maxHpOf(u)} health${touch ? '' : '. Click: this one alone. Ctrl+click: every ' + name + '. Shift+click: take it out.'}`}
+            aria-label={`${name}, ${Math.round(f * 100)}% health`}
+            onClick={e =>
+              onSelect(
+                e.ctrlKey || e.metaKey
+                  ? units.filter(x => x.kind === u.kind).map(x => x.id)
+                  : e.shiftKey
+                    ? units.filter(x => x.id !== u.id).map(x => x.id)
+                    : [u.id],
+              )
+            }
+          >
+            <img src={iconFor(u.kind)} alt="" width={48} height={32} draggable={false} />
+            {rank && <span className="fl-sel-rank">{rank}</span>}
+            <span className="fl-sel-hp" aria-hidden="true">
+              <span style={{ width: `${Math.round(f * 100)}%` }} />
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Health, as a segmented gauge: green, amber under 60%, red under 30%. */
 function Bar({ frac }: { frac: number }) {

@@ -65,6 +65,7 @@ import { seedFromString, stream } from '../src/sim/rng';
 import { MODULES, UNITS, type HeroKind } from '../src/sim/rules';
 import { createInitialState, migrateState } from '../src/sim/state';
 import { reportProblem as w2ReportProblem, sections as battleSections } from './drive-planet-battle';
+import { linkSections } from './drive-planet-links';
 
 // ---- The counter ----------------------------------------------------------------------------------
 
@@ -1776,6 +1777,7 @@ timed('Whole wars: Short, Long and Very long, every turn checked; replay', whole
 timed('Battles from the wars; a save with a battle in progress', warBattleTests);
 timed('Saves: junk repaired, the v1 fixture, other save kinds', saveTests);
 for (const [name, fn] of battleSections) timed(name, () => fn(ok));
+for (const [name, fn] of linkSections) timed(name, () => fn(ok));
 
 console.log(`\n${passed} assertions passed, ${failed} failed, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 if (failed) process.exit(1);

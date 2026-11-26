@@ -234,6 +234,8 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
     tech: [...basics],
     // Every mission states its research mode; engagements, like the story missions, use classic research.
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: [],
     // An outpost is cleared to the last rifleman; a base is broken when its Command Yard and its
     // factories are down (it rebuilds everything else, and hunting its last harvester is no battle).

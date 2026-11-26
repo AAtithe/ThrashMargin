@@ -6,6 +6,7 @@ import { handleCors } from '../_lib/cors';
 import { queryParam } from '../_lib/query';
 import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState, normaliseSetup } from '../../src/sim/state';
+import { packState } from '../../src/sim/pack';
 import { DEFAULT_SETUP, MAP_TYPES } from '../../src/sim/rules';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../../src/campaign/save';
 import { isPlanetSave, migratePlanetSave, newPlanetSave, PLANET_SAVE_MAX_BYTES, planetSaveStatus, planetSaveTurn, readPreset } from '../../src/planet/save';
@@ -128,11 +129,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         setup,
       });
       try {
+        // A vast battle is stored with its per-tile fields packed, as the client saves it (pack.ts).
+        const packed = packState(state);
         const created = await createGame(db, {
-          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: 0, state, config: {},
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: 0, state: packed, config: {},
         });
         if (!created) return sendGameLimit(res);
-        return res.status(201).json({ gameId: newId, state, version: 0 });
+        return res.status(201).json({ gameId: newId, state: packed, version: 0 });
       } catch (err) {
         console.error('create fireline game error', err);
         return res.status(500).json({ message: 'Server error' });
@@ -164,7 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Battles of three or four sides: how many, and whether they were played as teams.
           ...(Number(r.sides) === 3 || Number(r.sides) === 4 ? { sides: Number(r.sides), mode: r.mode === 'teams' ? 'teams' : 'ffa' } : {}),
           // Round 5: a battle on a larger map says so.
-          ...(r.size === 'large' || r.size === 'huge' ? { size: r.size } : {}),
+          ...(r.size === 'large' || r.size === 'huge' || r.size === 'vast' ? { size: r.size } : {}),
         }));
         return res.json({ saves });
       } catch (err) {

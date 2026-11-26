@@ -68,6 +68,8 @@ import * as sides from '../src/sim/sides';
 import { sections as act2Sections } from './drive-act2';
 // round5:B. Larger maps and long games: its import (scripts/drive-maps.ts) goes on the line below.
 import { sections as mapsSections } from './drive-maps';
+// Vast maps (2026-11-22): ravines, ruined cities, packed saves.
+import { sections as vastSections } from './drive-vast';
 // round5:C. Engineering vehicles: its import (scripts/drive-engineering.ts) goes on the line below.
 import { sections as engineeringSections } from './drive-engineering';
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
@@ -80,9 +82,19 @@ import { sections as heroesSections } from './drive-heroes';
 import { sections as generalsSections } from './drive-generals';
 import { sections as industrySections } from './drive-industry';
 import { sections as territorySections } from './drive-territory';
+// round7:structures. Structure upgrades and strategic structures: its sections.
+import { sections as structuresSections } from './drive-structures';
 import { sections as productionSections } from './drive-production';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
+// round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
+import { sections as reviewSections } from './drive-review';
+// round7:review end.
+// round7:fortification. The Fortification line, counter-battery and Point Defence (scripts/drive-fortification.ts).
+import { sections as fortificationSections } from './drive-fortification';
+// round7:adaptive begin. The adaptive commander: its sections (scripts/drive-adaptive.ts).
+import { sections as adaptiveSections } from './drive-adaptive';
+// round7:adaptive end.
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -141,7 +153,7 @@ const CAMPAIGN_ONLY = args.includes('--campaign');
  * A battle's tick cap: 45000 (75 minutes) for every standard-size battle, as always; longer on the
  * larger maps of round 5, where battles run longer (72000 large, 108000 huge).
  */
-const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'vast' ? 162000 : setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 
 function invariants(s: GameState, label: string): void {
   const ids = new Set<number>();
@@ -2555,7 +2567,8 @@ function missileTests(): void {
 }
 
 function setupTests(): void {
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup is the default');
+  // round7:structures: the two structure toggles read absent as off, whatever the base.
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup is the default, bar the structure toggles');
   const junk = normaliseSetup({ map: 'moon' as never, tech: 'x' as never, ore: 'y' as never, credits: 999999 });
   ok(junk.map === DEFAULT_SETUP.map && junk.tech === DEFAULT_SETUP.tech && junk.ore === DEFAULT_SETUP.ore, 'unknown choices fall back to the default');
   ok(junk.credits === SETUP_CREDITS_MAX && normaliseSetup({ credits: 5 }).credits === SETUP_CREDITS_MIN, 'credits are clamped');
@@ -2786,6 +2799,7 @@ if (!CAMPAIGN_ONLY) {
     // round5:B. Larger maps and long games (fireline-round5-design.md): its sections, imported from
     // scripts/drive-maps.ts, go on the line below this comment.
     ...mapsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    ...vastSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round5:C. Engineering vehicles (fireline-round5-design.md): its sections, imported from
     // scripts/drive-engineering.ts, go on the line below this comment.
     ...engineeringSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
@@ -2805,6 +2819,18 @@ if (!CAMPAIGN_ONLY) {
     ...industrySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Territory and workforce (2026-11-21): its sections, from scripts/drive-territory.ts.
     ...territorySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
+    ...reviewSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:review end.
+    // round7:fortification begin. Its sections, from scripts/drive-fortification.ts.
+    ...fortificationSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:fortification end.
+    // round7:structures begin. Structure upgrades and strategic structures, from scripts/drive-structures.ts.
+    ...structuresSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:structures end.
+    // round7:adaptive begin. The adaptive commander: its sections, from scripts/drive-adaptive.ts.
+    ...adaptiveSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round7:adaptive end.
     // Advanced production (2026-11-22): its sections, from scripts/drive-production.ts.
     ...productionSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];

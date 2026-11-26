@@ -3203,11 +3203,16 @@ kbd {
   --pl-alliance: #2f7d34;
   --pl-trust-track: #dde2dd;
   --pl-trust-fill: #2f6fc4;
+  --pl-shore: rgba(244, 250, 250, 0.85);
+  --pl-relief: rgba(58, 46, 18, 0.2);
+  --pl-terrain: #3f3a2a;
+  --pl-shadow: rgba(20, 28, 24, 0.32);
+  --pl-research-done-bg: rgba(47, 125, 52, 0.08);
 }
 :root[data-theme="dark"] {
   --pl-sea: #16313d;
   --pl-sea-deep: #0d212a;
-  --pl-land-neutral: #3d4038;
+  --pl-land-neutral: #4a4a40;
   --pl-border: rgba(0, 0, 0, 0.45);
   --pl-border-strong: #a9b6b0;
   --pl-f0: #5b9cf0;
@@ -3230,6 +3235,11 @@ kbd {
   --pl-alliance: #6fbf73;
   --pl-trust-track: #1e262a;
   --pl-trust-fill: #5b9cf0;
+  --pl-shore: rgba(120, 178, 192, 0.55);
+  --pl-relief: rgba(0, 0, 0, 0.3);
+  --pl-terrain: #d8d3bc;
+  --pl-shadow: rgba(0, 0, 0, 0.55);
+  --pl-research-done-bg: rgba(111, 191, 115, 0.09);
 }
 .fl-pl-shell {
   min-height: 100vh;
@@ -3604,6 +3614,28 @@ kbd {
   display: flex;
   align-items: center;
 }
+/* round7:planet begin. Battle rules 3: what the war brings into a battle, and what it sends back. */
+.fl-pl-links {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--ui-rule);
+  border-left: 3px solid var(--ui-warn);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--ui-panel-raised);
+}
+.fl-pl-links[data-supply="cut"] {
+  border-left-color: var(--ui-bad);
+}
+.fl-pl-links[data-supply="depot"],
+.fl-debrief .fl-pl-links {
+  border-left-color: var(--ui-good);
+}
+.fl-pl-links .fl-eyebrow {
+  margin: 2px 0 0;
+}
+/* round7:planet end */
 .fl-pl-lines {
   display: flex;
   flex-direction: column;
@@ -3774,6 +3806,362 @@ kbd {
   .fl-pl-main {
     padding-left: 12px;
     padding-right: 12px;
+  }
+}
+
+/* planet polish */
+/* War for the Planet, presentation pass: the map column stays in view beside the long region
+   panel, a hover tag on the map, a legend with drawn keys, faction colour on cards, a two-part
+   odds bar, and the research lines as a compact tree with connectors and progress bars. Colours
+   are the --pl-* and --ui-* tokens; --fac is a faction token set inline as a var() string. */
+.fl-pl-mapcol {
+  min-width: 0;
+}
+@media (min-width: 761px) {
+  .fl-pl-mapcol {
+    position: sticky;
+    top: 12px;
+  }
+  /* A tall planet must not push its own legend below the window: the map letterboxes instead. */
+  .fl-pl-mapcol .fl-pl-canvas {
+    max-height: max(320px, calc(100vh - 190px));
+  }
+}
+.fl-pl-canvas {
+  box-shadow: 0 1px 3px var(--pl-shadow);
+}
+.fl-pl-hovertip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 4px;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  box-shadow: 0 2px 8px var(--pl-shadow);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.fl-pl-hovertip strong {
+  font-size: 0.8rem;
+}
+.fl-pl-hovertip span {
+  color: var(--ui-text-soft);
+}
+.fl-pl-legend {
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fl-pl-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fl-pl-legend-faction {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-pl-legend-faction[data-out] {
+  color: var(--ui-text-soft);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.fl-pl-legend-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fl-pl-key {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.fl-pl-key-target {
+  border: 2px dashed var(--pl-war);
+  border-radius: 50%;
+}
+.fl-pl-key-move {
+  border: 2px dotted var(--pl-select);
+  border-radius: 50%;
+}
+.fl-pl-key-sea {
+  width: 18px;
+  height: 0;
+  border-top: 2px dashed var(--pl-border-strong);
+}
+.fl-pl-key-cut {
+  border: 1px solid var(--pl-border-strong);
+  border-radius: 3px;
+  background: repeating-linear-gradient(135deg, var(--pl-cut) 0 2px, transparent 2px 6px), var(--pl-land-neutral);
+}
+.fl-pl-key-capital {
+  background: var(--pl-capital);
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.fl-pl-key-army {
+  width: 12px;
+  border-left: 2px solid var(--pl-border-strong);
+}
+.fl-pl-key-army::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 10px;
+  height: 8px;
+  background: var(--pl-f0);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.fl-pl-key-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+}
+.fl-pl-key-pips i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pl-name);
+}
+
+/* Faction identity: tinted swatches, a shield badge on faction cards, a colour band on cards. */
+.fl-pl-facname {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.fl-pl-swatch[data-faction],
+.fl-pl-legend-faction[style] .fl-pl-swatch {
+  border-color: var(--fac);
+  background: color-mix(in srgb, var(--fac) 20%, var(--pl-city));
+}
+.fl-pl-swatch[data-size="lg"] {
+  width: 26px;
+  height: 30px;
+  margin-right: 8px;
+  border-radius: 3px 3px 13px 13px;
+  border: 2px solid var(--pl-border-strong);
+  background: var(--fac, var(--pl-city));
+  color: var(--pl-halo);
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+.fl-pl-faction {
+  border-top: 4px solid var(--fac, var(--ui-rule));
+}
+.fl-pl-faction[data-out] {
+  border-top-color: var(--ui-rule);
+}
+.fl-pl-faction[data-out] .fl-pl-swatch[data-size="lg"] {
+  background: var(--pl-city);
+  color: var(--pl-label);
+}
+.fl-pl-faction-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fl-pl-faction-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.fl-pl-faction-head > :last-child {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.fl-pl-stance {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.fl-pl-faction .fl-pl-trust-bar {
+  max-width: none;
+  height: 8px;
+  border-radius: 4px;
+}
+.fl-pl-trust-bar > span {
+  border-radius: 4px;
+}
+.fl-pl-trust-bar[data-level="low"] > span {
+  background: var(--pl-war);
+}
+.fl-pl-trust-bar[data-level="mid"] > span {
+  background: var(--pl-ceasefire);
+}
+.fl-pl-trust-bar[data-level="high"] > span {
+  background: var(--pl-alliance);
+}
+.fl-pl-trust-mid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--ui-rule-strong);
+}
+.fl-pl-side[style] {
+  border-left: 4px solid var(--fac);
+}
+.fl-pl-side[data-team="0"] {
+  background: color-mix(in srgb, var(--pl-war) 7%, var(--ui-panel-raised));
+}
+.fl-pl-oddsline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.fl-pl-oddsbar {
+  position: relative;
+  display: inline-block;
+  width: 140px;
+  max-width: 100%;
+  height: 8px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--pl-trust-track);
+  overflow: hidden;
+}
+.fl-pl-oddsbar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--ui-warn);
+}
+.fl-pl-oddsbar[data-tone="good"] > span {
+  background: var(--ui-good);
+}
+.fl-pl-oddsbar[data-tone="bad"] > span {
+  background: var(--ui-bad);
+}
+
+/* Research: each line a row of Mk I, Mk II and the doctrine fork, joined by connectors. */
+.fl-pl-lines {
+  gap: 0;
+}
+.fl-pl-line {
+  grid-template-columns: 130px repeat(3, minmax(0, 1fr));
+  gap: 6px 14px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid var(--ui-rule);
+}
+.fl-pl-lines > .fl-pl-line:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.fl-pl-line > .fl-pl-line-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: start;
+  padding-top: 6px;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fl-pl-line-count {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  color: var(--ui-text-soft);
+}
+.fl-pl-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fl-pl-step::before {
+  content: "";
+  position: absolute;
+  left: -13px;
+  top: 18px;
+  width: 12px;
+  border-top: 2px solid var(--ui-research-rule);
+}
+.fl-pl-step[data-from-done]::before {
+  border-top-color: var(--ui-research-done);
+}
+.fl-pl-node[data-state="locked"] {
+  opacity: 1;
+  border-style: dashed;
+  background: transparent;
+  color: var(--ui-text-soft);
+}
+.fl-pl-node[data-state="done"] {
+  background: var(--pl-research-done-bg);
+}
+.fl-pl-node[data-state="current"] {
+  background: color-mix(in srgb, var(--ui-accent) 7%, var(--ui-panel));
+}
+.fl-pl-node-mark {
+  margin-right: 4px;
+  color: var(--ui-research-done);
+  font-weight: 700;
+}
+.fl-pl-node-cost {
+  font-variant-numeric: tabular-nums;
+}
+.fl-pl-progress {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--pl-trust-track);
+  overflow: hidden;
+}
+.fl-pl-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ui-accent);
+  transition: width 0.4s ease;
+}
+:root[data-motion="off"] .fl-pl-progress > span {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-pl-progress > span {
+    transition: none;
+  }
+}
+.fl-pl-loadouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .fl-pl-faction .fl-pl-input {
+    min-height: 40px;
+  }
+  .fl-pl-line {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .fl-pl-line > .fl-pl-line-name {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding-top: 0;
+  }
+  .fl-pl-step::before {
+    display: none;
   }
 }
 
@@ -4866,8 +5254,94 @@ kbd {
   min-height: 40px;
   font-size: 0.85rem;
 }
-.fl-d-top[data-touch="1"] .fl-d-range {
+/*
+ * The volume slider on a touch screen, in the header's full row and in the Menu alike: a 40px tall
+ * target with a 24px thumb a finger can find, on a 6px track whose filled part follows `--vol` (set
+ * inline from the volume). The browser's own slider kept its 16px thumb at any height, and in the
+ * Menu it was 110 by 16px. The thumb's centre runs from 12px to the width less 12px, so the fill
+ * meets it at every value. On the full row the slider is 72px wide (52 or 64 with a mouse), so the
+ * thumb still has 48px to travel. Muted, it is disabled and greys out. A mouse keeps the browser's
+ * slider, and the keyboard and the accessible name are the input's own, unchanged.
+ */
+.fl-d-top[data-touch="1"] .fl-d-range,
+.fl-d-sheet[data-touch="1"] .fl-d-range {
+  -webkit-appearance: none;
+  appearance: none;
   height: 40px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+.fl-d-top[data-touch="1"] .fl-d-range {
+  width: 72px;
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-webkit-slider-runnable-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--ui-accent) calc(12px + var(--vol, 0) * (100% - 24px)),
+    var(--ui-rule-strong) 0
+  );
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-webkit-slider-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-panel);
+  background: var(--ui-accent);
+  box-shadow: 0 1px 3px var(--ui-shadow);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-rule-strong);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-progress,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ui-accent);
+}
+.fl-d-top[data-touch="1"] .fl-d-range::-moz-range-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-panel);
+  background: var(--ui-accent);
+  box-shadow: 0 1px 3px var(--ui-shadow);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled {
+  cursor: default;
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-webkit-slider-runnable-track,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-webkit-slider-runnable-track {
+  background: var(--ui-rule);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-webkit-slider-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-webkit-slider-thumb {
+  background: var(--ui-rule-strong);
+  box-shadow: none;
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-moz-range-progress,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-moz-range-progress {
+  background: var(--ui-rule);
+}
+.fl-d-top[data-touch="1"] .fl-d-range:disabled::-moz-range-thumb,
+.fl-d-sheet[data-touch="1"] .fl-d-range:disabled::-moz-range-thumb {
+  background: var(--ui-rule-strong);
+  box-shadow: none;
 }
 /*
  * An upright phone. The worst header (a campaign mission, paused, with the save warning showing) needs
@@ -7056,3 +7530,1205 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
     padding: 0 10px;
   }
 }
+
+/* round7:review begin. The after-action review (components/Review.tsx): theme tokens only. */
+.fl-rv-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 16px;
+  background: var(--ui-scrim);
+}
+.fl-rv {
+  width: min(1360px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 22px 22px;
+  color: var(--ui-text);
+  background: var(--ui-panel);
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 9px;
+  box-shadow: 0 20px 70px var(--ui-shadow);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.fl-rv-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fl-rv-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-rv-title {
+  margin: 2px 0 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+}
+.fl-rv-headline {
+  margin: 0;
+  max-width: 80ch;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.fl-rv-empty {
+  margin: 0;
+  color: var(--ui-text-soft);
+}
+.fl-rv-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.fl-rv-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fl-rv-legend-line {
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+}
+.fl-rv-legend .fl-rv-legend-note {
+  color: var(--ui-text-faint);
+  font-size: 0.78rem;
+}
+.fl-rv-body {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 960px) {
+  .fl-rv-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.fl-rv-points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fl-rv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fl-rv-point {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule);
+  border-left: 3px solid var(--ui-text-faint);
+  border-radius: 6px;
+}
+.fl-rv-point[data-tone="bad"] {
+  border-left-color: var(--ui-bad);
+}
+.fl-rv-point[data-tone="good"] {
+  border-left-color: var(--ui-good);
+}
+.fl-rv-point p {
+  margin: 0;
+}
+.fl-rv-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ui-text);
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 50%;
+}
+.fl-rv-point-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+  font-size: 0.92rem;
+}
+.fl-rv-time {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--ui-text-soft);
+}
+.fl-rv-point .fl-rv-text {
+  margin-top: 4px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.fl-rv-point .fl-rv-advice {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ui-text-soft);
+}
+.fl-rv-advice-label {
+  font-weight: 700;
+  color: var(--ui-text);
+}
+.fl-rv-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 700px) {
+  .fl-rv-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fl-rv .fl-d-btn {
+    min-height: 40px;
+  }
+  .fl-rv-scrim {
+    padding: 8px;
+  }
+  .fl-rv {
+    padding: 14px 16px 18px;
+  }
+}
+.fl-rv-chart {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule);
+  border-radius: 6px;
+}
+.fl-rv-chart-title {
+  margin: 0 0 4px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.fl-rv-plot {
+  position: relative;
+}
+.fl-rv-plot > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.fl-rv-grid {
+  stroke: var(--ui-rule);
+  stroke-width: 1;
+}
+.fl-rv-axis {
+  stroke: var(--ui-rule-strong);
+  stroke-width: 1;
+}
+.fl-rv-tick {
+  fill: var(--ui-text-soft);
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.fl-rv-mark line {
+  stroke: var(--ui-text-faint);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.fl-rv-mark text {
+  fill: var(--ui-text-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+.fl-rv-cross {
+  stroke: var(--ui-text-soft);
+  stroke-width: 1;
+}
+.fl-rv-tip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  color: var(--ui-text);
+  background: var(--ui-tip);
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px var(--ui-shadow);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.fl-rv-tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.fl-rv-caption {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
+.fl-rv-events {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fl-rv-events-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fl-rv-events-head .fl-d-sect {
+  flex: 1;
+}
+.fl-rv-strip {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule);
+  border-radius: 6px;
+}
+.fl-rv-events-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  columns: 2 380px;
+  column-gap: 24px;
+  font-size: 0.82rem;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule);
+  border-radius: 6px;
+}
+.fl-rv-events-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  break-inside: avoid;
+}
+/* round7:review end. */
+/* round7:review begin. Room for the review button beside the end card's own. */
+.fl-d-end-foot {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* round7:review end. */
+/* round7:review begin. A fought battle's turning points in the planet's journal. */
+.fl-pl-review {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--ui-text-soft);
+}
+.fl-pl-review summary {
+  cursor: pointer;
+  color: var(--ui-text);
+}
+.fl-pl-review ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+/* round7:review end. */
+/* hud polish */
+/* The battle screen's HUD, second pass (game/Sidebar.tsx, game/Minimap.tsx, pages/GameScreen.tsx):
+   unit pictures in the selection, a stamped battle feed, the phone command bar as real buttons, the
+   end card's headline figures, and the folded Orders card. */
+:root {
+  /* The phone command bar and the radar's offline caption sit on the battlefield art, which is the
+     same in both modes, so like the feed they keep one dark backing. */
+  --d-cmd-bg: rgba(8, 12, 12, 0.8);
+  --d-cmd-bg-on: rgba(60, 44, 16, 0.9);
+  --d-cmd-rule: rgba(255, 255, 255, 0.24);
+  --d-cmd-text: #e9f0ec;
+  --d-cmd-on: #f0b44a;
+  --d-feed-stamp: #b9c6c0;
+  --d-radar-text: #d6dfdb;
+  --d-radar-scan: rgba(160, 230, 180, 0.07);
+}
+:root[data-theme="dark"] {
+  --d-cmd-bg: rgba(8, 12, 12, 0.8);
+  --d-cmd-bg-on: rgba(60, 44, 16, 0.9);
+  --d-cmd-rule: rgba(255, 255, 255, 0.24);
+  --d-cmd-text: #e9f0ec;
+  --d-cmd-on: #f0b44a;
+  --d-feed-stamp: #b9c6c0;
+  --d-radar-text: #d6dfdb;
+  --d-radar-scan: rgba(160, 230, 180, 0.07);
+}
+
+/* Selection: a picture of the one thing selected, and every unit of a mixed selection. */
+.fl-sel-hero {
+  position: relative;
+  align-self: flex-start;
+  width: 96px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--d-btn-rule);
+  border-left: 3px solid var(--ui-team);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+}
+.fl-sel-hero[data-enemy="1"] {
+  border-left-color: var(--ui-enemy);
+}
+.fl-sel-hero img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.fl-sel-hero[data-repairing="1"]::after {
+  /* A light passing over the picture while the repair crews work. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, var(--d-bevel) 50%, transparent 70%);
+  background-size: 250% 100%;
+  animation: fl-sel-repair 1.6s linear infinite;
+}
+@keyframes fl-sel-repair {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+.fl-sel-rank {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  padding: 0 3px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  letter-spacing: -0.08em;
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+  border-radius: 3px;
+}
+.fl-sel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 3px;
+}
+.fl-sel-cell {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0 0 5px;
+  overflow: hidden;
+  font: inherit;
+  background: var(--d-btn);
+  border: 1px solid var(--d-btn-rule);
+  border-left: 2px solid var(--ui-team);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.fl-sel-cell img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+}
+.fl-sel-cell:hover,
+.fl-sel-cell:focus-visible {
+  border-color: var(--ui-accent);
+}
+.fl-sel-cell:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+.fl-sel-cell:active {
+  transform: translateY(1px);
+}
+.fl-sel-hp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--d-well);
+  border-top: 1px solid var(--d-well-rule);
+}
+.fl-sel-hp > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-good);
+}
+.fl-sel-cell[data-tone="warn"] .fl-sel-hp > span {
+  background: var(--ui-warn);
+}
+.fl-sel-cell[data-tone="bad"] .fl-sel-hp > span {
+  background: var(--ui-bad);
+}
+.fl-sel-cell[data-tone="bad"] {
+  border-color: var(--ui-bad);
+}
+.fl-d-chip-pic {
+  flex: none;
+  width: 24px;
+  height: 16px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--d-btn-rule);
+}
+
+/* With nothing selected: a one-line prompt, and the key bindings folded once learned. */
+.fl-d-legend-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-d-legend-prompt {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
+.fl-d-legend-wrap > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--d-label);
+  cursor: pointer;
+  list-style: none;
+}
+.fl-d-legend-wrap > summary::-webkit-details-marker {
+  display: none;
+}
+.fl-d-legend-wrap > summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.fl-d-legend-wrap[open] > summary::before {
+  transform: rotate(90deg);
+}
+.fl-d-legend-wrap > summary:hover {
+  color: var(--ui-text);
+}
+.fl-d-legend-wrap > summary:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+/* Build tree: a locked item keeps its name and cost readable; only the picture goes grey. */
+.fl-build[data-state="locked"] {
+  opacity: 1;
+}
+.fl-build[data-state="locked"] img {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.fl-build[data-state="locked"] .fl-build-name,
+.fl-build[data-state="locked"] .fl-build-cost {
+  color: var(--ui-text-soft);
+}
+.fl-tree-needs {
+  color: var(--ui-text-soft);
+  font-weight: 600;
+}
+
+/* The battle feed: each line stamped with battle time and marked by tone; new lines slide in. */
+.fl-d-feed > div {
+  transition: opacity 0.6s;
+}
+.fl-d-feed > div[data-age="mid"] {
+  opacity: 0.92;
+}
+.fl-d-feed > div[data-age="old"] {
+  opacity: 0.78;
+}
+.fl-d-feed > div[data-age="new"] {
+  animation: fl-feed-in 0.32s ease-out both;
+}
+@keyframes fl-feed-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+    box-shadow: inset 4px 0 0 var(--d-feed-text);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    box-shadow: inset 0 0 0 transparent;
+  }
+}
+.fl-feed-ico {
+  display: inline-block;
+  width: 0.9em;
+  margin-right: 4px;
+  font-size: 0.7rem;
+  text-align: center;
+}
+.fl-feed-t {
+  margin-right: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--d-feed-stamp);
+}
+
+/* The phone command bar (pages/GameScreen.tsx): picture over label, a pressed look, a focus ring. */
+.fl-cmd {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 110px;
+  min-height: 44px;
+  padding: 5px 4px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--d-cmd-text);
+  background: var(--d-cmd-bg);
+  border: 1px solid var(--d-cmd-rule);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px var(--d-drop);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.06s, border-color 0.12s;
+}
+.fl-cmd-ico {
+  flex: none;
+}
+.fl-cmd:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px var(--d-drop);
+}
+.fl-cmd:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+.fl-cmd[aria-pressed="true"] {
+  color: var(--d-cmd-on);
+  background: var(--d-cmd-bg-on);
+  border-color: var(--d-cmd-on);
+  box-shadow: inset 0 1px 3px var(--d-drop), 0 0 0 1px var(--d-cmd-on);
+}
+.fl-cmd:disabled {
+  cursor: default;
+  opacity: 0.62;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/* The radar while it is offline: the caption over the static, and a slow scan line rolling down. */
+.fl-radar-offline {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--d-radar-text);
+  text-shadow: 0 1px 2px var(--d-drop);
+  pointer-events: none;
+}
+.fl-radar-offline > span {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.fl-radar-offline::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30%;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, var(--d-radar-scan), transparent);
+  animation: fl-radar-scan 3.4s linear infinite;
+}
+@keyframes fl-radar-scan {
+  from { transform: translateY(0); }
+  to { transform: translateY(433%); }
+}
+
+/* The end card: headline figures above the table, and each row's leader picked out. */
+.fl-d-end-heads {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.fl-d-end-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 7px;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-top: 2px solid var(--d-tone);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-d-end-head-val {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--ui-text);
+}
+.fl-d-end-head-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+.fl-d-end-stats td[data-lead="1"] .fl-d-end-val {
+  font-weight: 800;
+  color: var(--d-col, var(--ui-text));
+}
+.fl-d-end-chev {
+  margin-right: 3px;
+  font-size: 0.7em;
+}
+.fl-d-end-stats tr[data-empty="1"] > * {
+  color: var(--ui-text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-sel-hero[data-repairing="1"]::after,
+  .fl-d-feed > div[data-age="new"],
+  .fl-radar-offline::before {
+    animation: none;
+  }
+  .fl-radar-offline::before {
+    display: none;
+  }
+}
+:root[data-motion="off"] .fl-sel-hero[data-repairing="1"]::after,
+:root[data-motion="off"] .fl-d-feed > div[data-age="new"],
+:root[data-motion="off"] .fl-radar-offline::before {
+  animation: none;
+}
+:root[data-motion="off"] .fl-radar-offline::before {
+  display: none;
+}
+:root[data-motion="off"] .fl-sel-hero[data-repairing="1"]::after {
+  background-position: 50% 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-d-legend-wrap > summary::before,
+  .fl-d-feed > div,
+  .fl-cmd {
+    transition: none;
+  }
+}
+:root[data-motion="off"] .fl-d-legend-wrap > summary::before,
+:root[data-motion="off"] .fl-d-feed > div,
+:root[data-motion="off"] .fl-cmd {
+  transition: none;
+}
+
+/* Phone: the selection's small buttons, stance and formation rows, and unit cells, thumb-sized. */
+@media (max-width: 720px), (pointer: coarse) {
+  .fl-d-sbtn {
+    height: auto;
+    min-height: 40px;
+  }
+  .fl-sel-cell {
+    min-height: 40px;
+  }
+  .fl-d-legend-wrap > summary {
+    min-height: 40px;
+  }
+}
+@media (max-width: 480px) {
+  .fl-d-end-heads {
+    gap: 4px;
+  }
+  .fl-d-end-head {
+    padding: 4px 2px;
+  }
+  .fl-d-end-head-val {
+    font-size: 0.95rem;
+  }
+  .fl-d-end-head-label {
+    font-size: 0.56rem;
+    letter-spacing: 0.06em;
+  }
+}
+/* hud polish end */
+
+/* menus polish */
+/* The briefing as a dossier: the theatre's paper, its seals and stamps, carried into the moment the
+   player commits to a mission. Colours are the A block's tokens, which have light and dark values. */
+.fl-modal[data-variant="dossier"] {
+  color: var(--a-card-ink);
+  background-color: var(--a-card);
+  background-image: linear-gradient(var(--a-card-head), var(--a-card-head));
+  background-size: 100% 3px;
+  background-repeat: no-repeat;
+  border: 1px solid var(--a-card-edge);
+  border-radius: 2px;
+}
+/* The ruling scrolls with the text, so it sits under the lines rather than across them. */
+.fl-modal[data-variant="dossier"] .fl-modal-body {
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 23px, var(--a-card-rule) 23px, var(--a-card-rule) 24px);
+  background-attachment: local;
+}
+.fl-modal[data-variant="dossier"] > header {
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--a-card-edge);
+}
+.fl-modal[data-variant="dossier"] > header > button {
+  margin-left: auto;
+  flex: none;
+}
+.fl-modal[data-variant="dossier"] h2 {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  color: var(--a-card-ink);
+}
+.fl-modal[data-variant="dossier"] h2 small {
+  font-variant: normal;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  color: var(--a-card-soft);
+}
+.fl-modal[data-variant="dossier"] > header .fl-mission-no {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: var(--a-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--a-stamp-red);
+  background: var(--a-open-tint);
+  border: 2px solid var(--a-stamp-red);
+  box-shadow: inset 0 0 0 2px var(--a-card), inset 0 0 0 3px var(--a-stamp-red);
+}
+.fl-modal[data-variant="dossier"] > header .fl-mission-no small {
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 1px;
+}
+.fl-modal[data-variant="dossier"] > header .fl-camp-stamp {
+  flex: none;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+}
+.fl-modal[data-variant="dossier"] .fl-briefing {
+  gap: 10px;
+}
+.fl-modal[data-variant="dossier"] .fl-briefing h3 {
+  margin: 10px 0 0;
+  padding-bottom: 3px;
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  text-transform: none;
+  font-size: 0.98rem;
+  letter-spacing: 0.08em;
+  color: var(--a-stamp-red);
+  border-bottom: 1px solid var(--a-card-edge);
+}
+.fl-modal[data-variant="dossier"] .fl-briefing-text,
+.fl-modal[data-variant="dossier"] .fl-small,
+.fl-modal[data-variant="dossier"] .fl-eng-intel {
+  color: var(--a-card-ink);
+}
+.fl-modal[data-variant="dossier"] .fl-briefing-text {
+  font-family: var(--a-serif);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.fl-modal[data-variant="dossier"] .fl-briefing-meta + .fl-briefing-text::first-letter {
+  float: left;
+  margin: 4px 6px 0 0;
+  font-size: 2.9rem;
+  line-height: 0.8;
+  font-weight: 700;
+  color: var(--a-stamp-red);
+}
+.fl-modal[data-variant="dossier"] .fl-tag {
+  font-family: var(--a-serif);
+  font-style: italic;
+  font-size: 0.74rem;
+  color: var(--a-card-soft);
+  border-color: var(--a-pencil);
+  border-style: dashed;
+}
+.fl-modal[data-variant="dossier"] .fl-brief-list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--a-card-ink);
+}
+.fl-modal[data-variant="dossier"] .fl-brief-list li {
+  position: relative;
+  padding-left: 24px;
+}
+.fl-modal[data-variant="dossier"] .fl-brief-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.3em;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--a-stamp-blue);
+  border-radius: 1px;
+}
+.fl-modal[data-variant="dossier"] .fl-brief-list.bonus li::before {
+  content: "☆";
+  top: 0;
+  width: auto;
+  height: auto;
+  border: none;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--a-stamp-red);
+}
+.fl-modal[data-variant="dossier"] .fl-brief-hero {
+  color: var(--a-card-ink);
+  background: var(--a-open-tint);
+  border-color: var(--a-card-edge);
+  border-radius: 2px;
+}
+.fl-modal[data-variant="dossier"] .fl-brief-hero .fl-small {
+  color: var(--a-card-soft);
+}
+.fl-modal[data-variant="dossier"] .fl-level {
+  color: var(--a-card-ink);
+  background: var(--a-card);
+  border-color: var(--a-card-edge);
+  border-radius: 2px;
+}
+.fl-modal[data-variant="dossier"] .fl-level:hover {
+  border-color: var(--a-pencil);
+}
+.fl-modal[data-variant="dossier"] .fl-level-name {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+}
+.fl-modal[data-variant="dossier"] .fl-level-facts {
+  color: var(--a-card-soft);
+}
+.fl-modal[data-variant="dossier"] .fl-level[aria-checked="true"] {
+  background: var(--a-open-tint);
+  border-color: var(--a-stamp-red);
+  box-shadow: inset 0 0 0 1px var(--a-stamp-red);
+}
+.fl-modal[data-variant="dossier"] .fl-level[aria-checked="true"] .fl-level-name {
+  color: var(--a-stamp-red);
+}
+.fl-modal[data-variant="dossier"] .fl-region-note .fl-briefing-text::first-letter {
+  float: none;
+  font-size: inherit;
+  margin: 0;
+  color: inherit;
+}
+
+/* The campaign's left column: a tally in the service record's hand, then the orders for the next
+   mission and the act's track of seals; sticky beside the map on wide screens. */
+@media (min-width: 761px) {
+  .fl-camp-side {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+  }
+}
+.fl-camp-tally {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--a-card);
+  border: 1px solid var(--a-card-edge);
+  border-radius: 2px;
+  box-shadow: 0 1px 1px var(--a-sheet-shadow);
+}
+.fl-camp-tally > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+}
+.fl-camp-tally > div + div {
+  border-left: 1px solid var(--a-card-edge);
+}
+.fl-camp-tally dt {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  color: var(--a-card-soft);
+}
+.fl-camp-tally dd {
+  margin: 0;
+  font-family: var(--a-serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--a-card-ink);
+}
+.fl-camp-tally dd small {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--a-card-soft);
+}
+.fl-camp-tally [data-kind="stars"] dd small {
+  color: var(--a-stamp-red);
+}
+.fl-camp-side .fl-camp-progress[data-menus="ledger"] {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  border-top: none;
+  padding: 0 2px;
+  font-family: var(--a-serif);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+.fl-camp-side .fl-camp-progress[data-menus="ledger"] > span,
+.fl-camp-side .fl-camp-progress[data-menus="ledger"] .fl-camp-territory {
+  color: var(--ui-text-soft);
+  font-weight: 400;
+  padding: 0;
+  font-size: inherit;
+}
+.fl-camp-side .fl-camp-progress[data-menus="ledger"] b {
+  font-style: normal;
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--ui-text);
+}
+.fl-camp-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  color: var(--a-card-ink);
+  background-color: var(--a-card);
+  background-image:
+    linear-gradient(var(--a-card-head), var(--a-card-head)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 19px, var(--a-card-rule) 19px, var(--a-card-rule) 20px);
+  background-size: 100% 3px, 100% 100%;
+  background-repeat: no-repeat, repeat;
+  border: 1px solid var(--a-stamp-red);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--a-stamp-red), 0 4px 12px -4px var(--a-sheet-shadow);
+}
+.fl-camp-orders h3 {
+  margin: 0;
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--a-stamp-red);
+}
+.fl-camp-orders-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fl-camp-orders-head > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fl-camp-orders-head strong {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+}
+.fl-camp-orders-head em {
+  font-family: var(--a-serif);
+  font-size: 0.76rem;
+  color: var(--a-card-soft);
+}
+.fl-camp-orders .fl-mission-no {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: var(--a-serif);
+  font-weight: 700;
+  color: var(--a-stamp-red);
+  background: var(--a-open-tint);
+  border: 2px solid var(--a-stamp-red);
+  box-shadow: inset 0 0 0 2px var(--a-card), inset 0 0 0 3px var(--a-stamp-red);
+}
+.fl-camp-orders .fl-mission-no small {
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+}
+.fl-camp-orders p {
+  margin: 0;
+  font-family: var(--a-serif);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--a-card-ink);
+}
+.fl-camp-side .fl-camp-orders .fl-camp-btn {
+  flex: none;
+  align-self: flex-start;
+}
+.fl-camp-track {
+  list-style: none;
+  margin: 0;
+  padding: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fl-camp-track .fl-mission-no {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--a-serif);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ui-text-soft);
+  border: 1px dashed var(--a-pencil);
+  border-radius: 50%;
+}
+.fl-camp-track li[data-state="won"] .fl-mission-no {
+  color: var(--a-stamp-blue);
+  border: 2px solid var(--a-stamp-blue);
+}
+.fl-camp-track li[data-state="open"] .fl-mission-no {
+  color: var(--a-stamp-red);
+  background: var(--a-open-tint);
+  border: 2px solid var(--a-stamp-red);
+}
+/* Skirmish setup at a glance: each game size's map against the largest frame and its length as a
+   bar; each enemy commander's waves, tempo and base as meters against the hardest of the three. */
+.fl-size-glyph {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fl-size-glyph svg {
+  flex: none;
+  display: block;
+}
+.fl-size-glyph-frame {
+  fill: none;
+  stroke: var(--ui-rule-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+.fl-size-glyph-map {
+  fill: var(--ui-tint-accent);
+  stroke: var(--ui-accent);
+  stroke-width: 1.5;
+}
+.fl-size-glyph-len {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--ui-rule);
+  overflow: hidden;
+}
+.fl-size-glyph-len > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--ui-accent);
+}
+.fl-size[aria-checked="true"] .fl-size-glyph-map {
+  fill: var(--ui-accent);
+}
+.fl-level-threat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 3px 8px;
+  margin: 2px 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-soft);
+}
+.fl-level-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--ui-rule);
+  overflow: hidden;
+}
+.fl-level-bar > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 2px;
+  background: var(--ui-warn);
+}
+.fl-level[aria-pressed="true"] .fl-level-bar > span {
+  background: var(--ui-accent);
+}
+/* menus polish end */

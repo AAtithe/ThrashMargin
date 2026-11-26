@@ -11,6 +11,7 @@ import type { LengthPreset } from '../planet/types';
 import type { Difficulty } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
+import { packState } from '../sim/pack';
 import type { GameState } from '../sim/types';
 
 /**
@@ -46,7 +47,7 @@ export interface SaveMeta {
   sides?: 3 | 4;
   mode?: SideMode;
   /** Round 5: a battle on a larger map. Absent for standard size. */
-  size?: 'large' | 'huge';
+  size?: 'large' | 'huge' | 'vast';
 }
 
 /**
@@ -79,7 +80,7 @@ function metaOf(s: LoadedSave): SaveMeta {
   }
   return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}),
     ...(s.players.length > 2 ? { sides: s.players.length as 3 | 4, mode: s.setup?.mode === 'teams' ? ('teams' as const) : ('ffa' as const) } : {}),
-    ...(s.setup?.size === 'large' || s.setup?.size === 'huge' ? { size: s.setup.size } : {}),
+    ...(s.setup?.size === 'large' || s.setup?.size === 'huge' || s.setup?.size === 'vast' ? { size: s.setup.size } : {}),
   };
 }
 
@@ -99,9 +100,12 @@ function readIndex(): SaveMeta[] {
   }
 }
 
+/** What is stored for a save: a battle on a vast map with its per-tile fields packed (pack.ts), anything else as it is. */
+const stored = (s: LoadedSave): unknown => (isCampaignSave(s) || isPlanetSave(s) ? s : packState(s));
+
 function writeLocal(s: LoadedSave): void {
   try {
-    localStorage.setItem(stateKey(s.id), JSON.stringify(s));
+    localStorage.setItem(stateKey(s.id), JSON.stringify(stored(s)));
     const meta = metaOf(s);
     const index = [meta, ...readIndex().filter(m => m.id !== s.id)];
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
@@ -365,7 +369,7 @@ export function useSaves() {
         setLastSaved(Date.now());
         return;
       }
-      saver.current?.save(s.id, s);
+      saver.current?.save(s.id, stored(s));
     },
     [cloud],
   );

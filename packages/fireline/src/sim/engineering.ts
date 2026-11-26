@@ -14,6 +14,8 @@ import {
 import { addBuilding, addUnit, isStructure, log, maxHpOf, producerFor, readyStructure } from './state';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
+// round7:fortification. Reinforced concrete's full health.
+import { structureMaxHp, structureMaxHpFor } from './fortify';
 
 /**
  * Engineering vehicles (fireline-round5-design.md, workstream C): the Repair Truck, and the Forward
@@ -101,7 +103,7 @@ export function doDeploy(s: GameState, owner: Owner, id: number): Building {
   const share = u.hp / maxHpOf(u);
   s.units = s.units.filter(v => v.id !== id);
   const b = addBuilding(s, owner, kind, at.x, at.y);
-  b.hp = Math.max(1, Math.round(buildingSpec(s, owner, kind).hp * share));
+  b.hp = Math.max(1, Math.round(/* round7:fortification */ structureMaxHpFor(s, owner, kind) * share));
   if (owner === 0) log(s, `${buildingSpec(s, owner, kind).name} deployed.`, 'good');
   return b;
 }
@@ -128,7 +130,7 @@ export function doUndeploy(s: GameState, owner: Owner, id: number): Unit {
   const b = s.buildings.find(v => v.id === id)!;
   const spec = buildingSpecOf(s, b);
   const kind = spec.undeploysTo!;
-  const share = b.hp / spec.hp;
+  const share = Math.min(1, b.hp / /* round7:fortification */ structureMaxHp(s, b));
   s.buildings = s.buildings.filter(v => v.id !== id);
   // The same ring and chime as a sale, which also tells the renderer to leave clean ground, not rubble.
   s.effects.push({ id: s.nextId++, kind: 'sold', x: b.x + spec.w / 2, y: b.y + spec.h / 2, at: s.tick, size: Math.max(spec.w, spec.h) });

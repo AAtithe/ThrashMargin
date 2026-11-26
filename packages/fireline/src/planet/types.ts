@@ -128,9 +128,19 @@ export interface RegionState {
   garrison: number[];
   /** Consecutive turns this region has been cut off from its owner's capital. */
   cut: number;
+  /**
+   * Battle rules 3 (round 7): the last turn this region is shaken by a heavy defeat next door (its
+   * garrison fights at three quarters). Absent: not shaken, which is every region of an older war.
+   */
+  shaken?: number;
 }
 
-export interface CoreUnit { kind: ArmyKind; kills: number }
+export interface CoreUnit {
+  kind: ArmyKind;
+  kills: number;
+  /** Battle rules 3 (round 7): a vehicle that came out of a battle below half health, until repaired. Absent: sound. */
+  w?: 1;
+}
 
 export interface FieldArmy {
   region: RegionId;
@@ -200,7 +210,16 @@ export interface PlanetHero {
   lost: boolean;
 }
 
-export interface JournalEntry { turn: number; text: string; tone: 'info' | 'good' | 'bad'; f?: FactionId }
+export interface JournalEntry {
+  turn: number;
+  text: string;
+  tone: 'info' | 'good' | 'bad';
+  f?: FactionId;
+  // round7:review begin. The after-action review: a fought battle's turning points, in short lines.
+  /** Kept on the newest fought battle's entry alone (journal.ts, attachReview), so it costs a few hundred bytes at most. */
+  review?: string[];
+  // round7:review end.
+}
 
 export interface PlanetResult {
   won: boolean;
@@ -245,14 +264,22 @@ export interface PlanetState {
   /**
    * The version of the rules this war builds its battles to (section 9.7). Absent: 1, every battle
    * on a standard map, as in every war started before larger maps; such a war keeps it for good.
-   * 2: the map size by stakes (`battleMapSize`). New wars start at 2.
+   * 2: the map size by stakes (`battleMapSize`). 3 (round 7): also the links between the war and its
+   * battles (`SetupLinks`, `ReportLinks`, fireline-round7-planet.md). New wars start at 3.
    */
-  battleRules?: 2;
+  battleRules?: 2 | 3;
 }
 
 // ---- The W1/W2 interface ---------------------------------------------------------------------
 
-export interface BattleUnit { kind: ArmyKind; kills: number; /** Field army slot, or null for garrison or contingent units. */ core: number | null }
+export interface BattleUnit {
+  kind: ArmyKind;
+  kills: number;
+  /** Field army slot, or null for garrison or contingent units. */
+  core: number | null;
+  /** Battle rules 3 (round 7): health on arrival in per cent, 1 to 99 (a wounded or badly supplied vehicle). Absent: full. */
+  hp?: number;
+}
 
 export interface BattleSide {
   faction: RegionOwner;
@@ -303,6 +330,63 @@ export interface BattleSetup {
    * started before larger maps, and every battle of a newer war whose stakes are small.
    */
   mapSize?: 'large' | 'huge';
+  /** Battle rules 3 (round 7): what the war brings into this battle. Absent on every older war's setup. */
+  links?: SetupLinks;
+}
+
+// ---- Battle rules 3 (round 7): the war and its battles, both ways ----------------------------
+
+/**
+ * An attacker's supply: cut (its staging region is cut off from its capital), short (fuel or food
+ * nearly gone once the attack is paid for), supplied, or depot (supplied, with a port or the
+ * capital at or beside the staging region: its garrison sends a reinforcement wave).
+ */
+export type SupplyState = 'cut' | 'short' | 'supplied' | 'depot';
+export const SUPPLY_STATES: SupplyState[] = ['cut', 'short', 'supplied', 'depot'];
+
+/** A support power a side draws from one of its regions near the battle. */
+export interface SupportGrant {
+  /** The seat (index into sides) it is for. */
+  seat: number;
+  power: 'recon' | 'barrage' | 'missile';
+  /** Uses before it is spent; absent: as often as it recharges. */
+  uses?: number;
+  /** The region it comes from. */
+  from: RegionId;
+  /** Why, for the setup card: 'institute', 'fortifications', 'artillery' or 'airfield'. */
+  why: 'institute' | 'fortifications' | 'artillery' | 'airfield';
+}
+
+export interface SetupLinks {
+  /** The region the attacker stages from: its field army's. */
+  from: RegionId;
+  /** The attacker's supply. */
+  supply: SupplyState;
+  /** True when the defender's region is cut off from its capital (a faction's only). */
+  defCut: boolean;
+  /** Credits the attacker lost to its supply, and the defender to being cut off; already taken off. */
+  creditsLost: number;
+  defCreditsLost: number;
+  /** The attacker's harvest rate in per cent (100: normal). */
+  trickle: number;
+  /** Support powers from regions near the battle, either principal's. */
+  support: SupportGrant[];
+  /** The attacker's reinforcement wave from its staging garrison, arriving at this tick; null: none. */
+  reinforce: { at: number; units: ArmyKind[] } | null;
+  /** Sandbag walls the defender's fortifications put in front of its city. */
+  walls: number;
+}
+
+/** What a battle on battle rules 3 sends back to the war (round 7). */
+export interface ReportLinks {
+  /** City buildings the attacker principal's structures, built in the battle and standing at the end, seed. */
+  built: CityBuildingId[];
+  /** Per side, in seat order: credits unspent at the end. */
+  credits: number[];
+  /** Per side: credits of ore harvested in the battle. */
+  harvested: number[];
+  /** Per side: field army slots of survivors that end the battle wounded (vehicles below half health). */
+  wounded: number[][];
 }
 
 export interface BattleReport {
@@ -321,4 +405,9 @@ export interface BattleReport {
   cityDamage: Partial<Record<CityBuildingId, number>>;
   /** 1 when the city changed hands (its level drops by one, never below 1), else 0. */
   cityLevelLost: 0 | 1;
+  /** Battle rules 3 (round 7): what the battle sends back. Only with a setup that has `links`. */
+  links?: ReportLinks;
+  // round7:review begin. The after-action review: a fought battle's turning points (REVIEW_LINES_MAX lines).
+  review?: string[];
+  // round7:review end.
 }

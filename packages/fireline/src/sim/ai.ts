@@ -6,7 +6,7 @@ import { airPlan, vehiclePrice } from './aiAir';
 import { engineeringPlan, expansionSpot } from './aiEngineering';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
-import { extraLine, reserveRadius, scaledFor, stageDistance } from './aiScale';
+import { SURPLUS_BARRACKS, SURPLUS_FACTORIES, extraLine, reserveRadius, scaledFor, stageDistance, surplusOn } from './aiScale';
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
@@ -40,6 +40,18 @@ import { isProducer, linkedHubs, servedBy, supplyOn } from './supply';
 import { heroesNeedTechCentre, heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { generalLeads, generalPlan } from './aiGenerals';
+// round7:fortification. The Fortification line: structures' full health and Point Defence's place.
+import { structureMaxHp } from './fortify';
+import { pointDefenceFocus } from './aiFortification';
+// round7:structures begin.
+import { strategicExtra, strategicFocus, strategicPlanFor, structuresPlan } from './aiStructures';
+import { apparentHp, apparentKind, apparentSpecOf } from './structures';
+// round7:structures end.
+// round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
+import { openingGuard } from './aiOpening';
+import { OUTMATCH_WAVE, armourThreat, outmatched } from './aiStrength';
+import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
+// round7:adaptive end.
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -206,6 +218,8 @@ export function runAi(s: GameState, owner: Owner): void {
   const hook = hooks[owner];
   if (hook) hook(s, owner);
   else commander(s, owner);
+  // The scripted-opening test (aiOpening.ts, harness only): a side on a fixed opening keeps to it.
+  openingGuard(s, owner);
 }
 
 interface Pt {
@@ -253,6 +267,9 @@ function commander(s: GameState, owner: Owner): void {
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
+  // round7:adaptive begin. A look round and the plan reconsidered, every few seconds (aiAdapt.ts).
+  adaptObserve(s, owner);
+  // round7:adaptive end.
   // Defend: build, repair and fight off attackers, but never send a wave or a raid. Pushed back at
   // every decision, so nothing can fall due in between.
   if (mode === 'defend') {
@@ -310,7 +327,8 @@ function commander(s: GameState, owner: Owner): void {
     if (want && adv && isExtra(s, owner, want, d)) {
       const armed = units.filter(u => unitSpecOf(s, u).weapon).length;
       const foeArmy = s.units.filter(u => isEnemy(s, owner, u.owner) && unitSpecOf(s, u).weapon).length;
-      if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) {
+      // 2026-11-25: and, at a paced game size, while outmatched by value (aiStrength.ts).
+      if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9) || (pacedResearch(s) && outmatched(s, owner))) {
         want = null;
         held = true;
       }
@@ -399,7 +417,7 @@ function commander(s: GameState, owner: Owner): void {
     repairing = 0;
   } else {
     const hurt = standing
-      .filter(b => !b.repairing && b.hp < buildingSpecOf(s, b).hp * t.repairBelow && repairOrder.includes(b.kind))
+      .filter(b => !b.repairing && b.hp < /* round7:fortification */ structureMaxHp(s, b) * t.repairBelow && repairOrder.includes(b.kind))
       .sort((a, b) => repairOrder.indexOf(a.kind) - repairOrder.indexOf(b.kind) || a.id - b.id);
     for (const b of hurt) {
       if (repairing >= 2 || p.credits < t.repairReserve) break;
@@ -417,8 +435,13 @@ function commander(s: GameState, owner: Owner): void {
     if (armed >= mem.garrison) saving = true;
   }
   const foeArmed = foes.filter(u => unitSpecOf(s, u).weapon);
-  const foeInfantry = foeArmed.filter(u => unitSpecOf(s, u).armor === 'infantry').length;
-  const foeArmour = foeArmed.length - foeInfantry;
+  // 2026-11-25: at a paced game size the read is by value, in infantry-equivalents (a rifleman's price),
+  // not by head: six rocketeers and nine tanks read as infantry-heavy by head, and the commander kept
+  // training grenadiers into a tank column (aiStrength.ts). Every other game reads by head, as before.
+  const byValue = pacedResearch(s);
+  const weigh = (list: Unit[]) => (byValue ? list.reduce((a, u) => a + UNITS[u.kind].cost, 0) / UNITS.rifleman.cost : list.length);
+  const foeInfantry = weigh(foeArmed.filter(u => unitSpecOf(s, u).armor === 'infantry'));
+  const foeArmour = weigh(foeArmed) - foeInfantry;
   const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
   // Paced research (round 6): short of the next research, with an army at home and no enemy near
@@ -430,7 +453,8 @@ function commander(s: GameState, owner: Owner): void {
   if (adv && pacedResearch(s) && mem.researchFor && p.credits < mem.researchFor) {
     const armedHome = units.filter(u => unitSpecOf(s, u).weapon && u.kind !== 'hauler' && !isShip(u)).length;
     const threat = foes.some(u => unitSpecOf(s, u).weapon && dist(u.x, u.y, home.x, home.y) < PACED_HOLD_RADIUS);
-    pacedHold = armedHome >= PACED_HOLD_ARMY && !threat;
+    // 2026-11-25: and never while outmatched in the field (aiStrength.ts): the army comes first.
+    pacedHold = armedHome >= PACED_HOLD_ARMY && !threat && !outmatched(s, owner);
   }
   if (pacedHold) saving = true;
   // round6:A begin. Two armies (fireline-round6-design.md): A may change the unit choices from here
@@ -444,6 +468,9 @@ function commander(s: GameState, owner: Owner): void {
     if (iq.length < 2 || (iq.length < lineCount(s, owner, 'infantry') + 1 && extraLine(s, p.credits))) {
       let riflemen = 0.6;
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
+      // round7:adaptive begin. The share answers what it has seen (aiAdapt.ts).
+      riflemen = adaptShare(s, owner, 'rifleman', 'rocketeer', riflemen, 'infantry');
+      // round7:adaptive end.
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
       if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
     }
@@ -458,6 +485,12 @@ function commander(s: GameState, owner: Owner): void {
           buggy = 0.15;
         }
       }
+      // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts).
+      if (adaptiveOn(s, owner)) [tank, buggy] = ((m: [UnitKind, number][]) => {
+        const sum = m.reduce((a, [, w]) => a + w, 0);
+        return [m[0][1] / sum, m[1][1] / sum];
+      })(adaptMix(s, owner, [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]], 'vehicle').slice(0, 3));
+      // round7:adaptive end.
       let kind: UnitKind = roll < tank ? 'tank' : roll < tank + buggy ? 'buggy' : 'artillery';
       // Keep the raiding party up to strength once raids are due.
       if (t.raidSize && raidBuggies < t.raidSize && s.tick >= t.firstRaid - 900) kind = 'buggy';
@@ -491,12 +524,20 @@ function commander(s: GameState, owner: Owner): void {
   // round6:C end.
   // Industry (2026-11-21): a drained Fuel Well sold, so the plan can put one by another field. A no-op without industry.
   economyPlan(s, owner);
+  // round7:structures begin. Upgrades, the Bunker's garrison and the Decoys' looks (aiStructures.ts).
+  // Returns at once on Easy and with both toggles off.
+  if (adv) structuresPlan(s, owner, diff, home, units, foes, new Set([...mem.waveIds, ...mem.raidIds]));
+  // round7:structures end.
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
   for (const b of standing) {
     if ((b.kind === 'barracks' || b.kind === 'factory') && !b.rally) doRally(s, b.id, stage.x, stage.y);
   }
+
+  // round7:adaptive begin. Where a wave gathers: the staging point, or on a flank a second one (aiAdapt.ts).
+  const waveStage = adaptStage(s, owner, stage, home, enemyHome);
+  // round7:adaptive end.
 
   // 4. The army.
   const alive = new Map(units.map(u => [u.id, u]));
@@ -645,7 +686,9 @@ function commander(s: GameState, owner: Owner): void {
 
   // Attack waves.
   const waveUnits = () => waveIds.map(id => alive.get(id)!);
-  const size = Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth);
+  // round7:adaptive begin. A siege waits for a larger wave (aiAdapt.ts); unchanged when off.
+  const size = adaptWaveSize(s, owner, Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), d.waveCap);
+  // round7:adaptive end.
   const recruits = (): Unit[] => {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
@@ -665,12 +708,17 @@ function commander(s: GameState, owner: Owner): void {
       // A wave that has waited a whole extra interval goes with what it has; with no income left
       // and none coming, everything goes now, since waiting can only make it weaker.
       const overdue = (s.tick >= mem.nextAttack + d.attackInterval && fit.length >= d.firstWave) || (broke && fit.length > 0);
-      if (fit.length >= size || overdue) {
+      // 2026-11-25 (aiStrength.ts): at a paced game size, a commander clearly outmatched in the field
+      // keeps its army at home beside its turrets rather than sending it into a stronger one, unless
+      // broke. Only one of two sides can be outmatched at a time, so the stronger one still comes.
+      const hold = pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE);
+      if (!hold && (fit.length >= size || overdue)) {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
         // round6:D begin. Formations: the wave gathers (a shape may be passed to doMove here).
-        doMove(s, owner, waveIds, stage.x, stage.y, true);
+        // round7:adaptive: at waveStage (the staging point itself unless the plan is a flank).
+        doMove(s, owner, waveIds, waveStage.x, waveStage.y, true);
         // round6:D end.
         mem.wave++;
         mem.nextAttack = s.tick + d.attackInterval;
@@ -680,12 +728,15 @@ function commander(s: GameState, owner: Owner): void {
     mem.wavePhase = 0;
   } else if (mem.wavePhase === 1) {
     const members = waveUnits();
-    const gathered = members.filter(u => dist(u.x, u.y, stage.x, stage.y) < 6).length;
-    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450)) {
+    // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
+    const gathered = members.filter(u => dist(u.x, u.y, waveStage.x, waveStage.y) < 6).length;
+    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450) && !(pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE))) {
       mem.wavePhase = 2;
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
-      const target = pickTarget(enemy, foes, stage, t.focus, home);
+      // round7:adaptive begin. From waveStage; a raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
+      const target = adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home, s, owner), waveStage);
+      // round7:adaptive end.
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
       // Integration: a field General near the wave leads it (generalLeads; none with Generals off).
@@ -697,8 +748,9 @@ function commander(s: GameState, owner: Owner): void {
       // A recon sweep over where the wave is going, as it sets off.
       if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
     } else if (!threat) {
-      const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, stage.x, stage.y) >= 6).map(u => u.id);
-      if (lost.length) doMove(s, owner, lost, stage.x, stage.y, true);
+      // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
+      const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, waveStage.x, waveStage.y) >= 6).map(u => u.id);
+      if (lost.length) doMove(s, owner, lost, waveStage.x, waveStage.y, true);
     }
   } else {
     const members = waveUnits();
@@ -718,7 +770,9 @@ function commander(s: GameState, owner: Owner): void {
         core = near;
         centre = middle(near);
       }
-      const target = pickTarget(enemy, foes, centre, t.focus, home);
+      // round7:adaptive begin. A raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
+      const target = adaptTarget(s, owner, pickTarget(enemy, foes, centre, t.focus, home, s, owner), centre);
+      // round7:adaptive end.
       let spread = 0;
       for (const u of core) spread = Math.max(spread, dist(u.x, u.y, centre.x, centre.y));
       const fighting = members.some(u => u.engage);
@@ -769,6 +823,9 @@ function commander(s: GameState, owner: Owner): void {
 
   mem.waveIds = waveIds;
   mem.raidIds = raidIds;
+  // round7:adaptive begin. Notice a broken wave and where (aiAdapt.ts).
+  adaptAfter(s, owner);
+  // round7:adaptive end.
 }
 
 /**
@@ -807,7 +864,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
   const order: BuildingKind[] = !s.mission && techAllowed(s, owner, 'techcentre')
     ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
     : ['uplink', 'turret', 'barracks'];
-  const refund = (b: Building) => Math.floor((buildingSpecOf(s, b).cost * SELL_RETURN * (b.hp / buildingSpecOf(s, b).hp)) / 10) * 10;
+  const refund = (b: Building) => Math.floor((buildingSpecOf(s, b).cost * SELL_RETURN * (b.hp / /* round7:fortification */ structureMaxHp(s, b))) / 10) * 10;
   // Nothing at all if even every queued unit and every spare structure would not reach the sum:
   // taking back the last troops a broke side is training only stopped its last stand (a Coast
   // battle cancelled and requeued one Grenadier every decision for twenty minutes).
@@ -843,7 +900,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
  * Where a wave goes next. Haulers, artillery and turrets count as nearer than they are; other
  * structures by how much they matter. Easy just walks to the nearest structure from home.
  */
-function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt): Pt {
+function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt, s?: GameState, viewer?: Owner): Pt {
   if (!focus) return buildingCentre(nearestBuilding(enemy, home.x, home.y));
   const bonus: Partial<Record<BuildingKind, number>> = {
     turret: 8,
@@ -862,7 +919,8 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
   let bestScore = Infinity;
   for (const b of enemy) {
     const c = buildingCentre(b);
-    const score = dist(from.x, from.y, c.x, c.y) - (bonus[b.kind] ?? 0);
+    // round7:structures: by what the structure looks like (a Decoy passes for its disguise).
+    const score = dist(from.x, from.y, c.x, c.y) - (bonus[s && viewer !== undefined ? apparentKind(s, b, viewer) : b.kind] ?? 0);
     if (score < bestScore) {
       bestScore = score;
       best = c;
@@ -889,7 +947,8 @@ function focusFire(s: GameState, owner: Owner, members: Unit[], foes: Unit[], en
   const priority: { id: number; x: number; y: number; armor: 'heavy' | 'light' | 'building'; b?: Building }[] = [];
   for (const u of foes)
     if (u.kind === 'hauler' || u.kind === 'artillery' || u.kind === 'missilecarrier') priority.push({ id: u.id, x: u.x, y: u.y, armor: unitSpecOf(s, u).armor as 'heavy' | 'light' });
-  for (const b of enemy) if (b.kind === 'turret' || b.kind === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
+  // round7:structures: a Decoy passing for a turret is picked as one (apparentKind; b.kind otherwise).
+  for (const b of enemy) if (apparentKind(s, b, owner) === 'turret' || apparentKind(s, b, owner) === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
   if (!priority.length) return;
   const ids = new Set(priority.map(q => q.id));
   const armed = new Set(foes.filter(f => unitSpecOf(s, f).weapon && f.kind !== 'artillery' && f.kind !== 'missilecarrier').map(f => f.id));
@@ -1019,6 +1078,9 @@ function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySp
   // that reconnects something cut off is no extra.
   if (kind === 'watchtower') return true;
   if (kind === 'depot') return !depotSpot(s, owner);
+  // round7:structures: the strategic structures (aiStructures.ts); null for every other kind.
+  const r7 = strategicExtra(s, owner, kind);
+  if (r7 !== null) return r7;
   // round6:B begin. Heroes in free play: with heroes on, on Hard, the Tech Centre is the way to the
   // Academy and goes up in its turn (aiHeroes.ts, heroesNeedTechCentre).
   if (kind === 'techcentre' && heroesNeedTechCentre(s, aiDifficulty(s, owner))) return false;
@@ -1056,6 +1118,7 @@ function nextStructure(
   // Supply lines (2026-11-21): a cut-off producer is reconnected before anything else. Never without them.
   if (depotSpot(s, owner) && unlocked(s, owner, 'depot')) return powerFor('depot');
   const t = advanced ? TACTICS[advanced] : null;
+  const armourPlan = !!t && pacedResearch(s) && armourThreat(s, owner);
   const plan: [BuildingKind, number][] = t
     ? [
         // Advanced tech: the original base first (the early army matters more than any tech),
@@ -1068,7 +1131,12 @@ function nextStructure(
         ['refinery', d.refineries],
         ['turret', 1],
         ['uplink', 1],
+        // 2026-11-25: facing armour at a paced size (aiStrength.ts), a second War Factory and Rocket
+        // Turrets, the anti-armour defence, come before the rest of the plan.
+        ...(armourPlan ? ([['factory', 2], ['rocketturret', 2]] as [BuildingKind, number][]) : []),
         ['turret', d.turrets],
+        // round7:structures: a Fortified Bunker under artillery pressure (Normal and Hard; nothing otherwise).
+        ...strategicPlanFor(s, owner, advanced, 'early'),
         // Paced research (round 6): the Tech Centre before the second factory, for the Mk IIs.
         ...(pacedTech(s) ? [['techcentre', 1] as [BuildingKind, number]] : []),
         ['factory', d.factories],
@@ -1078,6 +1146,8 @@ function nextStructure(
         ['refinery', Math.max(d.refineries, t.lateRefineries)],
         ['strikecommand', t.strike ? 1 : 0],
         ['repairbay', 1],
+        // round7:structures: a Supply Cache with a wave in the field, and on Hard an Intelligence Centre and Decoys.
+        ...strategicPlanFor(s, owner, advanced, 'late'),
       ]
     : [
         ['barracks', 1],
@@ -1090,6 +1160,9 @@ function nextStructure(
         ['turret', d.turrets],
         ['factory', d.factories],
       ];
+  // Surplus production (aiScale.ts): money banked and not being spent becomes more producers.
+  if (surplusOn(s, s.players[owner].credits))
+    plan.push(['factory', Math.max(1, d.factories) + SURPLUS_FACTORIES], ['barracks', 1 + SURPLUS_BARRACKS]);
   for (const [k, n] of plan) {
     if (count(k) >= n) continue;
     if (!unlocked(s, owner, k)) continue;
@@ -1111,6 +1184,10 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     const target = expansionTarget(s, owner, home);
     return target ? depotToward(s, owner, target) : null;
   }
+  // round7:structures begin. The strategic structures each have their own place (aiStructures.ts).
+  const r7 = strategicFocus(s, owner, kind, home, enemyHome);
+  if (r7) return findSpotNear(s, owner, kind, r7);
+  // round7:structures end.
   // Territory: a Watchtower toward the nearest ore outside the borders, else toward the enemy.
   if (kind === 'watchtower') {
     const ore = expansionTarget(s, owner, home) ?? unclaimedOre(s, owner, home);
@@ -1123,6 +1200,8 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   // Industry: a Fuel Well beside the nearest field rich enough to feed it.
   if (kind === 'fuelwell') focus = wellFocus(s, owner, home) ?? home;
   if (kind === 'techcentre' || kind === 'strikecommand') focus = toward(home, enemyHome, -4);
+  // round7:fortification: Point Defence beside the structure last shelled, or the Command Yard.
+  if (kind === 'pointdefence') focus = pointDefenceFocus(s, owner) ?? home;
   if (kind === 'refinery') {
     let best = -1;
     let bestD = Infinity;
@@ -1230,6 +1309,8 @@ function advancedUnits(
   const infantryHeavy = read && foeInfantry > foeArmour * 1.5;
   const armourHeavy = read && foeArmour > foeInfantry * 1.5;
   const fortified = t.counter && foeTurrets >= 3;
+  // 2026-11-25: facing armour at a paced size, tanks first (aiStrength.ts).
+  const armourFirst = armourHeavy && pacedResearch(s);
   // Vehicles first. The choice is fixed until something more is trained (a roll from the count
   // trained, not a draw), so a dear vehicle is saved for rather than re-rolled into a cheap one;
   // while it is saved for, the infantry queue holds one at a time once there are a few soldiers.
@@ -1249,9 +1330,15 @@ function advancedUnits(
       ['flametank', infantryHeavy ? 5 : armourHeavy ? 1 : 3],
       ['bastion', 0.5 + (armourHeavy ? 0.5 : 0) + (fortified ? 1 : 0)],
     ];
+    // 2026-11-25: at a paced size against armour, the measured answers (aiAdapt.ts MATCHUPS: tanks +1.52
+    // against heavy armour per credit; artillery -2.66, missile carriers -2.5, Bastions -0.23): tanks,
+    // and the siege bonus waits until the armour is dealt with (aiStrength.ts).
+    if (armourFirst) for (const e of vehicles) e[1] = e[0] === 'tank' ? 8 : e[0] === 'bastion' ? 1 : 0.2;
     // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
     if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
-    let kind = weighted(s, owner, vehicles, roll) ?? 'tank';
+    // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
+    let kind = weighted(s, owner, adaptMix(s, owner, vehicles, 'vehicle'), roll) ?? 'tank';
+    // round7:adaptive end.
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
     if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
@@ -1263,11 +1350,16 @@ function advancedUnits(
   // With ten soldiers, a vehicle being saved for holds the infantry back altogether; against
   // massed infantry it takes fourteen (grenadiers are worth more there than any vehicle short of
   // a flame tank).
-  const holdInfantry = waiting > 0 && soldiers >= (infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
+  // 2026-11-25: at a paced game size, against armour, from six soldiers: tanks answer tanks far better
+  // than cheap infantry does, and the infantry otherwise took every credit a tank needed (aiStrength.ts).
+  const holdInfantry = waiting > 0 && soldiers >= (armourFirst ? 6 : infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
   // Infantry: two queued as with one Barracks; more (a line per Barracks) only from credits to spare.
   const iLines = lineCount(s, owner, 'infantry');
-  const iRoom = holdInfantry ? 0 : waiting ? 1 : 2;
-  if (iq.length < iRoom || (!holdInfantry && !waiting && iq.length < iLines + 1 && extraLine(s, p.credits))) {
+  // 2026-11-25: against armour at a paced size, past six soldiers the infantry waits unless a tank's
+  // price is to spare, so the War Factory line is never starved by cheap infantry (aiStrength.ts).
+  const tankFirst = armourFirst && soldiers >= 6 && p.credits < vehiclePrice(s, owner, 'tank') + 250 && countBuildings(s, owner, 'factory') > 0;
+  const iRoom = holdInfantry || tankFirst ? 0 : waiting ? 1 : 2;
+  if (iq.length < iRoom || (!holdInfantry && !tankFirst && !waiting && iq.length < iLines + 1 && extraLine(s, p.credits))) {
     const medics = units.filter(u => UNITS[u.kind].medic).length + iq.filter(q => q.kind === 'medic').length;
     let kind: UnitKind | null = null;
     if (medics < Math.min(t.counter ? 3 : 1, Math.floor(soldiers / 6))) kind = 'medic';
@@ -1275,12 +1367,14 @@ function advancedUnits(
       const infantry: [UnitKind, number][] = [
         ['rifleman', infantryHeavy ? 1 : armourHeavy ? 1 : 2],
         ['rocketeer', infantryHeavy ? 1 : armourHeavy ? 5 : 1.5],
-        ['grenadier', (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
+        ['grenadier', armourFirst ? 0.5 : (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
       ];
       // Round 6, workstream A: Meridian's Sappers against defences and armour, in a battle with two
       // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.
       if (army === 'meridian' && twoArmies) infantry.push(['sapper', fortified ? 1.5 : armourHeavy ? 1 : 0.6]);
-      kind = weighted(s, owner, infantry);
+      // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
+      kind = weighted(s, owner, adaptMix(s, owner, infantry, 'infantry'));
+      // round7:adaptive end.
     }
     kind = kind ?? 'rifleman';
     if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
@@ -1334,13 +1428,16 @@ function blastWorth(
   radius: number,
   damageAt: (d: number, armor: ArmorClass) => number,
   unitShare: number,
+  viewer?: Owner,
 ): number {
   let worth = 0;
   for (const b of enemy) {
     const d = distToBuilding(x, y, b);
     if (d > radius) continue;
-    const spec = buildingSpecOf(s, b);
-    worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, b.hp)) * (spec.weapon ? 1.25 : 1);
+    // round7:structures: what the structure looks like to the side aiming (a Decoy passes for its disguise).
+    const spec = viewer !== undefined ? apparentSpecOf(s, b, viewer) : buildingSpecOf(s, b);
+    const hp = viewer !== undefined ? apparentHp(s, b, viewer) : b.hp;
+    worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, hp)) * (spec.weapon ? 1.25 : 1);
   }
   for (const u of foes) {
     const d = dist(x, y, u.x, u.y);
@@ -1360,11 +1457,12 @@ function bestBlast(
   damageAt: (d: number, armor: ArmorClass) => number,
   unitShare: number,
   bonus: (x: number, y: number) => number,
+  viewer?: Owner,
 ): { x: number; y: number; worth: number } | null {
   let best: { x: number; y: number; worth: number } | null = null;
   const candidates: Pt[] = [...enemy.map(b => buildingCentre(b)), ...foes.map(u => ({ x: u.x, y: u.y }))];
   for (const c of candidates) {
-    const worth = blastWorth(s, enemy, foes, c.x, c.y, radius, damageAt, unitShare) * bonus(c.x, c.y);
+    const worth = blastWorth(s, enemy, foes, c.x, c.y, radius, damageAt, unitShare, viewer) * bonus(c.x, c.y);
     if (!best || worth > best.worth) best = { x: c.x, y: c.y, worth };
   }
   return best;
@@ -1397,6 +1495,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
         (_d, armor) => 2 * BARRAGE_DAMAGE * 0.75 * DAMAGE_VS.artillery[armor],
         0.6,
         (x, y) => (centre && dist(x, y, centre.x, centre.y) < 10 ? 1.5 : 1),
+        owner,
       );
       if (at && at.worth >= t.barrageWorth) fire('barrage', at);
     }
@@ -1405,7 +1504,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
     if (!t.aimPowers) fire('missile', crude());
     else {
       const r = POWERS.missile.radius;
-      const at = bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1);
+      const at = bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1, owner);
       if (at && at.worth >= 1500) fire('missile', at);
     }
   }
@@ -1493,3 +1592,18 @@ function walk(s: GameState, occ: Int32Array, start: number, blocked: number): In
   return steps;
 }
 
+
+// round7:structures begin. For the harness (scripts/drive-structures.ts): where this side's commander
+// would aim a charged barrage or missile at its chosen enemy now, by the same reckoning as useStrikes
+// (Normal and Hard's aim, without the bonus near its own wave). Null when there is nothing to aim at.
+export function aimStrike(s: GameState, owner: Owner, power: 'barrage' | 'missile'): { x: number; y: number; worth: number } | null {
+  const { enemy } = enemyLists(s, owner, chooseEnemy(s, owner));
+  const foes = s.units.filter(u => isEnemy(s, owner, u.owner));
+  if (power === 'barrage') {
+    const r = POWERS.barrage.radius;
+    return bestBlast(s, enemy, foes, r, (_d, armor) => 2 * BARRAGE_DAMAGE * 0.75 * DAMAGE_VS.artillery[armor], 0.6, () => 1, owner);
+  }
+  const r = POWERS.missile.radius;
+  return bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1, owner);
+}
+// round7:structures end.

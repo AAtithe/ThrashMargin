@@ -33,6 +33,7 @@
  *   tsx scripts/ai-ladder.ts --map random --industry   industry on (2026-11-21): fuel, alloys, Fuel Wells and Foundries
  *   tsx scripts/ai-ladder.ts --map random --industry --supply   and supply lines (Depots; needs --industry)
  *   tsx scripts/ai-ladder.ts --map random --industry --supply --territory   and territory and workforce (needs --supply)
+ *   tsx scripts/ai-ladder.ts --map random --structure-upgrades --strategic   round 7: structure upgrades and strategic structures
  *   tsx scripts/ai-ladder.ts ... --territory --production   and advanced production (needs --territory)
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
@@ -41,6 +42,15 @@
  *   tsx scripts/ai-ladder.ts --heroes --generals      round 6's options on: heroes (advanced tech only)
  *                                                      and field Generals, on --map random unless a map
  *                                                      is given; both off by default
+ *   tsx scripts/ai-ladder.ts --map random --pace long --fortification   round 7: the Fortification line on
+ *                                                      (development lines only); without the flag it is off.
+ *                                                      With it the report adds how far each difficulty took
+ *                                                      the line, the emplacements built and the shots brought down.
+ *   tsx scripts/ai-ladder.ts --map random --match new:hard:adaptive,new:hard:fixed
+ *     round 7: the adaptive commander (aiAdapt.ts). A side marked `adaptive` adapts and one marked
+ *     `fixed` does not, whatever the setup says (the marker goes after the difficulty, before or after
+ *     an army). Unmarked sides follow the setup, which is `--adaptive off` (the default, so the card
+ *     reads as before round 7) or `--adaptive on`. Needs a skirmish setup: give --map.
  *
  * A match is `side0,side1`, each side `commander:difficulty` or `commander:difficulty:army` (round 6:
  * `meridian`, the default, or `ashen`; an army needs a skirmish setup), where the commander is `new` (the
@@ -75,6 +85,11 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
+// round7:adaptive
+import { setAdaptiveOverride, setAdaptiveParts } from '../src/sim/aiAdapt';
+import { OPENINGS, OPENING_SPECS, setOpening, type Opening } from '../src/sim/aiOpening';
+// round7:adaptive: ablations, ADAPT_PARTS=mix or ADAPT_PARTS=plans adapts only that half (default both).
+if (process.env.ADAPT_PARTS) setAdaptiveParts(process.env.ADAPT_PARTS.includes('mix'), process.env.ADAPT_PARTS.includes('plans'));
 import { scaledFor } from '../src/sim/aiScale';
 import { DIFFICULTIES, FACTIONS, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type Faction, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
@@ -88,6 +103,12 @@ interface Side {
   difficulty: Difficulty;
   /** Round 6: this side's army; absent is Meridian. */
   army?: Faction;
+  // round7:adaptive begin
+  /** Round 7: forced adaptive (true) or fixed (false); absent follows the setup. */
+  adaptive?: boolean;
+  // round7:adaptive end
+  /** The scripted-opening test: this side plays one fixed opening every game (aiOpening.ts). Absent: none. */
+  opening?: Opening;
 }
 interface Match {
   sides: [Side, Side];
@@ -140,10 +161,21 @@ if (SUPPLY && !INDUSTRY) throw new Error('--supply needs --industry');
 /** Territory and workforce (2026-11-21): needs supply lines. */
 const TERRITORY = args.includes('--territory');
 if (TERRITORY && !SUPPLY) throw new Error('--territory needs --supply');
+// round7:structures begin. Structure upgrades and strategic structures (advanced tech only).
+const UPGRADES7 = args.includes('--structure-upgrades');
+const STRATEGIC7 = args.includes('--strategic');
+if ((UPGRADES7 || STRATEGIC7) && LEGACY) throw new Error('--structure-upgrades and --strategic need a --map other than legacy');
+// round7:structures end.
 /** Advanced production (2026-11-22): needs territory. */
 const PRODUCTION = args.includes('--production');
 if (PRODUCTION && !TERRITORY) throw new Error('--production needs --territory');
 if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
+// round7:fortification: the Fortification line, stated in every skirmish setup (off without the flag).
+const FORTIFICATION = args.includes('--fortification');
+// round7:adaptive begin. The setup's adaptive commander for unmarked sides: off unless asked for.
+const ADAPTIVE = arg('--adaptive', 'off');
+if (ADAPTIVE !== 'on' && ADAPTIVE !== 'off') throw new Error(`bad --adaptive "${ADAPTIVE}"`);
+// round7:adaptive end.
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
@@ -168,17 +200,35 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(INDUSTRY ? { industry: true } : {}),
     ...(SUPPLY ? { supply: true } : {}),
     ...(TERRITORY ? { territory: true } : {}),
+    // round7:fortification
+    fortification: FORTIFICATION,
+    ...(UPGRADES7 ? { structureUpgrades: true } : {}),
+    ...(STRATEGIC7 ? { strategicBuildings: true } : {}),
+    // round7:adaptive begin
+    adaptive: ADAPTIVE === 'on',
+    // round7:adaptive end
     ...(PRODUCTION ? { production: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
 function parseSide(text: string): Side {
-  const [ai, difficulty, army] = text.split(':');
+  // round7:adaptive begin. An `adaptive` or `fixed` marker anywhere after the difficulty.
+  // The scripted-opening test: an `open-armour`, `open-infantry` or `open-siege` marker after the difficulty.
+  const openMark = text.split(':').slice(2).find(p => p.startsWith('open-'));
+  const opening = openMark ? (openMark.slice(5) as Opening) : undefined;
+  if (opening !== undefined && !OPENINGS.includes(opening)) throw new Error(`bad opening in "${text}"`);
+  if (opening !== undefined && LEGACY) throw new Error('a scripted opening needs a skirmish setup: give --map');
+  const parts = text.split(':').filter(p => p !== openMark);
+  const marker = parts.slice(2).find(p => p === 'adaptive' || p === 'fixed');
+  const [ai, difficulty, army] = parts.filter(p => p !== marker);
+  if (marker && LEGACY) throw new Error('the adaptive commander needs a skirmish setup: give --map');
+  const adapt = marker ? { adaptive: marker === 'adaptive' } : {};
+  // round7:adaptive end.
   if (!COMMANDERS.includes(ai as Commander) || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
   if (army !== undefined && !FACTIONS.includes(army as Faction)) throw new Error(`bad army in "${text}"`);
   if (army && army !== 'meridian' && LEGACY) throw new Error('an army needs a skirmish setup: give --map');
-  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}) };
+  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}), ...adapt, ...(opening ? { opening } : {}) };
 }
 
 /**
@@ -224,7 +274,28 @@ function standardCard(): Match[] {
   ];
 }
 
+/**
+ * The scripted-opening test (fireline-round7-adaptive.md): side 0 plays one fixed opening every game
+ * through the Normal commander, never adapting; side 1 is the fixed commander, then the adaptive one,
+ * at each level asked for. The adaptive commander does its job if the fixed openings win less often
+ * against it than against the fixed commander. Side 0 is the same in both rows, so the seat cancels.
+ */
+function openingCard(levels: Difficulty[]): Match[] {
+  const out: Match[] = [];
+  for (const o of OPENINGS)
+    for (const d of levels)
+      for (const mode of ['fixed', 'adaptive'])
+        out.push({ sides: [parseSide(`new:normal:fixed:open-${o}`), parseSide(`new:${d}:${mode}`)] });
+  return out;
+}
+
 function matchesFromArgs(): Match[] {
+  const card = arg('--opening-card', '');
+  if (card) {
+    const levels = card.split(',') as Difficulty[];
+    for (const d of levels) if (!(d in DIFFICULTIES)) throw new Error(`bad --opening-card level "${d}"`);
+    return openingCard(levels);
+  }
   const out: Match[] = [];
   args.forEach((a, i) => {
     if (a !== '--match') return;
@@ -237,6 +308,12 @@ function matchesFromArgs(): Match[] {
 function play(m: Match, seed: number): Result & { match: number } {
   setAutopilotAi(AIS[m.sides[0].ai], 0);
   setAutopilotAi(AIS[m.sides[1].ai], 1);
+  // round7:adaptive begin
+  setAdaptiveOverride(0, m.sides[0].adaptive ?? null);
+  setAdaptiveOverride(1, m.sides[1].adaptive ?? null);
+  // round7:adaptive end
+  setOpening(0, m.sides[0].opening ?? null);
+  setOpening(1, m.sides[1].opening ?? null);
   const name = `ladder-${seed}`;
   const base = setupFor(seed);
   const armies = m.sides.map(sd => sd.army ?? 'meridian');
@@ -247,8 +324,21 @@ function play(m: Match, seed: number): Result & { match: number } {
   s.ai[0].nextAttack = scaledFor(s, difficultyForPace(m.sides[0].difficulty, PACE)).firstAttack;
   const mk2: (number | null)[] = [null, null];
   const mk3: (number | null)[] = [null, null];
+  // round7:fortification: the most emplacements each side had standing, and shots each brought down.
+  const pdMax = [0, 0];
+  const downs = [0, 0];
+  const seenFx = new Set<number>();
   while (s.winner === null && s.tick < CAP) {
     s = processAction(s, { type: 'tick', n: 50 });
+    if (FORTIFICATION) {
+      for (const o of [0, 1] as Owner[]) pdMax[o] = Math.max(pdMax[o], s.buildings.filter(b => b.owner === o && b.kind === 'pointdefence' && b.hp > 0).length);
+      for (const e of s.effects)
+        if (e.kind === 'intercept' && e.size && !seenFx.has(e.id)) {
+          seenFx.add(e.id);
+          const b = s.buildings.find(x => x.kind === 'pointdefence' && x.x + 0.5 === e.x2 && x.y + 0.5 === e.y2);
+          if (b && b.owner <= 1) downs[b.owner]++;
+        }
+    }
     if (!LINES_BATTLES) continue;
     for (const o of [0, 1] as Owner[]) {
       const ups = s.players[o].upgrades ?? [];
@@ -258,12 +348,26 @@ function play(m: Match, seed: number): Result & { match: number } {
   }
   setAutopilotAi(null, 0);
   setAutopilotAi(null, 1);
-  return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}) };
+  // round7:adaptive begin
+  setAdaptiveOverride(0, null);
+  setAdaptiveOverride(1, null);
+  // round7:adaptive end
+  setOpening(0, null);
+  setOpening(1, null);
+  // round7:fortification: how far each side took the line ('none', 'mk1', 'mk2', or its Mk III branch).
+  const stage = (o: Owner) => {
+    const ups = s.players[o].upgrades ?? [];
+    return ups.includes('pointdef') ? 'pd' : ups.includes('counterbattery') ? 'cb' : ups.includes('shelters') ? 'mk2' : ups.includes('concrete') ? 'mk1' : 'none';
+  };
+  const fort = FORTIFICATION ? { fort: { stage: [stage(0), stage(1)], pdMax, downs } } : {};
+  return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}), ...fort };
 }
 
 /** Round 6: with an army named anywhere on the card, every side's label names its army. */
 const ARMIES_NAMED = FACTIONS_CARD || args.some((a, i) => args[i - 1] === '--match' && a.includes(':ashen'));
-const label = (sd: Side) => `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}`;
+// round7:adaptive: a forced side is labelled `adaptive` or `fixed`.
+const label = (sd: Side) =>
+  `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}${sd.adaptive === undefined ? '' : sd.adaptive ? ' adaptive' : ' fixed'}${sd.opening ? ` (${OPENING_SPECS[sd.opening].name.toLowerCase()})` : ''}`;
 const minutes = (ticks: number) => (ticks / 600).toFixed(1);
 
 // Worker: plays every (match, seed) job whose index is k mod n, one JSON line per battle.
@@ -282,7 +386,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -297,12 +401,18 @@ if (workerAt >= 0) {
           script,
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
           ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH, '--size', SIZE],
+          // round7:adaptive
+          ...['--adaptive', ADAPTIVE],
           ...(LEGACY ? [] : ['--pace', PACE]),
           ...(HEROES ? ['--heroes'] : []),
           ...(GENERALS ? ['--generals'] : []),
           ...(INDUSTRY ? ['--industry'] : []),
           ...(SUPPLY ? ['--supply'] : []),
           ...(TERRITORY ? ['--territory'] : []),
+          // round7:fortification
+          ...(FORTIFICATION ? ['--fortification'] : []),
+          ...(UPGRADES7 ? ['--structure-upgrades'] : []),
+          ...(STRATEGIC7 ? ['--strategic'] : []),
           ...(PRODUCTION ? ['--production'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
@@ -405,6 +515,33 @@ if (workerAt >= 0) {
         const share = (key: 'mk2' | 'mk3', o: 0 | 1) => Math.round((100 * rs.filter(r => r[key]?.[o] != null).length) / Math.max(1, rs.length));
         console.log(`${label(m.sides[0])} v ${label(m.sides[1])}`.padEnd(28) + `${share('mk2', 0)}/${share('mk2', 1)}`.padEnd(14) + `${share('mk3', 0)}/${share('mk3', 1)}`);
       });
+    }
+    // round7:fortification: how far each `new` side took the line, by difficulty.
+    if (FORTIFICATION) {
+      console.log('\nFortification (new sides): share reaching Mk I / Mk II / Counter-battery / Point Defence; emplacements; shots down');
+      for (const diff of Object.keys(DIFFICULTIES) as Difficulty[]) {
+        let sides = 0;
+        const n = { mk1: 0, mk2: 0, cb: 0, pd: 0 };
+        let pds = 0;
+        let downs = 0;
+        for (const r of results as (Result & { fort?: { stage: string[]; pdMax: number[]; downs: number[] } })[]) {
+          const m = matches[r.match];
+          for (const o of [0, 1] as const) {
+            if (m.sides[o].ai !== 'new' || m.sides[o].difficulty !== diff || !r.fort) continue;
+            sides++;
+            const st = r.fort.stage[o];
+            if (st !== 'none') n.mk1++;
+            if (st === 'mk2' || st === 'cb' || st === 'pd') n.mk2++;
+            if (st === 'cb') n.cb++;
+            if (st === 'pd') n.pd++;
+            pds += r.fort.pdMax[o];
+            downs += r.fort.downs[o];
+          }
+        }
+        if (!sides) continue;
+        const pc = (k: number) => `${Math.round((100 * k) / sides)}%`;
+        console.log(`${diff.padEnd(8)} ${String(sides).padEnd(5)} ${pc(n.mk1)} / ${pc(n.mk2)} / ${pc(n.cb)} / ${pc(n.pd)}; ${(pds / sides).toFixed(2)} emplacements a side; ${(downs / sides).toFixed(1)} shots down a side`);
+      }
     }
     for (const [mi, seeds] of stuck) console.log(`  unfinished, ${label(matches[mi].sides[0])} v ${label(matches[mi].sides[1])}: seeds ${seeds.join(', ')}`);
     // Pairings played both ways round: the first-named side's wins over both orientations.

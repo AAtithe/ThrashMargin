@@ -123,6 +123,19 @@ import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './
 import { auraWeapon, generalsStep, inAura } from './generals';
 import { lostAboard, transportStep } from './transport';
 import { canReach, isShip, launchTile, navalStep } from './naval';
+// round7:planet begin
+import { planetReinforce } from './planetLinks';
+// round7:planet end
+// round7:review begin. The after-action review: recording (src/sim/history.ts). Reads only; never changes play.
+import { noteBuildingDeath, noteKill, noteUnitDeath, recordHistory } from './history';
+// round7:review end.
+// round7:fortification. The Fortification line (fireline-round7-fortification.md).
+import { fortificationStep, notePressure } from './fortification';
+import { shelterMul, structureMaxHp } from './fortify';
+// round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
+import { apparentSpecOf, bunkersFallen, bunkersStep, isOutpost, levelRateOf, loadIncomeMulOf, structuresStep, unloadMulOf, upgradeTakenOf } from './structures';
+import { BUNKER_DAMAGE, BUNKER_RANGE } from './rules';
+// round7:structures end.
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
 /** Supply lines: a cut-off refinery counts as this many tiles further when a hauler chooses where to unload. */
@@ -212,6 +225,9 @@ export function step(s: GameState): void {
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
   // The air war: infantry climbing into Troop Carriers, and carriers setting them down.
   transportStep(s);
+  // round7:structures begin. Infantry going into Fortified Bunkers. A no-op without strategic structures.
+  bunkersStep(s);
+  // round7:structures end.
   // The naval war: Naval Yards mending the ships beside them.
   navalStep(s);
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
@@ -235,6 +251,9 @@ export function step(s: GameState): void {
     territoryOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : undefined,
   );
   supplyStep(s);
+  // round7:structures begin. Upgrades under way, and Supply Caches mending and changing hands. No-ops with both off.
+  structuresStep(s, ctx.power);
+  // round7:structures end.
   // Advanced production (2026-11-22): Farms, Munitions Works, meals and Supply Trucks. No-ops without it.
   productionStep(s, ctx.power, productionOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : new Set());
   truckStep(s);
@@ -242,7 +261,14 @@ export function step(s: GameState): void {
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
   // round5:D end.
+  // round7:planet begin. A planet battle on battle rules 3: reinforcement waves arrive. A no-op otherwise.
+  planetReinforce(s);
+  // round7:planet end
   charges(s);
+  // round7:fortification begin. Counter-battery and Point Defence, after every shot of the tick and
+  // before any lands. A no-op in a battle without the Fortification line.
+  fortificationStep(s);
+  // round7:fortification end.
   landProjectiles(s, ctx);
   separate(s, ctx);
   removeDead(s);
@@ -263,6 +289,9 @@ export function step(s: GameState): void {
   // A mission is decided by its objectives; a skirmish by who still has structures.
   if (s.mission) evaluateMission(s);
   else checkVictory(s);
+  // round7:review begin. The after-action review: the history's sample and events (a no-op without s.history).
+  if (s.history) recordHistory(s);
+  // round7:review end.
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -336,6 +365,9 @@ function charges(s: GameState): void {
 
 /** A kill: the sides' tallies, and the killer's rank and (for a hero) experience. */
 function credit(s: GameState, by: Owner, victimOwner: Owner, killer: Unit | undefined, t: Target): void {
+  // round7:review begin. The after-action review: the kill, for the history (reads only).
+  if (s.history) noteKill(s, by, victimOwner, killer, t);
+  // round7:review end.
   s.players[by].stats.killed++;
   s.players[victimOwner].stats.lost++;
   // Salvage crews (development lines): paid for every enemy vehicle or aircraft destroyed.
@@ -385,6 +417,14 @@ function production(s: GameState, ctx: Ctx): void {
           }
           // Territory and workforce: a producer without its crew builds nothing, like one a Spy has stopped.
           if (sabotaged(s, producer) || !staffed(s, producer)) return;
+          // round7:structures begin. A producer raised a level works faster (1 at level 1).
+          const lr = levelRateOf(producer);
+          if (lr !== 1) {
+            item.progress = Math.min(total, item.progress + (assembly !== 1 ? rate * assembly : rate) * lr);
+            if (item.progress >= total) spawnFromQueue(s, ctx, owner, cat, item, producer);
+            return;
+          }
+          // round7:structures end.
           item.progress = Math.min(total, item.progress + (assembly !== 1 ? rate * assembly : rate));
           if (item.progress >= total) spawnFromQueue(s, ctx, owner, cat, item, producer);
         });
@@ -400,6 +440,11 @@ function production(s: GameState, ctx: Ctx): void {
       if (!producer || sabotaged(s, producer)) continue;
       // Assembly lines (development lines): every queue but the building one.
       const assembly = buildRateOf(s, owner, cat);
+      // round7:structures begin. A Command Yard (or Field Yard) raised a level builds faster.
+      const yardRate = levelRateOf(producer);
+      if (yardRate !== 1) head.progress = Math.min(total, head.progress + (assembly !== 1 ? rate * assembly : rate) * yardRate);
+      else
+      // round7:structures end.
       head.progress = Math.min(total, head.progress + (assembly !== 1 ? rate * assembly : rate));
       if (head.progress >= total && owner === 0) log(s, `${nameOf(s, owner, head.kind)} ready. Choose where to place it.`, 'good');
     }
@@ -634,6 +679,11 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
   let best = 0;
   let bestScore = Infinity;
   for (const e of s.units) {
+    // The cheapest test first: anything outside the square round the range is out of it. (Only
+    // filters are reordered, so the pick is the same; it matters on vast maps' bigger armies.)
+    const ex = e.x - x;
+    const ey = e.y - y;
+    if (ex > range || ex < -range || ey > range || ey < -range) continue;
     if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
     const cat = UNITS[e.kind].category;
     if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) continue;
@@ -654,7 +704,8 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
     if (spare && spare.includes(b.kind)) continue;
     const d = distToTarget(x, y, { building: b });
     if (d > range) continue;
-    const score = d + (buildingSpecOf(s, b).weapon ? 0.5 : 3);
+    // round7:structures: an armed-looking Decoy is picked as an armed structure (apparentSpecOf: the spec itself otherwise).
+    const score = d + (apparentSpecOf(s, b, owner).weapon ? 0.5 : 3);
     if (score < bestScore) {
       bestScore = score;
       best = b.id;
@@ -730,7 +781,9 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
       if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
       const d = distToTarget(p.toX, p.toY, { building: b });
       if (d > p.splash) continue;
-      hurt(s, { building: b }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
+      // round7:fortification: Hardened shelters (1 without them, and the product is not taken).
+      const shelter = shelterMul(s, b, p.weapon);
+      hurt(s, { building: b }, shelter === 1 ? p.damage * (1 - (0.5 * d) / p.splash) : p.damage * (1 - (0.5 * d) / p.splash) * shelter, p, shooter);
     }
   } else {
     const u = s.units.find(v => v.id === p.target && v.hp > 0);
@@ -760,6 +813,8 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
   }
   // Countermeasures (research): anti-air does less to the side's aircraft.
   if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
+  // round7:structures: a structure with an upgrade under way takes more (UPGRADE_DAMAGE_TAKEN).
+  if (t.building?.upgrade) raw *= upgradeTakenOf(t.building);
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
   const victim = t.unit ?? t.building!;
   if (victim.hp <= 0) return;
@@ -770,6 +825,8 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
     mem.hurtX = t.building.x + 1;
     mem.hurtY = t.building.y + 1;
     if (victim.owner === 0) alarm(s, 'base', 'Our base is under attack.', 300);
+    // round7:fortification: the commander's count of indirect fire on its structures.
+    if (s.setup?.fortification) notePressure(s, t.building, p);
   } else if (victim.owner === 0 && t.unit!.kind === 'hauler') {
     alarm(s, 'hauler', 'A hauler is under attack.', 300);
   } else {
@@ -1146,7 +1203,8 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
         halt(u);
         return;
       }
-      const amount = Math.min(UNLOAD_PER_TICK, u.cargo);
+      // round7:structures: an Expanded Refinery unloads faster (unloadMulOf: 1 at level 1).
+      const amount = Math.min(ref.level ? UNLOAD_PER_TICK * unloadMulOf(ref) : UNLOAD_PER_TICK, u.cargo);
       u.cargo -= amount;
       // Only the computer sides get the difficulty's income multiplier (1 on Normal).
       // A side's Logistics perk (side 0's in a campaign; any side's doctrine in round 6) raises its income.
@@ -1155,6 +1213,8 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       // Refinery efficiency (research).
       const refined = incomeMulOf(s, u.owner);
       if (refined !== 1) mul *= refined;
+      // round7:structures: and makes more of every load.
+      if (ref.level) mul *= loadIncomeMulOf(ref);
       const credits = Math.round(amount * mul);
       // Supply lines: a cut-off refinery keeps the credits on site; full, its haulers wait.
       if (supplyOn(s) && !supplied(s, ref)) {
@@ -1184,18 +1244,22 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
 function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   const spec = buildingSpecOf(s, b);
   if (b.repairing) {
-    if (b.hp >= spec.hp) b.repairing = false;
+    // round7:fortification: full health is Reinforced concrete's where the side has it (spec.hp otherwise).
+    const full = structureMaxHp(s, b);
+    if (b.hp >= full) b.repairing = false;
     else {
       const amount = Math.max(1, Math.round(spec.hp / 200));
       const cost = (amount * spec.cost * REPAIR_COST_SHARE) / spec.hp;
       const p = s.players[b.owner];
       if (p.credits >= cost) {
         p.credits = Math.round((p.credits - cost) * 100) / 100;
-        b.hp = Math.min(spec.hp, b.hp + amount);
+        b.hp = Math.min(full, b.hp + amount);
       } else b.repairing = false;
     }
   }
   if (b.kind === 'repairbay') repairBay(s, ctx, b);
+  // round7:structures: a Fortified Bunker's garrison fires out.
+  if (b.garrison) bunkerFire(s, ctx, b);
   const w = spec.weapon;
   if (!w || s.tick - b.placedAt < 15) return;
   // Short of power, a turret's guns cycle at half speed.
@@ -1240,6 +1304,37 @@ function repairBay(s: GameState, ctx: Ctx, b: Building): void {
     if (Math.floor(s.tick / period) % 4 === 0) s.effects.push({ id: s.nextId++, kind: 'repair', x: v.x, y: v.y, at: s.tick, size: 0 });
   }
 }
+
+// round7:structures begin. The Fortified Bunker's garrison at work (structures.ts holds the rest).
+/**
+ * Each soldier inside fires its own weapon from the Bunker's centre, BUNKER_RANGE further than in the
+ * open and at BUNKER_DAMAGE of its strength (its rank still counts), on its own reload. Targets as a
+ * turret does: the nearest enemy in range, kept while it stays in range and can be hit.
+ */
+function bunkerFire(s: GameState, ctx: Ctx, b: Building): void {
+  const spec = buildingSpecOf(s, b);
+  const cx = b.x + spec.w / 2;
+  const cy = b.y + spec.h / 2;
+  for (const g of b.garrison!) {
+    if (g.cooldown > 0) g.cooldown--;
+    const w = weaponOf(s, g);
+    if (!w) continue;
+    const range = w.range + BUNKER_RANGE;
+    let t = g.engage ? lookup(ctx, g.engage) : null;
+    if (t && (distToTarget(cx, cy, t) > range || distToTarget(cx, cy, t) < (w.minRange ?? 0) || !canHit(w, t))) t = null;
+    if (t?.unit && (t.unit.kind === 'spy' || UNITS[t.unit.kind].stealth) && !seenBy(s, t.unit, b.owner)) t = null;
+    if (!t && (s.tick + g.id) % 4 === 0) {
+      const found = acquire(s, b.owner, cx, cy, range, false, w);
+      t = found ? lookup(ctx, found) : null;
+      if (t && distToTarget(cx, cy, t) < (w.minRange ?? 0)) t = null;
+    }
+    g.engage = t ? (t.unit ? t.unit.id : t.building!.id) : 0;
+    if (!t || g.cooldown > 0) continue;
+    fire(s, b.owner, cx, cy, w, t, 0, BUNKER_DAMAGE * (VET_DAMAGE[g.vet] ?? 1));
+    g.cooldown = g.vet ? Math.round(w.cooldown * (VET_RELOAD[g.vet] ?? 1)) : w.cooldown;
+  }
+}
+// round7:structures end.
 
 function landProjectiles(s: GameState, _ctx: Ctx): void {
   if (!s.projectiles.length) return;
@@ -1335,6 +1430,10 @@ function removeDead(s: GameState): void {
     for (const u of s.units) {
       if (u.hp > 0) continue;
       if (u.hero) noteFallen(s, u);
+      // round7:review begin. The after-action review: the loss and any riders aboard, for the history
+      // (reads only; before lostAboard, which empties the carrier).
+      if (s.history) noteUnitDeath(s, u);
+      // round7:review end.
       if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
       s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
@@ -1350,6 +1449,9 @@ function removeDead(s: GameState): void {
       else if (isEnemy(s, 0, b.owner)) log(s, `Enemy ${spec.name} destroyed.`, 'good');
       else log(s, `Allied ${spec.name} destroyed.`, 'bad');
       noteDestroyed(s, b);
+      // round7:review begin. The after-action review: the structure lost, for the history (reads only).
+      if (s.history) noteBuildingDeath(s, b);
+      // round7:review end.
     }
     fallen = s.buildings.filter(b => b.hp <= 0);
     s.buildings = s.buildings.filter(b => b.hp > 0);
@@ -1357,6 +1459,8 @@ function removeDead(s: GameState): void {
   if (fallen) {
     // The crews walk out, unless that was the side's last structure and the battle is over.
     const occ = occupancy(s);
+    // round7:structures: a fallen Bunker's garrison staggers out first.
+    if (fallen.some(b => b.garrison)) bunkersFallen(s, fallen, occ);
     for (const b of fallen) if (s.buildings.some(o => o.owner === b.owner && isStructure(o))) spawnSurvivors(s, b, occ);
   }
 }
@@ -1372,7 +1476,8 @@ function removeDead(s: GameState): void {
 function checkVictory(s: GameState): void {
   if (s.planet && planetVictory(s, s.planet)) return;
   const has: boolean[] = s.players.map(() => false);
-  for (const b of s.buildings) if (isStructure(b)) has[b.owner] = true;
+  // round7:structures: an outpost (a Supply Cache or a Decoy) keeps no side in the battle.
+  for (const b of s.buildings) if (isStructure(b) && !isOutpost(b)) has[b.owner] = true;
   const sides = sidesOf(s);
   const alive = (o: Owner) => has[o] || sides.some(a => has[a] && isAlly(s, a, o));
   const ours = alive(0);

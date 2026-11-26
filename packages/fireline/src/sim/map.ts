@@ -174,4 +174,11 @@ export function generateMap(seed: number): GeneratedMap {
   return { w: MAP_W, h: MAP_H, tiles: t.join(''), ore, starts: [START_0, START_1] };
 }
 
-export const isWalkable = (c: string) => c === 'g' || c === 'd';
+/**
+ * Ground a unit can walk: grass, dirt, and on vast maps (2026-11-22) a ruined city's streets ('p')
+ * and the bridges over a ravine ('b'). Water ('w'), rock ('r'), woods ('t'), ravines ('v') and
+ * ruins ('x') are not. grid.ts keeps the same set as character codes (WALK_CODES).
+ */
+export const isWalkable = (c: string) => c === 'g' || c === 'd' || c === 'p' || c === 'b';
+/** Walkable but nothing may be built on it: a bridge. */
+export const isBridge = (c: string) => c === 'b';

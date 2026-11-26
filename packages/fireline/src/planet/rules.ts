@@ -395,7 +395,63 @@ export const SIDE_UNITS_MAX = 40;
 export const REPORT_SURVIVORS_MAX = 60;
 
 /**
- * The battle rules a new war builds its battles to (section 9.7): 2, the map size by stakes. A war
- * saved without `battleRules` is version 1 and fights every battle on a standard map.
+ * The battle rules a new war builds its battles to (section 9.7): 2, the map size by stakes; 3
+ * (round 7), also the links between the war and its battles. A war saved without `battleRules` is
+ * version 1 and fights every battle on a standard map; a version 2 war stays on 2 for good.
  */
-export const BATTLE_RULES = 2 as const;
+export const BATTLE_RULES = 3 as const;
+
+// ---- Battle rules 3: the war and its battles (round 7, fireline-round7-planet.md) -------------
+
+/** Supply (link 1): the share of the attacker's credits kept, its harvest rate in per cent, and its vehicles' health in per cent. */
+export const SUPPLY_EFFECT: Record<'cut' | 'short' | 'supplied' | 'depot', { credits: number; trickle: number; vehicleHp: number }> = {
+  cut: { credits: 0.5, trickle: 50, vehicleHp: 60 },
+  short: { credits: 0.8, trickle: 75, vehicleHp: 100 },
+  supplied: { credits: 1, trickle: 100, vehicleHp: 100 },
+  depot: { credits: 1, trickle: 100, vehicleHp: 100 },
+};
+/** Short of supply: fuel or food left below this once the attack is paid for. */
+export const SUPPLY_SHORT_STOCK = 2;
+/** A defending city cut off from its capital keeps this share of its credits. */
+export const DEF_CUT_CREDITS = 0.75;
+/** The reinforcement wave from a depot: at most this many units, and at most half the staging garrison. */
+export const REINFORCE_MAX = 6;
+/** The wave arrives at this share of the time limit. */
+export const REINFORCE_AT = 0.25;
+/** Neighbouring support (link 2): regions within this many hops of the battle. */
+export const SUPPORT_HOPS = 2;
+/** An institute of at least this Mk gives the recon sweep; fortifications of this Mk the barrage. */
+export const SUPPORT_INSTITUTE_MK = 2;
+export const SUPPORT_FORT_MK = 3;
+/** Artillery in an adjacent garrison: one barrage per gun, at most this many. */
+export const SUPPORT_ARTILLERY_MAX = 3;
+/** Prepared defences (link 3): sandbag walls per Mk of the defender's fortifications. */
+export const WALLS_PER_FORT_MK = 4;
+/** Auto-resolve strength of one sandbag post (a structure counts 1 and a turret 4; a post only slows an assault). */
+export const WALL_VALUE = 0.25;
+/** The time limit is battleMinutes times (TIME_BASE + TIME_PER_LEVEL * city level). */
+export const TIME_BASE = 0.8;
+export const TIME_PER_LEVEL = 0.1;
+/** Economy (link 6): unspent credits and harvested ore return as ore at this many credits per ore, at most RETURN_MAX per side. */
+export const RETURN_CREDITS_PER_ORE = 400;
+export const RETURN_MAX = 20;
+/** Wounds (link 7): a vehicle below this share of its health is wounded; it arrives at WOUNDED_HP per cent; repair costs REPAIR_COST each. */
+export const WOUNDED_BELOW = 0.5;
+export const WOUNDED_HP = 50;
+export const REPAIR_COST: Stock = { ore: 2, fuel: 0, alloys: 1, food: 0 };
+/** Morale (link 8): a loser that lost more than this share of its army value is beaten decisively. */
+export const DECISIVE_LOSS = 0.75;
+export const DECISIVE_TRUST = 5;
+/** A shaken garrison brings this share of its units. */
+export const SHAKEN_SHARE = 0.75;
+/** Auto-resolve: strength of each support power (per use when limited), and of a reinforcement wave's units. */
+export const SUPPORT_VALUE: Record<'recon' | 'barrage' | 'missile', { unlimited: number; perUse: number }> = {
+  recon: { unlimited: 2, perUse: 1 },
+  barrage: { unlimited: 6, perUse: 2 },
+  missile: { unlimited: 8, perUse: 3 },
+};
+export const REINFORCE_VALUE = 0.75;
+/** Auto-resolve: a surviving vehicle is wounded with this share of its side's loss share. */
+export const QUICK_WOUND_SHARE = 0.5;
+/** The computer factions (link 11): attack from a cut-off region only when desperate (this few regions or fewer). */
+export const AI_DESPERATE_REGIONS = 2;

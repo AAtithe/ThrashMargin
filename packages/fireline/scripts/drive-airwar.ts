@@ -458,6 +458,9 @@ function computer(ok: Ok): void {
   {
     let s = quiet('aw-ai-airlift', 'air');
     s.ai[1].nextAirlift = 0;
+    // The airlift itself, with the adaptive layer off: since it reads the whole map (2026-11-25) it answers the
+    // two parked Gunships with Skyhunters and spends the carrier's credits on them, which is its job, not this test's.
+    s.setup = { ...s.setup!, adaptive: false };
     let lifted = 0;
     let setDown = false;
     for (let k = 0; k < 200 && !setDown; k++) {

@@ -91,6 +91,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: AFTER_9,
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: [],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [
@@ -137,6 +139,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: [],
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: [],
     objectives: [{ kind: 'escort', x: 22.5, y: 4.5, r: 3, count: 3 }],
     bonus: [
@@ -207,6 +211,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: [...AFTER_11, 'skyhunter'],
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: [],
     objectives: [{ kind: 'holdZone', x: 31.5, y: 32.5, r: 3, ticks: 4 * MIN, reset: true }],
     bonus: [
@@ -271,6 +277,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: [...AFTER_12, 'flakcannon'],
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: ['recon'],
     structurePowers: true,
     objectives: [
@@ -338,6 +346,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: AFTER_13,
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: ['recon'],
     structurePowers: true,
     objectives: [
@@ -418,6 +428,8 @@ export const ACT_TWO: MissionSpec[] = [
     },
     tech: [...AFTER_13, ...AIR],
     research: 'classic',
+    // round7:fortification: missions never play the Fortification line.
+    fortification: false,
     powers: ['recon', 'barrage', 'reinforce'],
     structurePowers: true,
     objectives: [{ kind: 'destroyAll' }],

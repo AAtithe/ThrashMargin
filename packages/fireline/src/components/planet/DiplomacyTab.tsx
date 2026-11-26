@@ -9,7 +9,7 @@ import { describeTerms, draftProblem, isBreach, proposalVerdict, TREATY_NAMES } 
 import { GIFT_MAX, PAYMENT_MAX, TERM_AMOUNT_MAX, TREATY_TURNS } from '../../planet/rules';
 import { stanceOf, treatyBetween } from '../../planet/state';
 import { NEUTRAL, RESOURCES, type FactionId, type Resource, type Treaty, type TreatyDraft, type TreatyKind, type TreatyTerm } from '../../planet/types';
-import { FactionName, OrderButton, RES_NAME, StancePill, turnsLeftText, why, type PlanetProps } from './common';
+import { FactionName, OrderButton, facStyle, RES_NAME, StancePill, turnsLeftText, why, type PlanetProps } from './common';
 
 const TEMPERAMENT_TEXT = {
   expansionist: 'Expansionist: attacks readily and may break its word.',
@@ -73,18 +73,19 @@ export default function DiplomacyTab({
           const t = treatyBetween(s, 0, f.id);
           const trust = s.trust[f.id]?.[0] ?? 50;
           return (
-            <section key={f.id} className="fl-pl-card" data-testid={`faction-${f.id}`} data-stance={st}>
-              <div className="fl-pl-row" style={{ justifyContent: 'space-between' }}>
+            <section key={f.id} className="fl-pl-card fl-pl-faction" style={facStyle(f.id)} data-testid={`faction-${f.id}`} data-stance={st} data-out={f.alive ? undefined : '1'}>
+              <div className="fl-pl-faction-head">
                 <h3>
-                  <FactionName s={s} f={f.id} />
+                  <FactionName s={s} f={f.id} size="lg" />
                 </h3>
                 {f.alive ? <StancePill st={st} /> : <span className="fl-tag">Out of the war</span>}
               </div>
               {f.temperament && <span className="fl-small">{TEMPERAMENT_TEXT[f.temperament]}</span>}
               <div className="fl-pl-trust" title="How far they trust you, 0 to 100">
                 <span className="fl-small">Their trust in you</span>
-                <span className="fl-pl-trust-bar">
+                <span className="fl-pl-trust-bar" data-level={trust >= 60 ? 'high' : trust >= 40 ? 'mid' : 'low'}>
                   <span style={{ width: `${trust}%` }} />
+                  <i className="fl-pl-trust-mid" />
                 </span>
                 <strong>{trust}</strong>
               </div>

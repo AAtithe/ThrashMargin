@@ -7,11 +7,12 @@ import { buildingName } from '../../planet/cities';
 import { attackOdds } from '../../planet/resolve';
 import { PLANET_RANKS, planetRankFor } from '../../planet/turn';
 import { regionShare } from '../../planet/victory';
-import type { BattleReport, BattleSetup, PendingBattle, PlanetMap, PlanetState } from '../../planet/types';
+import type { BattleReport, BattleSetup, PendingBattle, PlanetMap, PlanetState, SupplyState, SupportGrant } from '../../planet/types';
+import { SUPPORT_NAMES } from '../../planet/links';
 import { CITY_BUILDINGS } from '../../planet/types';
 import { BIG_CITY_LEVEL, battleMapSizeOf } from '../../planet/battle';
 import { MAP_SIZE_NAMES, MAP_TYPE_NAMES, TICKS_PER_SECOND, UNITS, heroLevelFor, mapTilesFor } from '../../sim/rules';
-import { FactionName, Odds, rankName, unitName } from './common';
+import { FactionName, Odds, facStyle, rankName, unitName } from './common';
 
 /** The battle's map size and width, as the attack preview and the pending battle card show it (section 9.7). */
 export function BattleMapSize({ setup }: { setup: Pick<BattleSetup, 'mapSize' | 'sides' | 'cityLevel'> }) {
@@ -24,6 +25,109 @@ export function BattleMapSize({ setup }: { setup: Pick<BattleSetup, 'mapSize' | 
     <span className="fl-small" data-testid="battle-map-size" data-size={size}>
       Map: {MAP_SIZE_NAMES[size]}, {tiles} tiles across{size === 'standard' ? '.' : `, because ${why}.`}
     </span>
+  );
+}
+
+// ---- Battle rules 3 (round 7): what the war brings, and what the battle sends back ----------------
+
+const SUPPLY_TEXT: Record<SupplyState, string> = {
+  cut: 'Cut off: the staging region has no route to the capital. Half the credits, half the harvest, vehicles arrive battered.',
+  short: 'Short of fuel or food: a fifth fewer credits and a slower harvest.',
+  supplied: 'Supplied from the capital.',
+  depot: 'Supplied, with a depot behind it: the garrison sends a reinforcement wave partway through.',
+};
+const WHY_TEXT: Record<SupportGrant['why'], string> = { institute: 'research institute', fortifications: 'citadel', artillery: 'artillery in the garrison', airfield: 'airfield' };
+
+/**
+ * What the war brings into a battle on battle rules 3: supply, support from neighbouring regions,
+ * the reinforcement wave and prepared defences (the time limit is in the card's first line).
+ * Nothing for an older war's setup. Shown on the attack preview and the pending battle card.
+ */
+export function WarLinks({ s, map, setup }: { s: PlanetState; map: PlanetMap; setup: BattleSetup }) {
+  const links = setup.links;
+  if (!links) return null;
+  const atk = setup.sides.findIndex(x => x.role === 'attacker');
+  const atkName = s.factions[setup.sides[atk].faction]?.name ?? 'The attacker';
+  const def = setup.sides[setup.defenderSeat];
+  const defName = def.faction < 0 ? 'The independents' : s.factions[def.faction]?.name ?? 'The defender';
+  const battered = setup.sides[atk].units.filter(u => u.hp !== undefined).length;
+  const bySeat = (seat: number) => links.support.filter(g => g.seat === seat);
+  const supportLine = (seat: number) =>
+    bySeat(seat)
+      .map(g => `${SUPPORT_NAMES[g.power]}${g.uses !== undefined ? ` (${g.uses} use${g.uses === 1 ? '' : 's'})` : ''} from the ${WHY_TEXT[g.why]} at ${map.regions[g.from]?.city ?? 'a nearby region'}`)
+      .join('; ');
+  const wave = links.reinforce;
+  const base = setup.sides[atk].structures;
+  return (
+    <div className="fl-pl-links" data-testid="war-links" data-supply={links.supply}>
+      <p className="fl-eyebrow">What the war brings</p>
+      <span className="fl-small" data-testid="links-supply">
+        <strong>{atkName}:</strong> {SUPPLY_TEXT[links.supply]}
+        {links.creditsLost ? ` ${links.creditsLost} credits lost to supply.` : ''}
+        {battered ? ` ${battered} vehicle${battered === 1 ? '' : 's'} below full health.` : ''}
+      </span>
+      <span className="fl-small" data-testid="links-base">
+        Base from {map.regions[links.from]?.city ?? 'the staging region'}: {base.includes('factory') ? 'a War Factory' : 'no War Factory (build a factory there first)'},{' '}
+        {base.includes('refinery') ? 'a refinery' : 'no refinery (no harvest)'}.
+      </span>
+      {wave && (
+        <span className="fl-small" data-testid="links-wave">
+          Reinforcements expected after {Math.round(wave.at / (60 * TICKS_PER_SECOND))} minutes: {wave.units.length} units from the garrison ({wave.units.map(k => unitName(k)).join(', ')}).
+        </span>
+      )}
+      <p className="fl-eyebrow">Support from neighbouring regions</p>
+      <span className="fl-small" data-testid="links-support">
+        {atkName}: {supportLine(atk) || 'none'}.
+      </span>
+      {def.faction >= 0 && (
+        <span className="fl-small">
+          {defName}: {supportLine(setup.defenderSeat) || 'none'}.
+        </span>
+      )}
+      {(links.walls > 0 || links.defCut) && (
+        <span className="fl-small" data-testid="links-defence">
+          {links.walls > 0 ? `${defName} has prepared defences: ${links.walls} sandbag posts in front of the city. ` : ''}
+          {links.defCut ? `The city is cut off: ${links.defCreditsLost} fewer credits to defend it.` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** What a battle on battle rules 3 sent back to the war, read from the states either side of it. */
+export function BattleReturns({ d, map }: { d: Debrief; map: PlanetMap }) {
+  const { before, after, pb, report } = d;
+  if (!pb.setup.links || !report.links) return null;
+  const r = pb.region;
+  const lines: string[] = [];
+  const seeded = CITY_BUILDINGS.filter(b => report.links!.built.includes(b) && (after.regions[r].city.b[b] ?? 0) > (before.regions[r].city.b[b] ?? 0));
+  if (seeded.length) lines.push(`Built in the battle and still standing: ${seeded.map(b => buildingName(b, after.regions[r].city.b[b] ?? 1)).join(', ')} added to ${map.regions[r].city}.`);
+  const ore = after.factions[0].stock.ore - before.factions[0].stock.ore;
+  if (ore > 0) lines.push(`${ore} ore comes home from unspent credits and the harvest.`);
+  const armyBefore = before.factions[0].army?.units.length ?? 0;
+  const seat = pb.setup.sides.findIndex(x => x.faction === 0 && x.role !== 'ally');
+  if (seat >= 0) {
+    const lostCore = pb.setup.sides[seat].units.filter(u => u.core !== null && !report.sides[seat].survivors.some(v => v.core === u.core)).length;
+    const joined = (after.factions[0].army?.units.length ?? 0) - (armyBefore - lostCore);
+    if (joined > 0) lines.push(`${joined} troop${joined === 1 ? '' : 's'} raised in the battle join the field army.`);
+    const hurt = report.links.wounded[seat]?.length ?? 0;
+    if (hurt) lines.push(`${hurt} vehicle${hurt === 1 ? '' : 's'} came back wounded: repairs cost ore and alloys at the end of the turn.`);
+  }
+  const trust: string[] = [];
+  for (const f of after.factions) if (f.id !== 0 && f.alive && after.trust[f.id][0] !== before.trust[f.id][0]) trust.push(`${f.name} ${after.trust[f.id][0] > before.trust[f.id][0] ? '+' : ''}${after.trust[f.id][0] - before.trust[f.id][0]}`);
+  if (trust.length) lines.push(`Trust in you: ${trust.join(', ')}.`);
+  const shaken = after.regions.flatMap((x, i) => (x.shaken !== undefined && before.regions[i].shaken !== x.shaken ? [map.regions[i].city] : []));
+  if (shaken.length) lines.push(`Shaken by the result: ${shaken.join(', ')} (garrisons fight at three quarters until the end of next turn).`);
+  if (!lines.length) return null;
+  return (
+    <div className="fl-pl-links" data-testid="battle-returns">
+      <p className="fl-eyebrow">What the battle sends back</p>
+      {lines.map((t, i) => (
+        <span key={i} className="fl-small">
+          {t}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -66,9 +170,10 @@ export function PendingCard({
         time runs out, the defenders win.
       </span>
       <BattleMapSize setup={setup} />
+      <WarLinks s={s} map={map} setup={setup} />
       <div className="fl-pl-sides">
         {setup.sides.map((side, i) => (
-          <div key={i} className="fl-pl-side" data-team={side.team}>
+          <div key={i} className="fl-pl-side" data-team={side.team} style={facStyle(side.faction)}>
             <strong>
               <FactionName s={s} f={side.faction} />
             </strong>
@@ -81,7 +186,7 @@ export function PendingCard({
           </div>
         ))}
       </div>
-      <Odds p={defending ? 1 - p : p} label={defending ? 'Chance of holding' : 'Chance of taking it'} />
+      <Odds p={defending ? 1 - p : p} label={defending ? 'Chance of holding' : 'Chance of taking it'} bar />
       <div className="fl-pl-row">
         {pb.fighting ? (
           <>
@@ -194,6 +299,7 @@ export function DebriefCard({ d, map, onClose }: { d: Debrief; map: PlanetMap; o
             City damage: {damage.map(b => `${buildingName(b, before.regions[pb.region].city.b[b] ?? 1)} -${report.cityDamage[b]} Mk`).join(', ')}.
           </p>
         )}
+        <BattleReturns d={d} map={map} />
         {xp > 0 && (
           <p className="fl-small" style={{ margin: 0 }}>
             {after.commander.name}: +{xp} xp{ranked ? `, promoted to ${PLANET_RANKS[rankNow].name}` : ''}.

@@ -187,6 +187,15 @@ export type BuildingKind =
   // Territory and workforce (2026-11-21, setup.territory): the Watchtower and the Quarters.
   | 'watchtower'
   | 'quarters'
+  // round7:fortification begin. The Point Defence emplacement (the Fortification line's Mk III B).
+  | 'pointdefence'
+  // round7:fortification end.
+  // round7:structures begin. Strategic structures (fireline-round7-structures.md, setup.strategicBuildings).
+  | 'bunker'
+  | 'supplycache'
+  | 'intelcentre'
+  | 'decoy'
+  // round7:structures end.
   // Advanced production (2026-11-22, setup.production): the Farm and the Munitions Works.
   | 'farm'
   | 'munitions'
@@ -1140,6 +1149,61 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: [],
     blurb: 'Advanced production on only. Grows 30 food a minute. Every Quarters eats 10 a minute; hungry Quarters house half their workers.',
   },
+  // round7:structures begin. Strategic structures: refused by techAllowed unless setup.strategicBuildings
+  // is on (structures.ts). Each is built round one dilemma (fireline-round7-structures.md).
+  bunker: {
+    name: 'Fortified Bunker',
+    w: 2,
+    h: 2,
+    cost: 700,
+    buildTicks: 110,
+    hp: 1600,
+    power: 0,
+    sight: 6,
+    requires: ['barracks'],
+    blurb:
+      'Strategic structures on only. Up to six infantry garrison it, safe from artillery, bombs and splash while it stands, and fire out at two thirds strength. Inside they cannot be sent anywhere until you unload them; if it falls they stagger out hurt.',
+  },
+  supplycache: {
+    name: 'Supply Cache',
+    w: 1,
+    h: 1,
+    cost: 250,
+    buildTicks: 45,
+    hp: 350,
+    power: 0,
+    sight: 5,
+    requires: ['barracks'],
+    blurb:
+      'Strategic structures on only. Mends your infantry and vehicles within five tiles, slowly. Can be set down beside any of your troops, far from your base, but enemy infantry standing beside it with none of yours there take it over.',
+  },
+  intelcentre: {
+    name: 'Intelligence Centre',
+    w: 2,
+    h: 2,
+    cost: 2200,
+    buildTicks: 200,
+    hp: 900,
+    power: -100,
+    sight: 5,
+    requires: ['uplink'],
+    blurb:
+      'Strategic structures on only. While powered, shows every enemy\'s research and production queues, reveals enemy structures within 28 tiles and sees through their decoys there.',
+  },
+  decoy: {
+    name: 'Decoy',
+    w: 2,
+    h: 2,
+    cost: 200,
+    buildTicks: 40,
+    hp: 250,
+    power: 0,
+    sight: 2,
+    requires: ['power'],
+    blurb:
+      'Strategic structures on only. An inflatable dummy that the enemy sees as the structure you choose, to draw barrages, missiles, bombers and artillery. Worth nothing, keeps nothing alive, and bursts easily.',
+  },
+  // round7:structures end.
   munitions: {
     name: 'Munitions Works',
     w: 3,
@@ -1169,6 +1233,21 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
 
 
 
+  // round7:fortification begin. Point Defence: offered only with setup.fortification, built only once
+  // the side has researched the Point Defence doctrine (techAllowed and canQueue). Never fires at units.
+  pointdefence: {
+    name: 'Point Defence',
+    w: 1,
+    h: 1,
+    cost: 1200,
+    buildTicks: 120,
+    hp: 450,
+    power: -60,
+    sight: 6,
+    requires: ['researchlab'],
+    blurb: 'Shoots down shells, missiles and bombs falling within four tiles: three in five, one every three seconds. Never fires at units. Draws heavy power.',
+  },
+  // round7:fortification end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -1207,6 +1286,15 @@ export const BUILD_MENU: BuildingKind[] = [
   // Territory and workforce (2026-11-21): likewise.
   'quarters',
   'watchtower',
+  // round7:fortification begin.
+  'pointdefence',
+  // round7:fortification end.
+  // round7:structures begin. Strategic structures: last, so turning them on moves no item already listed.
+  'bunker',
+  'supplycache',
+  'decoy',
+  'intelcentre',
+  // round7:structures end.
   // Advanced production (2026-11-22): likewise.
   'farm',
   'munitions',
@@ -1615,6 +1703,14 @@ export interface SkirmishSetup {
    * Absent on setups saved before round 5, which normaliseSetup reads as false.
    */
   sites?: boolean;
+  // round7:fortification begin.
+  /**
+   * Round 7: the Fortification research line, counter-battery and Point Defence
+   * (fireline-round7-fortification.md). Meaningful only with advanced tech and development lines;
+   * normaliseSetup turns it off otherwise. Absent on older saves, which read as false (LEGACY_SETUP).
+   */
+  fortification?: boolean;
+  // round7:fortification end.
   /**
    * Round 6, workstream A: each seat's army, one per side (index = Owner). Absent on setups saved
    * before round 6, which normaliseSetup reads as every seat 'meridian': the army every side always had.
@@ -1656,6 +1752,27 @@ export interface SkirmishSetup {
    * without). Absent: off.
    */
   territory?: boolean;
+  // round7:structures begin.
+  /**
+   * Structure upgrades (round 7, fireline-round7-structures.md): turrets, Generators, Refineries,
+   * producers, sensors and the Command Yard may be raised a level (STRUCTURE_LEVELS). Advanced tech
+   * only (normaliseSetup turns it off on standard). Absent reads as off, whatever the base.
+   */
+  structureUpgrades?: boolean;
+  /**
+   * Strategic structures (round 7): the Fortified Bunker, Supply Cache, Intelligence Centre and
+   * Decoy. Advanced tech only. Absent reads as off, whatever the base.
+   */
+  strategicBuildings?: boolean;
+  // round7:structures end.
+  // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md).
+  /**
+   * Round 7: the computer reads what it has seen of its enemies and changes its unit mix and its
+   * plan of attack to answer it (Normal and Hard; Easy keeps its simple play). Absent on older
+   * setups, which normaliseSetup reads as false; DEFAULT_SETUP turns it on for new skirmishes.
+   */
+  adaptive?: boolean;
+  // round7:adaptive end.
   /**
    * Advanced production (2026-11-22, phase 4 of the economy; production.ts): food from Farms feeding
    * Quarters, munitions from a Munitions Works for the heavy guns and aircraft, and the Supply
@@ -1677,6 +1794,9 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   mode: 'ffa',
   size: 'standard',
   sites: false,
+  // round7:fortification begin. On for a new advanced development-lines skirmish.
+  fortification: true,
+  // round7:fortification end.
   research: 'lines',
   pace: 'quick',
   factions: ['meridian', 'meridian'],
@@ -1687,6 +1807,13 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   supply: false,
   territory: false,
   production: false,
+  // round7:structures begin. On for a new skirmish (advanced tech); absent on an older setup reads as off.
+  structureUpgrades: true,
+  strategicBuildings: true,
+  // round7:structures end.
+  // round7:adaptive begin
+  adaptive: true,
+  // round7:adaptive end
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1701,6 +1828,9 @@ export const LEGACY_SETUP: SkirmishSetup = {
   mode: 'ffa',
   size: 'standard',
   sites: false,
+  // round7:fortification begin.
+  fortification: false,
+  // round7:fortification end.
   research: 'classic',
   pace: 'quick',
   factions: ['meridian', 'meridian'],
@@ -1711,6 +1841,13 @@ export const LEGACY_SETUP: SkirmishSetup = {
   supply: false,
   territory: false,
   production: false,
+  // round7:structures begin.
+  structureUpgrades: false,
+  strategicBuildings: false,
+  // round7:structures end.
+  // round7:adaptive begin
+  adaptive: false,
+  // round7:adaptive end
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -1718,18 +1855,26 @@ export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 // round5:B begin. Larger maps (fireline-round5-design.md, workstream B): the numbers below are the
 // contract's starting points; B measures, may lower them (never raise past MAP_TILES_MAX without a
 // stated measurement), and adds its constants inside this block.
-export type MapSize = 'standard' | 'large' | 'huge';
+export type MapSize = 'standard' | 'large' | 'huge' | 'vast';
 /** The sizes the lobby offers, smallest first. */
-export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge'];
-export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge' };
+export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge', 'vast'];
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge', vast: 'Vast' };
 /** A skirmish map's width and height in tiles, by size and number of sides. 'standard' is MAP_SIZE_FOR exactly. */
 export const MAP_SIZE_TILES: Record<MapSize, Record<2 | 3 | 4, number>> = {
   standard: MAP_SIZE_FOR,
   large: { 2: 96, 3: 112, 4: 128 },
   huge: { 2: 128, 3: 144, 4: 160 },
+  // Vast (2026-11-22): twice as wide as huge, four times the ground, with ravines and ruined
+  // cities (VAST_HAZARDS). Its terrain is painted at half resolution (src/game/terrain.ts) and its
+  // saves pack the per-tile fields (packState), so neither outgrows what huge already needed.
+  vast: { 2: 256, 3: 288, 4: 320 },
 };
 /** No map is wider or taller than this (pathfinding, fog and the terrain prerender are sized for it). */
-export const MAP_TILES_MAX = 160;
+export const MAP_TILES_MAX = 320;
+/** The widest map of the sizes balanced in round 5 (standard, large, huge): huge with four sides. */
+export const MAP_TILES_MAX_BALANCED = 160;
+/** Whether a size carries ravines and ruined cities (the generators' hazards pass). Vast only: the other sizes stay exactly as balanced. */
+export const sizeHasHazards = (size: MapSize | undefined): boolean => size === 'vast';
 /** A setup's map width and height in tiles. Setups from before round 5 have no size: 'standard'. */
 export const mapTilesFor = (setup: Pick<SkirmishSetup, 'sides' | 'size'>): number => MAP_SIZE_TILES[setup.size ?? 'standard'][setup.sides];
 /** What the lobby says about each size: roughly how long a battle against the computer runs (measured, round 5 build log). */
@@ -1737,6 +1882,7 @@ export const MAP_SIZE_BLURBS: Record<MapSize, string> = {
   standard: 'The original size. Battles run about 20 minutes.',
   large: 'Half as wide again, with more ore and room to expand. Battles run about 30 to 40 minutes.',
   huge: 'Twice as wide, with ore all over. Battles run 45 minutes or more.',
+  vast: 'Four times the ground of huge, cut by ravines and ruined cities. Battles run 30 to 60 minutes or more.',
 };
 /**
  * Ore that spreads back (large and huge maps only): every ORE_SPREAD_TICKS, a tile of an ore field
@@ -1899,7 +2045,12 @@ export type UpgradeId =
   | 'fieldrepair' | 'motorised' // engines
   | 'assembly' | 'salvage' // logistics
   | 'heat' | 'highexplosive' // weapons
-  | 'hardened' | 'munitions'; // air
+  | 'hardened' | 'munitions' // air
+  // round7:fortification begin. The Fortification line (battles with setup.fortification only).
+  | 'concrete' | 'shelters' // Mk I, Mk II
+  | 'counterbattery' | 'pointdef' // Mk III fork
+  // round7:fortification end.
+  ;
 
 export interface UpgradeSpec {
   name: string;
@@ -1969,6 +2120,12 @@ export const UPGRADES: Record<UpgradeId, UpgradeSpec> = {
   avionics: { name: 'Avionics', blurb: 'Aircraft fly 15% faster.', cost: 2000, ticks: 750, requires: ['researchlab', 'helipad', 'techcentre'] },
   hardened: { name: 'Armoured cockpits', blurb: 'Aircraft take a quarter less damage from flak, anti-air missiles and machine guns.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
   munitions: { name: 'Heavy munitions', blurb: 'Gunship rockets, Interceptor missiles and every bomb hit 15% harder.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
+  // round7:fortification begin. The Fortification line (fireline-round7-fortification.md).
+  concrete: { name: 'Reinforced concrete', blurb: 'Every structure has a fifth more health.', cost: 1500, ticks: 600, requires: ['researchlab'] },
+  shelters: { name: 'Hardened shelters', blurb: 'Structures take a quarter less from the blast of shells, grenades, bombs and missiles.', cost: 2000, ticks: 750, requires: ['researchlab', 'techcentre'] },
+  counterbattery: { name: 'Counter-battery', blurb: 'Enemy guns and missiles that fire on what you can see are spotted for 8 seconds, and your artillery on Guard shoots back.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  pointdef: { name: 'Point Defence', blurb: 'Unlocks the Point Defence emplacement, which shoots down shells, missiles and bombs falling near it.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  // round7:fortification end.
 };
 
 /** The six upgrades a 'classic' battle offers, in the order the Research block lists them (Countermeasures since the air war). */
@@ -2042,6 +2199,41 @@ export const AVIONICS_SPEED = 1.15;
 export const HARDENED_TAKEN = 0.75;
 export const HARDENED_KINDS: WeaponKind[] = ['flak', 'aamissile', 'bullet'];
 export const MUNITIONS_DAMAGE = 1.15;
+
+// round7:fortification begin. The Fortification line, counter-battery and Point Defence
+// (fireline-round7-fortification.md). A sixth development line, present only in a battle whose setup
+// has `fortification` on (development lines, advanced tech). LineId stays the five lines that War for
+// the Planet researches; BattleLineId adds the sixth for the battle-side readers (linesFor in fortify.ts).
+export type BattleLineId = LineId | 'fortification';
+export const FORTIFICATION_LINE: LineSpec = { name: 'Fortification', marks: ['concrete', 'shelters'], fork: ['counterbattery', 'pointdef'] };
+/** Every line a battle may hold, the five and Fortification. */
+export const BATTLE_LINES: Record<BattleLineId, LineSpec> = { ...LINES, fortification: FORTIFICATION_LINE };
+/** The Fortification line's upgrades: line and mark, as UPGRADE_LINE gives them for the five. */
+export const FORT_UPGRADE_LINE: Partial<Record<UpgradeId, { line: BattleLineId; mark: 1 | 2 | 3 }>> = {
+  concrete: { line: 'fortification', mark: 1 },
+  shelters: { line: 'fortification', mark: 2 },
+  counterbattery: { line: 'fortification', mark: 3 },
+  pointdef: { line: 'fortification', mark: 3 },
+};
+/** Line and mark of any line upgrade, the five lines' or Fortification's; undefined for Countermeasures. */
+export const upgradeLineOf = (id: UpgradeId): { line: BattleLineId; mark: 1 | 2 | 3 } | undefined => UPGRADE_LINE[id] ?? FORT_UPGRADE_LINE[id];
+/** Reinforced concrete (Mk I): structures' full health. */
+export const CONCRETE_HP = 1.2;
+/** Hardened shelters (Mk II): what a structure takes from the splash of these weapon kinds. */
+export const SHELTERS_TAKEN = 0.75;
+export const SHELTERS_KINDS: WeaponKind[] = ['artillery', 'bomb', 'missile'];
+/** Counter-battery (Mk III A): how long a firing battery stays revealed, and the radius revealed round it. */
+export const COUNTER_BATTERY_TICKS = 80;
+export const COUNTER_BATTERY_RADIUS = 3;
+/** Counter-battery: the kinds whose shots are traced back (besides the barrage and the missile strike). */
+export const COUNTER_BATTERY_KINDS: UnitKind[] = ['artillery', 'missilecarrier', 'battleship'];
+/** Point Defence (Mk III B): radius round the emplacement in which a projectile's landing point is covered. */
+export const POINT_DEFENCE_RADIUS = 4;
+/** Ticks between two intercept attempts by one emplacement (twice as long short of power). */
+export const POINT_DEFENCE_COOLDOWN = 30;
+/** Chance one attempt brings the projectile down, drawn from the battle's seed. */
+export const POINT_DEFENCE_CHANCE = 0.6;
+// round7:fortification end.
 
 /** Vehicle modules. Vehicles only: infantry, aircraft and heroes never carry them. */
 export type ModuleId = 'longbarrel' | 'smoke' | 'fueltank' | 'tracks' | 'orecage';
@@ -2276,6 +2468,7 @@ export const SITES_PER_SIDE: Record<MapSize, Record<SiteKind, number>> = {
   standard: { derrick: 1, hospital: 0, relay: 0 },
   large: { derrick: 2, hospital: 1, relay: 1 },
   huge: { derrick: 3, hospital: 1, relay: 2 },
+  vast: { derrick: 5, hospital: 2, relay: 3 },
 };
 /** Placement: a site's centre is at least this far from every start's yard centre, and from every other site's. */
 export const SITE_YARD_GAP = 10;
@@ -2627,6 +2820,110 @@ export const HOUSING: Partial<Record<BuildingKind, number>> = { hq: 12, fieldyar
 /** Workers each kind needs to work, and the order crews are assigned in (economy first). */
 export const CREW: Partial<Record<BuildingKind, number>> = { refinery: 3, fuelwell: 2, foundry: 3, barracks: 2, factory: 4, helipad: 2, shipyard: 3, farm: 2, munitions: 3, trainingcentre: 2 };
 export const CREW_ORDER: BuildingKind[] = ['refinery', 'farm', 'fuelwell', 'trainingcentre', 'foundry', 'factory', 'barracks', 'munitions', 'helipad', 'shipyard'];
+
+// round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
+// ---- Structure upgrades (setup.structureUpgrades) ------------------------------------------------
+
+/**
+ * One level above the first. Every multiple and bonus is the total at this level against the
+ * structure's level-1 spec (its army's), never stacked on the level below. The price is the work's
+ * alone: a structure's worth (selling, repairs) is its own cost plus every level paid for.
+ */
+export interface LevelSpec {
+  /** The level's name, e.g. 'Mk II'. */
+  name: string;
+  /** Credits for the work. With industry on, UPGRADE_ALLOY_SHARE of it is paid in alloys. */
+  cost: number;
+  /** Ticks of work: half speed while the side is short of power, as production is. */
+  ticks: number;
+  /** Full health, as a multiple of the level-1 spec's. */
+  hpMul?: number;
+  /** Weapon range added, in tiles. */
+  range?: number;
+  /** Weapon damage, as a multiple. */
+  damageMul?: number;
+  /** Weapon reload, as a multiple (below 1 fires faster). */
+  reloadMul?: number;
+  /** Power added: more made by a Generator, or (negative) more drawn. */
+  power?: number;
+  /** Sight added, in tiles. */
+  sight?: number;
+  /** Production speed of the queue this structure works, as a multiple. */
+  rate?: number;
+  /** Refinery: unloading speed and the credits each load is worth, as multiples. */
+  unload?: number;
+  income?: number;
+  /** What the level gives, in a few words, for the button and the card. */
+  blurb: string;
+}
+
+/**
+ * The levels each kind can rise through, level 2 first. A kind not listed has none. Each one was
+ * priced against building another copy (the table and the reasoning: fireline-round7-structures.md).
+ */
+export const STRUCTURE_LEVELS: Partial<Record<BuildingKind, LevelSpec[]>> = {
+  turret: [
+    { name: 'Mk II', cost: 350, ticks: 90, hpMul: 1.4, range: 0.75, blurb: '+0.75 range, +40% health' },
+    { name: 'Mk III', cost: 450, ticks: 120, hpMul: 1.8, range: 0.75, damageMul: 1.35, power: -10, blurb: '+35% damage, +80% health, draws 10 more power' },
+  ],
+  rocketturret: [{ name: 'Mk II', cost: 550, ticks: 110, hpMul: 1.4, reloadMul: 0.75, blurb: 'fires a third faster, +40% health' }],
+  flakcannon: [{ name: 'Mk II', cost: 400, ticks: 90, hpMul: 1.35, range: 1.5, blurb: '+1.5 range, +35% health' }],
+  power: [{ name: 'Advanced', cost: 300, ticks: 120, hpMul: 1.3, power: 70, blurb: '+70 power on the same ground' }],
+  refinery: [{ name: 'Expanded', cost: 700, ticks: 150, hpMul: 1.25, unload: 1.5, income: 1.1, blurb: 'unloads half as fast again, +10% from every load' }],
+  barracks: [
+    { name: 'Level 2', cost: 250, ticks: 80, hpMul: 1.25, rate: 1.3, blurb: 'trains 30% faster' },
+    { name: 'Level 3', cost: 350, ticks: 100, hpMul: 1.5, rate: 1.6, blurb: 'trains 60% faster' },
+  ],
+  factory: [
+    { name: 'Level 2', cost: 800, ticks: 150, hpMul: 1.2, rate: 1.3, blurb: 'builds 30% faster' },
+    { name: 'Level 3', cost: 1000, ticks: 180, hpMul: 1.4, rate: 1.6, blurb: 'builds 60% faster' },
+  ],
+  uplink: [{ name: 'Level 2', cost: 450, ticks: 100, hpMul: 1.25, sight: 6, blurb: '+6 sight' }],
+  watchtower: [{ name: 'Level 2', cost: 250, ticks: 60, hpMul: 1.4, sight: 4, damageMul: 1.5, blurb: '+4 sight, +50% damage' }],
+  hq: [
+    { name: 'Level 2', cost: 1000, ticks: 240, hpMul: 1.35, rate: 1.25, blurb: 'builds structures 25% faster, +35% health' },
+    { name: 'Level 3', cost: 1400, ticks: 300, hpMul: 1.7, rate: 1.5, blurb: 'builds structures 50% faster, +70% health' },
+  ],
+};
+/** The highest level a kind reaches: 1 for a kind without upgrades. */
+export const maxLevelOf = (kind: BuildingKind): number => 1 + (STRUCTURE_LEVELS[kind]?.length ?? 0);
+/** A structure takes this much more damage while an upgrade is under way: the risk of the work. */
+export const UPGRADE_DAMAGE_TAKEN = 1.25;
+/** Industry on: the share of an upgrade's price paid in alloys (at ALLOY_VALUE credits each). */
+export const UPGRADE_ALLOY_SHARE = 0.25;
+
+// ---- Strategic structures (setup.strategicBuildings) --------------------------------------------
+
+/** Infantry a Fortified Bunker holds. */
+export const BUNKER_SLOTS = 6;
+/** What each soldier inside fires at, as a share of its own damage. */
+export const BUNKER_DAMAGE = 2 / 3;
+/** Range added to a soldier's own from inside (the walls stand a tile out from the centre it fires from). */
+export const BUNKER_RANGE = 1;
+/** How close to the footprint an infantryman must come to go in. */
+export const BUNKER_ENTER_RANGE = 1.2;
+/** If the Bunker falls, those inside stagger out with this share of the health they had. */
+export const BUNKER_BAIL_HP = 0.5;
+/** A Supply Cache mends within this many tiles of its footprint, every CACHE_TICKS. */
+export const CACHE_RADIUS = 5;
+export const CACHE_TICKS = 20;
+/** Health each infantryman, and each vehicle, regains per pulse. */
+export const CACHE_HEAL = 4;
+export const CACHE_REPAIR = 6;
+/** Enemy infantry within this range of the footprint, with none of the holder's, take it over in CACHE_CAPTURE_TICKS. */
+export const CACHE_CAPTURE_RANGE = 1.5;
+export const CACHE_CAPTURE_TICKS = 80;
+/** A Supply Cache may also be set down within this many tiles of any of its side's ground units. */
+export const CACHE_PLACE_RANGE = 4;
+/** Supply Caches a side may hold at once. */
+export const CACHE_MAX = 4;
+/** An Intelligence Centre reveals enemy structures, and sees through decoys, within this radius of its centre. */
+export const INTEL_RADIUS = 28;
+/** What a new Decoy looks like until told otherwise. */
+export const DECOY_DEFAULT: BuildingKind = 'power';
+/** Structures that keep no side in the battle, extend no base and send out no crew when they fall. */
+export const OUTPOSTS: BuildingKind[] = ['supplycache', 'decoy'];
+// round7:structures end.
 
 // ---------------------------------------------------------------------------------------------
 // Advanced production (2026-11-22, setup.production; fireline-design.md). Logic in production.ts.
