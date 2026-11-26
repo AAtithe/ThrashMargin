@@ -98,6 +98,9 @@ scroll in the window at 1280 by 720; the stat card never overlaps the sidebar.
   notes taken with each frame.
 - "No income" shows only when no hauler is out: a hauler on its first trip read as no income for its
   first half minute.
-- Verified: `npm run tours fireline` (guided tour and the rewritten build window check), the touch and
-  planet tours, `npm run check:ui fireline`, `npm run check`; screenshots at 1440 by 900 light and 1280
-  by 720 dark.
+- Verified: `npm run tours fireline` (guided tour and the rewritten build window check), the planet
+  tour, `npm run check:ui fireline` (32 of 32), `npm run check`; screenshots at 1440 by 900 light and
+  1280 by 720 dark.
+- Not fixed here: `npm run tours fireline-touch` fails on the mission objectives panel on the iPhone SE
+  and iPhone 13 landscape (panel 33px tall, rows covered). The same failures appear on the commit before
+  this round, so they predate it; phones were out of scope.
