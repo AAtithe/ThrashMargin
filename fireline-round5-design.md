@@ -150,6 +150,9 @@ needs from `drive.ts` rather than exporting it. Each adds at most 60 seconds to 
 
 ## 3. Workstream A: the tech tree as a pop-out window
 
+> Round 8 rebuilt the window's layout: see `fireline-round8-build-window.md`. What follows on the
+> tree, the lines and the hotkeys is history; opening, closing, placement and the ids still hold.
+
 Interface only: no file under `src/sim/` changes, and every `drive:fire` line stays.
 
 ### The sidebar

@@ -1,21 +1,29 @@
 /**
- * Fireline's build window (fireline-round5-design.md, section 3), checked in a real browser.
+ * Fireline's build window (fireline-round5-design.md section 3, rebuilt in round 8:
+ * fireline-round8-build-window.md), checked in a real browser.
  *
  * Run after the guided tour by scripts/tours/fireline.cjs, or alone:
  *   TOUR_BASE=http://localhost:5306 node scripts/tours/fireline-build-window.cjs   (with Vite running)
  *
  * On a fresh advanced-tech skirmish on a fixed Coast map (so the Naval tab is always there) it checks that:
- * - every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure it needs
- *   is missing, with the lines and tiers the rules give; the round 6 recruits (the Academy, the
- *   heroes, the field General) are absent, since this battle has Heroes and Generals off, and so
- *   are the economy's toggled structures (Industry, Supply lines and Territory off);
- * - the window opens and closes by the Build button, the backquote key and Esc, focus moving into it
- *   and back to the Build button, and Tab cycles the lists with it open or closed;
- * - a hotkey queues with the window closed (Q, Generator) and with it open (W, Refinery);
- * - picking up a ready structure closes the window; placing it reopens the window on the same tab,
- *   and so does cancelling placement;
- * - a kind the rules have never heard of (`window.__flExtraMenuItem`, a development-only hook) is
- *   laid out at the tier its requirements give, with a line to each structure it needs.
+ * - Build view: every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure
+ *   it needs is missing; a buildable one is a card under its group, a locked one is on the Coming next
+ *   row naming exactly what it lacks (each of those buildable now) or in Later; the round 6 recruits and
+ *   the economy's toggled structures are absent, as Heroes, Generals and those toggles are off;
+ * - every structure has a hotkey when its group is active, no two alike; Tab walks the groups and then
+ *   the other lists, the Build button naming the group, with the window open or closed;
+ * - Tech tree view: every kind in the tier column the rules give, no lines until an item is pointed
+ *   at, then exactly the lines of its chain; a kind the rules have never heard of
+ *   (`window.__flExtraMenuItem`, development only) laid out at its tier with its lines;
+ * - the window opens and closes by the Build button, the backquote key and Esc, focus moving in and back;
+ * - a hotkey queues with the window closed (Q, Generator) and open (W, Refinery);
+ * - picking up a ready structure closes the window; placing it reopens it on the same tab, and so does
+ *   cancelling placement; placing the Generator raises the unlock message and the Refinery's glow;
+ * - pointing at a structure previews its power on the meter and the stat card gives what buying it
+ *   leaves; the stat card never covers the sidebar;
+ * - the advisor rings an item, with its reason on the card; unit roles and counters read the rules;
+ * - pinning puts an item on the quick bar, F1 queues it, unpinning removes it;
+ * - no sideways scroll in the window at 1280 by 720, in either view.
  * No page or console errors.
  */
 const path = require('path');
@@ -94,7 +102,9 @@ async function checkBuildWindow(browser, base, problems, out) {
         menus[tab] = list.filter(k => !optional(k)).map(k => ({ kind: k, needs: req(k), tier: tier(k) }));
         absent[tab] = list.filter(optional);
       }
-      return { menus, absent, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
+      const needsOf = {};
+      for (const k of [...Object.keys(r.BUILDINGS), ...Object.keys(r.UNITS)]) needsOf[k] = req(k);
+      return { menus, absent, needsOf, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
     });
     const owned = await page.evaluate(() => {
       const k = Object.keys(localStorage).find(x => x.startsWith('fireline_save_'));
@@ -110,6 +120,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     const focusIn = await page.evaluate(() => !!document.getElementById('fl-build-window')?.contains(document.activeElement));
     if (!focusIn) console.log('active:', await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
     if (!focusIn) await fail('focus did not move into the window on open');
+    const missingOf = item => item.needs.filter(n => !has.has(n));
     let seen = 0;
     for (const [tab, list] of Object.entries(rules.menus)) {
       if (!(await page.locator(`#fl-tab-${tab}`).count())) {
@@ -126,15 +137,22 @@ async function checkBuildWindow(browser, base, problems, out) {
         }
         seen++;
         const locked = (await el.getAttribute('data-state')) === 'locked';
-        const should = item.needs.some(n => !has.has(n));
+        const missing = missingOf(item);
+        const should = missing.length > 0 || item.kind === 'pointdefence';
         if (locked !== should) await fail(`${item.kind}: ${locked ? 'greyed' : 'not greyed'} at the start, should ${should ? '' : 'not '}be`);
-        const col = await el.evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier'));
-        if (col !== String(item.tier)) await fail(`${item.kind} sits in tier column ${col}, the rules give ${item.tier}`);
-        for (const n of item.needs) {
-          const line = page.locator(`#fl-build-window path[data-from="${item.kind}"][data-to="${n}"]`);
-          if (!(await line.count())) await fail(`no line from ${item.kind} to ${n}`);
-          else if (!(await line.getAttribute('d'))) await fail(`the line from ${item.kind} to ${n} is empty`);
-          if (!(await page.locator(`#fl-build-window [data-node="${n}"]`).count())) await fail(`${item.kind} needs ${n}, which is neither on its tab nor a ghost`);
+        const place = await el.evaluate(e => {
+          const cell = e.closest('[data-variant]');
+          const row = e.closest('.fl-bl-row');
+          return { variant: cell?.getAttribute('data-variant'), row: row ? row.getAttribute('data-needs') : null, later: !!e.closest('[data-testid=later]') };
+        });
+        if (!locked && place.variant !== 'card') await fail(`${item.kind} can be built but is not a full card (${place.variant})`);
+        if (locked) {
+          const step = missing.length > 0 && missing.every(n => {
+            const spec = rules.needsOf[n] || [];
+            return spec.every(x => has.has(x));
+          });
+          if (step && place.row !== missing.join('+')) await fail(`${item.kind} should sit on the Coming next row for ${missing.join('+')}, sits on ${place.row ?? (place.later ? 'Later' : place.variant)}`);
+          if (!step && !place.later) await fail(`${item.kind} is more than one step away but is not in Later`);
         }
       }
     }
@@ -146,12 +164,148 @@ async function checkBuildWindow(browser, base, problems, out) {
     }
     console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes, Generals and the economy toggles off`);
 
-    // ---- Tab cycles, open and closed --------------------------------------------------------------
+    // ---- Every structure has a key within its group -------------------------------------------------
     await page.locator('#fl-tab-building').click();
+    await sleep(150);
+    const groups = await page.locator('.fl-bl-group-head').evaluateAll(els => els.map(e => e.id.replace('fl-group-', '')));
+    if (groups.length < 3) await fail(`Structures shows ${groups.length} groups`);
+    const keyed = new Set();
+    for (const g of groups) {
+      await page.locator(`#fl-group-${g}`).click();
+      await sleep(120);
+      const keys = await page.locator('#fl-build-window button.fl-build[aria-keyshortcuts]').evaluateAll(els => els.map(e => [e.id.replace('fl-build-', ''), e.getAttribute('aria-keyshortcuts')]));
+      const letters = keys.map(k => k[1]);
+      if (new Set(letters).size !== letters.length) await fail(`group ${g} gives two items one key: ${letters.join(' ')}`);
+      for (const [k] of keys) keyed.add(k);
+    }
+    const unkeyed = rules.menus.building.map(i => i.kind).filter(k => !keyed.has(k));
+    if (unkeyed.length) await fail(`structures with no hotkey in any group: ${unkeyed.join(', ')}`);
+    await page.locator(`#fl-group-${groups[0]}`).click();
+    await sleep(120);
+
+    // ---- Tab walks the groups, then the lists ---------------------------------------------------------
+    for (let i = 1; i < groups.length; i++) {
+      await page.keyboard.press('Tab');
+      await sleep(120);
+      if ((await page.locator(`#fl-group-${groups[i]}`).getAttribute('aria-pressed')) !== 'true') await fail(`Tab did not move to the ${groups[i]} group`);
+    }
     await page.keyboard.press('Tab');
     await sleep(150);
-    if (!(await page.locator('#fl-tab-infantry').getAttribute('aria-selected'))?.includes('true')) await fail('Tab with the window open did not move to Infantry');
+    if (!(await page.locator('#fl-tab-infantry').getAttribute('aria-selected'))?.includes('true')) await fail('Tab after the last group did not move to Infantry');
     await page.keyboard.press('Shift+Tab');
+    await sleep(150);
+    if ((await page.locator(`#fl-group-${groups[groups.length - 1]}`).getAttribute('aria-pressed')) !== 'true') await fail('Shift+Tab from Infantry did not come back to the last group');
+    await page.locator(`#fl-group-${groups[0]}`).click();
+    await sleep(120);
+
+    // ---- The stat card stays off the sidebar; the planning numbers ----------------------------------
+    await page.locator('#fl-build-power').hover();
+    await sleep(250);
+    const tipBox = await page.locator('[data-testid=stat-tip]').boundingBox();
+    const asideBox = await page.locator('aside').boundingBox();
+    if (!tipBox) await fail('no stat card on pointing at the Generator');
+    else if (tipBox.x + tipBox.width > asideBox.x + 1) await fail('the stat card covers the sidebar');
+    if ((await page.locator('[data-testid=power-sub]').getAttribute('data-preview')) !== '1') await fail('pointing at the Generator did not preview its power');
+    if (!(await page.locator('[data-testid=tip-after]').count())) await fail('the stat card does not say what buying the Generator leaves');
+    await page.mouse.move(5, 300);
+    await sleep(150);
+    if ((await page.locator('[data-testid=power-sub]').getAttribute('data-preview')) !== '0') await fail('the power preview stayed after the pointer left');
+
+    // ---- The advisor -------------------------------------------------------------------------------
+    const advisorWas = (await page.getByTestId('advisor-toggle').getAttribute('aria-pressed')) === 'true';
+    if (!advisorWas) await page.getByTestId('advisor-toggle').click();
+    await sleep(200);
+    const advised = await page.locator('#fl-build-window .fl-tree-cell[data-advice="1"]').evaluateAll(els => els.map(e => e.getAttribute('data-node')));
+    if (advised.length !== 1) await fail(`the advisor rings ${advised.length} items`);
+    else {
+      await page.locator(`#fl-build-${advised[0]}`).hover();
+      await sleep(200);
+      if (!(await page.locator('[data-testid=tip-advice]').count())) await fail('the advised item\'s card gives no reason');
+    }
+    await page.getByTestId('advisor-toggle').click();
+    await sleep(150);
+    if (await page.locator('#fl-build-window .fl-tree-cell[data-advice="1"]').count()) await fail('switching the advisor off left a ring');
+    await page.mouse.move(5, 300);
+
+    // ---- Roles and counters, from the rules -----------------------------------------------------------
+    const roles = await page.evaluate(async () => {
+      const bp = await import('/src/game/buildPlan.ts');
+      const k = Object.keys(localStorage).find(x => x.startsWith('fireline_save_'));
+      const st = JSON.parse(localStorage.getItem(k));
+      return {
+        rifleman: bp.rolesOf(st, 'rifleman'),
+        rocketeer: bp.rolesOf(st, 'rocketeer'),
+        hauler: bp.rolesOf(st, 'hauler'),
+        rocketVsHeavy: bp.counters(st, 'rocketeer', 'heavy'),
+        rifleVsHeavy: bp.counters(st, 'rifleman', 'heavy'),
+        rifleVsInf: bp.counters(st, 'rifleman', 'infantry'),
+        scouted: bp.scoutedArmor({ tank: 3, rifleman: 1 }),
+      };
+    });
+    if (!roles.rifleman.includes('infantry')) await fail(`the Rifleman's roles are ${roles.rifleman}`);
+    if (!roles.rocketeer.includes('armour')) await fail(`the Rocketeer's roles are ${roles.rocketeer}`);
+    if (roles.hauler.join() !== 'support') await fail(`the Ore Hauler's roles are ${roles.hauler}`);
+    if (!roles.rocketVsHeavy || roles.rifleVsHeavy || !roles.rifleVsInf) await fail(`counters read wrong: ${JSON.stringify(roles)}`);
+    if (roles.scouted !== 'heavy') await fail(`three tanks and a rifleman scout as ${roles.scouted}`);
+
+    // ---- Tech tree view: tiers, and lines only for the chain pointed at -------------------------------
+    await page.locator('#fl-view-tree').click();
+    await sleep(250);
+    for (const [tab, list] of Object.entries(rules.menus)) {
+      await page.locator(`#fl-tab-${tab}`).click();
+      await sleep(200);
+      for (const item of list) {
+        const col = await page.locator(`#fl-build-${item.kind}`).evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier')).catch(() => null);
+        if (col !== String(item.tier)) await fail(`${item.kind} sits in tier column ${col}, the rules give ${item.tier}`);
+      }
+      if (await page.locator('#fl-build-window path.fl-tree-line').count()) await fail(`the ${tab} tree draws lines with nothing pointed at`);
+    }
+    await page.locator('#fl-tab-building').click();
+    await sleep(200);
+    const chainItem = rules.menus.building.find(i => i.kind === 'techcentre') || rules.menus.building[rules.menus.building.length - 1];
+    await page.locator(`#fl-build-${chainItem.kind}`).hover();
+    await sleep(300);
+    const chainOf = k => {
+      const out = new Set([k]);
+      const walk = x => (rules.needsOf[x] || []).forEach(r => { if (!out.has(r)) { out.add(r); walk(r); } });
+      walk(k);
+      return out;
+    };
+    const chain = chainOf(chainItem.kind);
+    const want = [];
+    for (const i of rules.menus.building) if (chain.has(i.kind)) for (const n of i.needs) if (chain.has(n)) want.push(`${i.kind}>${n}`);
+    const drawn = await page.locator('#fl-build-window path.fl-tree-line').evaluateAll(els => els.map(e => `${e.getAttribute('data-from')}>${e.getAttribute('data-to')}`));
+    if (want.sort().join() !== drawn.sort().join()) await fail(`pointing at ${chainItem.kind} drew ${drawn.join(' ')}, its chain is ${want.join(' ')}`);
+    await page.mouse.move(5, 300);
+    await sleep(200);
+    if (await page.locator('#fl-build-window path.fl-tree-line').count()) await fail('the lines stayed after the pointer left the tree');
+
+    // ---- A kind the window has never seen (Tech tree view) -------------------------------------------
+    const extra = { tab: 'vehicle', kind: 'testwalker', name: 'Test Walker', cost: 1234, requires: ['techcentre', 'researchlab'] };
+    const wantTier = 1 + Math.max(...extra.requires.map(k => rules.tier[k] ?? 0));
+    await page.evaluate(x => {
+      window.__flExtraMenuItem = x;
+    }, extra);
+    await page.locator('#fl-tab-vehicle').click();
+    const ok = await until(async () => (await page.locator('#fl-build-testwalker').count()) > 0);
+    if (!ok) await fail('the extra item was not laid out');
+    else {
+      const col = await page.locator('#fl-build-testwalker').evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier'));
+      if (col !== String(wantTier)) await fail(`the extra item sits in tier ${col}, its requirements give ${wantTier}`);
+      await page.locator('#fl-build-testwalker').hover({ force: true });
+      for (const n of extra.requires) {
+        if (!(await until(async () => (await page.locator(`path[data-from="testwalker"][data-to="${n}"]`).count()) > 0, 2000))) await fail(`no line from the extra item to ${n}`);
+        if (!(await page.locator(`#fl-ghost-${n}`).count())) await fail(`no ghost node for ${n} on the Vehicles tab`);
+      }
+      if ((await page.locator('#fl-build-testwalker').getAttribute('data-state')) !== 'locked') await fail('the extra item is not greyed while its needs are missing');
+      if (!(await page.getByText('Needs Tech Centre, Research Lab').count())) await fail('the extra item does not name what it needs');
+    }
+    await page.evaluate(() => {
+      delete window.__flExtraMenuItem;
+    });
+    await page.mouse.move(5, 300);
+    await page.locator('#fl-view-build').click();
+    await page.locator('#fl-tab-building').click();
     await sleep(150);
 
     // ---- Open and close: button, key, Esc ---------------------------------------------------------
@@ -161,10 +315,10 @@ async function checkBuildWindow(browser, base, problems, out) {
     if ((await page.evaluate(() => document.activeElement?.id)) !== 'fl-build-open') await fail('focus did not return to the Build button on close');
     await page.keyboard.press('Tab');
     await sleep(150);
-    if (!(await label()).includes('Infantry')) await fail(`Tab with the window closed: the Build button reads "${await label()}"`);
+    if (!(await label()).includes('Production')) await fail(`Tab with the window closed: the Build button reads "${await label()}"`);
     await page.keyboard.press('Shift+Tab');
     await sleep(150);
-    if (!(await label()).includes('Structures')) await fail(`Shift+Tab: the Build button reads "${await label()}"`);
+    if (!(await label()).includes('Economy')) await fail(`Shift+Tab: the Build button reads "${await label()}"`);
     await page.keyboard.press('Backquote');
     if (!(await until(isOpen))) await fail('the backquote key did not open the window');
     await page.keyboard.press('Backquote');
@@ -205,7 +359,11 @@ async function checkBuildWindow(browser, base, problems, out) {
         }
       }
     if (!placed) await fail('found nowhere to place the Generator');
+    // Round 8: the unlock moment. The Generator opens the Refinery, Barracks and Decoy.
+    if (!(await until(async () => /Generator ready: .*Refinery.* unlocked/.test((await page.locator('[data-testid=toast]').textContent().catch(() => '')) || ''), 3000)))
+      await fail(`placing the Generator raised no unlock message (toast: "${await page.locator('[data-testid=toast]').textContent().catch(() => '')}")`);
     if (!(await until(isOpen))) await fail('the window did not reopen after placing');
+    else if ((await page.locator('[data-node="refinery"]').first().getAttribute('data-fresh')) !== '1') await fail('the newly unlocked Refinery does not glow');
     else if ((await page.locator('#fl-tab-building').getAttribute('aria-selected')) !== 'true') await fail('the window reopened on another tab');
 
     await page.keyboard.press('w');
@@ -217,28 +375,23 @@ async function checkBuildWindow(browser, base, problems, out) {
     if (!(await until(isOpen))) await fail('the window did not reopen when placement was cancelled');
     if ((await page.locator('#fl-battlefield').getAttribute('data-placing')) !== '') await fail('Esc did not cancel placement');
 
-    // ---- A kind the window has never seen ---------------------------------------------------------
-    const extra = { tab: 'vehicle', kind: 'testwalker', name: 'Test Walker', cost: 1234, requires: ['techcentre', 'researchlab'] };
-    const want = 1 + Math.max(...extra.requires.map(k => rules.tier[k] ?? 0));
-    await page.evaluate(x => {
-      window.__flExtraMenuItem = x;
-    }, extra);
-    await page.locator('#fl-tab-vehicle').click();
-    const ok = await until(async () => (await page.locator('#fl-build-testwalker').count()) > 0);
-    if (!ok) await fail('the extra item was not laid out');
+    // ---- The quick bar: pin, F1, unpin -----------------------------------------------------------------
+    await page.locator('#fl-build-barracks').hover();
+    await sleep(150);
+    await page.getByTestId('pin-barracks').click();
+    if (!(await until(async () => (await page.getByTestId('quick-barracks').count()) > 0, 2000))) await fail('pinning the Barracks put nothing on the quick bar');
     else {
-      const col = await page.locator('#fl-build-testwalker').evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier'));
-      if (col !== String(want)) await fail(`the extra item sits in tier ${col}, its requirements give ${want}`);
-      for (const n of extra.requires) {
-        if (!(await until(async () => (await page.locator(`path[data-from="testwalker"][data-to="${n}"]`).count()) > 0, 2000))) await fail(`no line from the extra item to ${n}`);
-        if (!(await page.locator(`#fl-ghost-${n}`).count())) await fail(`no ghost node for ${n} on the Vehicles tab`);
-      }
-      if ((await page.locator('#fl-build-testwalker').getAttribute('data-state')) !== 'locked') await fail('the extra item is not greyed while its needs are missing');
-      if (!(await page.getByText('Needs Tech Centre, Research Lab').count())) await fail('the extra item does not name what it needs');
+      const qbox = await page.getByTestId('quick-bar').boundingBox();
+      const field = await page.locator('#fl-battlefield').boundingBox();
+      if (qbox.x < field.x || qbox.x + qbox.width > field.x + field.width) await fail('the quick bar is not on the battlefield');
+      // The ready Refinery holds the structure line: cancel it (a full refund), then F1.
+      if (await page.getByTestId('cancel-refinery').count()) await page.getByTestId('cancel-refinery').click();
+      await until(async () => (await page.locator('[data-testid=strip-building]').count()) === 0, 5000);
+      await page.keyboard.press('F1');
+      if (!(await until(async () => ['building', 'ready'].includes(await page.getByTestId('quick-barracks').getAttribute('data-state')), 3000))) await fail('F1 did not queue the pinned Barracks');
+      await page.getByTestId('unpin-barracks').click({ force: true });
+      if (!(await until(async () => (await page.getByTestId('quick-barracks').count()) === 0, 2000))) await fail('unpinning left the Barracks on the quick bar');
     }
-    await page.evaluate(() => {
-      delete window.__flExtraMenuItem;
-    });
 
     // ---- Dragging moves the window and the place is remembered ------------------------------------
     const head = await page.locator('[data-testid=build-window-head]').boundingBox();
@@ -253,6 +406,20 @@ async function checkBuildWindow(browser, base, problems, out) {
     if (!stored) await fail('the window place was not remembered');
     const aside = await page.locator('aside').boundingBox();
     if (after.x + after.width > aside.x + 1) await fail('the window reaches over the sidebar');
+
+    // ---- No sideways scroll at 1280 by 720, in either view ---------------------------------------------
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await sleep(400);
+    if (!(await isOpen())) await page.locator('#fl-build-open').click();
+    await until(isOpen);
+    for (const v of ['build', 'tree']) {
+      await page.locator(`#fl-view-${v}`).click();
+      await page.locator('#fl-tab-building').click();
+      await sleep(300);
+      const [sw, cw] = await page.getByTestId('build-window-body').evaluate(e => [e.scrollWidth, e.clientWidth]);
+      if (sw > cw + 1) await fail(`the ${v} view scrolls sideways at 1280 by 720 (${sw} in ${cw})`);
+    }
+    await page.locator('#fl-view-build').click();
 
     for (const e of errors) await fail(e);
   } catch (e) {

@@ -20,6 +20,11 @@ import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuil
 import { ReviewButton } from '../components/Review';
 // round7:review end.
 import BuildWindow from '../game/BuildWindow';
+// Round 8: the build window's groups, unlock watch, planning numbers and quick bar (fireline-round8-build-window.md).
+import QuickBar from '../game/QuickBar';
+import { buildingSpecFor, factionOf as armyOf, unitSpecFor } from '../sim/specs';
+import { keyedList, nextStop, openKinds, standingKey, type Group, type Kind } from '../game/buildPlan';
+import { QUICK_KEYS, clearFresh, markFresh, noteIncome, noteScouting, pins } from '../game/buildStores';
 import { airRoom } from '../sim/air';
 import { researchProblem } from '../sim/research';
 import { sound } from '../game/sound';
@@ -49,7 +54,7 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
-import { costFor, isStructure, lineCount, powerOf, queueCap, readyStructure, unlocked } from '../sim/state';
+import { categoryOf, costFor, isStructure, lineCount, powerOf, queueCap, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { disbandQuestion, isSupport, selectionActions } from '../game/selectionActions';
@@ -240,7 +245,7 @@ export function Battle({
   // Combat alerts: every recent ping (drawn by the minimap) and the latest hit, which Space jumps to.
   const alerts = useRef<Alert[]>([]);
   const lastAlert = useRef<Alert | null>(null);
-  const [toast, setToast] = useState<{ text: string; n: number } | null>(null);
+  const [toast, setToast] = useState<{ text: string; n: number; tone?: 'good' } | null>(null);
   const toastTimer = useRef(0);
 
   const [, setHud] = useState(0);
@@ -249,6 +254,8 @@ export function Battle({
   const [placing, setPlacingState] = useState<BuildingKind | null>(null);
   const [attackMode, setAttackMode] = useState(false);
   const [tab, setTab] = useState<Tab>('building');
+  // Round 8: the structure group the hotkeys act on.
+  const [group, setGroup] = useState<Group>('economy');
   // The build window (BuildWindow.tsx): open or not, and whether placing a structure closed it, so
   // it comes back on the same tab once the structure is placed or placement is cancelled.
   const [buildOpen, setBuildOpenState] = useState(false);
@@ -291,6 +298,8 @@ export function Battle({
   const attackRef = useRef(attackMode);
   const tabRef = useRef(tab);
   tabRef.current = tab;
+  const groupRef = useRef(group);
+  groupRef.current = group;
   pausedRef.current = paused || help || menu;
   speedRef.current = speed;
   placingRef.current = placing;
@@ -340,12 +349,38 @@ export function Battle({
     if (!t && ringRef.current) ringRef.current.style.display = 'none';
   }, []);
 
-  const showToast = useCallback((text: string) => {
+  const showToast = useCallback((text: string, ms = 1800, tone?: 'good') => {
     window.clearTimeout(toastTimer.current);
-    setToast(t => ({ text, n: (t?.n ?? 0) + 1 }));
-    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+    setToast(t => ({ text, n: (t?.n ?? 0) + 1, tone }));
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
   }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // Round 8: unlock moments. When what stands (or what is researched) changes, anything newly
+  // buildable is marked new (its tab's dot, its card's glow) and a message names it. Nothing fires
+  // for what a battle loads with.
+  const unlockSeen = useRef<{ id: string; key: string; kinds: Set<string>; open: Set<Kind> } | null>(null);
+  useEffect(() => {
+    const st = cur.current;
+    const key = standingKey(st);
+    const prev = unlockSeen.current;
+    if (prev && prev.id === st.id && prev.key === key) return;
+    const kinds = new Set(st.buildings.filter(b => b.owner === 0 && b.hp > 0).map(b => b.kind as string));
+    const open = openKinds(st);
+    if (prev && prev.id === st.id) {
+      const added = [...open].filter(k => !prev.open.has(k));
+      if (added.length) {
+        markFresh(added.map(k => ({ kind: k, tab: categoryOf(k) })));
+        const f = armyOf(st, 0);
+        const nameOf = (k: string) => (k in BUILDINGS ? buildingSpecFor(f, k as BuildingKind).name : unitSpecFor(f, k as UnitKind).name);
+        const built = [...kinds].filter(k => !prev.kinds.has(k)).map(nameOf);
+        const names = added.map(nameOf);
+        const list = names.length > 4 ? `${names.slice(0, 4).join(', ')} and ${names.length - 4} more` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+        showToast(`${built.length ? `${built.join(' and ')} ready` : 'Research done'}: ${list} unlocked`, 4200, 'good');
+      }
+    } else clearFresh();
+    unlockSeen.current = { id: st.id, key, kinds, open };
+  });
 
   const dispatch = useCallback(
     (a: GameAction): boolean => {
@@ -1038,18 +1073,32 @@ export function Battle({
         toggleBuild();
         return;
       }
+      // Round 8: the quick bar's slots, F1 F2 F3 F4 F6 F7 (F5 is left to the browser).
+      const quick = (QUICK_KEYS as readonly string[]).indexOf(e.key);
+      if (quick >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        const kind = pins.get()[quick];
+        if (kind) {
+          const cat = categoryOf(kind);
+          if (!menuFor(cat, cur.current).includes(kind)) showToast('That item is not in this battle');
+          else pressBuild(cur.current, cat, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
+        }
+        return;
+      }
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Q W E R T Y (then U I J K L B N D): the open list's items in order; Shift queues five units.
-        const kind = menuFor(tabRef.current, cur.current)[buildIndex];
+        // Q W E R T Y (then U I J K L B N D): the open list's items in order, the active group's
+        // on Structures (round 8); Shift queues five units.
+        const kind = keyedList(cur.current, tabRef.current, groupRef.current)[buildIndex];
         if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
         return;
       }
       if (e.key === 'Tab') {
+        // Round 8: through each structure group, then each other list.
         e.preventDefault();
-        const order = tabsFor(cur.current);
-        const i = Math.max(0, order.indexOf(tabRef.current));
-        setTab(order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
+        const next = nextStop(cur.current, tabRef.current, groupRef.current, e.shiftKey);
+        setTab(next.tab);
+        setGroup(next.group);
         return;
       }
       // round6:B begin. Heroes in free play (fireline-round6-design.md): Z X C V and F in a skirmish
@@ -1413,6 +1462,9 @@ export function Battle({
   // ---- Render -------------------------------------------------------------------------------
   const s = cur.current;
   const vis = renderer.current!.visible(s);
+  // Round 8: the build window's income rate and the enemy kinds seen (game/buildStores.ts).
+  noteIncome(s);
+  noteScouting(s, vis);
   const power = powerOf(s, 0);
   const uplinkOnline = s.buildings.some(b => b.owner === 0 && b.kind === 'uplink') && !power.low;
   const alert = lastAlert.current && performance.now() - lastAlert.current.at < ALERT_CHIP_MS ? lastAlert.current : null;
@@ -1793,7 +1845,7 @@ export function Battle({
             </button>
           )}
           {toast && (
-            <div key={toast.n} className="fl-toast" role="status" data-testid="toast">
+            <div key={toast.n} className="fl-toast" role="status" data-testid="toast" data-tone={toast.tone ?? 'bad'}>
               {toast.text}
             </div>
           )}
@@ -2004,6 +2056,8 @@ export function Battle({
               state={s}
               tab={tab}
               setTab={setTab}
+              group={group}
+              setGroup={setGroup}
               dispatch={dispatch}
               placing={placing}
               setPlacing={choosePlacing}
@@ -2015,6 +2069,7 @@ export function Battle({
               }}
             />
           )}
+          {!help && !ended && !layout.touch && <QuickBar state={s} dispatch={dispatch} placing={placing} setPlacing={choosePlacing} />}
           {/* round7:pause begin. A tactical pause: the battle holds but the map stays live, so
               orders, selections, queues and placements can be given while time stands still. A
               banner, not a scrim, so nothing on the battlefield is covered. */}
@@ -2091,6 +2146,7 @@ export function Battle({
             touch={layout.touch}
             state={s}
             tab={tabsFor(s).includes(tab) ? tab : 'building'}
+            group={group}
             dispatch={dispatch}
             placing={placing}
             setPlacing={choosePlacing}
