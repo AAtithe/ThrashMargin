@@ -39,7 +39,7 @@ import {
   unlocked,
 } from './state';
 import type { Building, GameState, QueueItem, QueuedOrder, Stance, Unit } from './types';
-import { goodsPart, hasGoods, oreInReach, payGoods, refundGoods } from './industry';
+import { goodsPart, hasGoods, oreInReach, payGoods, refundGoods, type Goods } from './industry';
 import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
@@ -107,7 +107,7 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
 }
 
 /** The alloys and fuel part of this side's price for a kind: nothing without industry (industry.ts). */
-export const goodsFor = (s: GameState, owner: Owner, kind: BuildingKind | UnitKind): { alloys: number; fuel: number } =>
+export const goodsFor = (s: GameState, owner: Owner, kind: BuildingKind | UnitKind): Goods =>
   goodsPart(s, kind, fullCostFor(s, owner, kind));
 
 export function doQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): void {

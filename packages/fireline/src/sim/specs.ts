@@ -138,8 +138,10 @@ export function factionAllows(faction: Faction, kind: BuildingKind | UnitKind): 
  * everyday units keep their keys whether or not Heroes and Generals are on, and building an Academy
  * mid-battle never moves a key already in use.
  */
-const isRecruit = (k: BuildingKind | UnitKind): boolean => k in UNITS && (k === 'general' || !!UNITS[k as UnitKind].hero);
-const recruitRank = (k: BuildingKind | UnitKind): number => (k === 'general' ? 0 : 1);
+// Advanced production's Supply Truck (2026-11-22) closes the list after the recruits, so every item
+// before it, Ashen's Raider Bike and the Ace included, keeps its place and hotkey.
+const isRecruit = (k: BuildingKind | UnitKind): boolean => k in UNITS && (k === 'general' || k === 'supplytruck' || !!UNITS[k as UnitKind].hero);
+const recruitRank = (k: BuildingKind | UnitKind): number => (k === 'general' ? 0 : k === 'supplytruck' ? 2 : 1);
 
 /**
  * An army's build list for a queue: MENUS[category] less what it never builds and less the recruits,

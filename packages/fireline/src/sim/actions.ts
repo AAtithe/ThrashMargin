@@ -1,4 +1,5 @@
 import { boardProblem, doBoard, doUnload, unloadProblem } from './transport';
+import { cancelProject, doProject, projectProblem } from './production';
 import {
   canAttack,
   canCancel,
@@ -122,6 +123,19 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (!canHarvest(s, 0, ids(a.ids), a.tile, a.refinery)) return s;
       const c = cloneState(s);
       doHarvest(c, 0, ids(a.ids), a.tile, a.refinery);
+      return c;
+    }
+    // Advanced production (2026-11-22): Industry projects at a Training Centre.
+    case 'project': {
+      if (projectProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doProject(c, 0, a.id);
+      return c;
+    }
+    case 'cancelProject': {
+      if (!s.players[0].project) return s;
+      const c = cloneState(s);
+      cancelProject(c, 0);
       return c;
     }
     case 'queue': {

@@ -21,6 +21,8 @@ import {
   SUPPLY_LINK_RANGE,
   SUPPLY_SERVE_RANGE,
   SUPPLY_TICKS,
+  RELAY_LINK_BONUS,
+  RELAY_SERVE_BONUS,
   type BuildingKind,
   type Owner,
 } from './rules';
@@ -44,15 +46,21 @@ export function centreOf(b: Pick<Building, 'kind' | 'x' | 'y'>): { x: number; y:
 
 const near = (a: { x: number; y: number }, b: { x: number; y: number }, r: number): boolean => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 <= r * r;
 
+/** Advanced production's Long relays: this side's link and serve ranges. */
+const relays = (s: GameState, owner: Owner): boolean => s.setup?.production === true && s.setup.territory === true && !!s.players[owner]?.projects?.includes('relays');
+export const linkRangeOf = (s: GameState, owner: Owner): number => SUPPLY_LINK_RANGE + (relays(s, owner) ? RELAY_LINK_BONUS : 0);
+export const serveRangeOf = (s: GameState, owner: Owner): number => SUPPLY_SERVE_RANGE + (relays(s, owner) ? RELAY_SERVE_BONUS : 0);
+
 /** This side's linked hubs: every hub a chain of links reaches from one of its yards. Lowest id first. */
 export function linkedHubs(s: GameState, owner: Owner): Building[] {
+  const link = linkRangeOf(s, owner);
   const hubs = s.buildings.filter(b => b.owner === owner && b.hp > 0 && isHub(b.kind)).sort((a, b) => a.id - b.id);
   const linked = hubs.filter(b => ROOTS.includes(b.kind));
   const seen = new Set(linked.map(b => b.id));
   for (let i = 0; i < linked.length; i++) {
     const c = centreOf(linked[i]);
     for (const h of hubs) {
-      if (seen.has(h.id) || !near(c, centreOf(h), SUPPLY_LINK_RANGE)) continue;
+      if (seen.has(h.id) || !near(c, centreOf(h), link)) continue;
       seen.add(h.id);
       linked.push(h);
     }
@@ -61,19 +69,20 @@ export function linkedHubs(s: GameState, owner: Owner): Building[] {
 }
 
 /** True when a point is within SUPPLY_SERVE_RANGE of one of these hubs. */
-export const servedBy = (hubs: Building[], p: { x: number; y: number }): boolean => hubs.some(h => near(centreOf(h), p, SUPPLY_SERVE_RANGE));
+export const servedBy = (hubs: Building[], p: { x: number; y: number }, range = SUPPLY_SERVE_RANGE): boolean => hubs.some(h => near(centreOf(h), p, range));
 
 /** True when this structure can deliver: always without supply lines; with them, near a linked hub. */
 export function supplied(s: GameState, b: Building): boolean {
   if (!supplyOn(s) || !isProducer(b.kind)) return true;
-  return servedBy(linkedHubs(s, b.owner), centreOf(b));
+  return servedBy(linkedHubs(s, b.owner), centreOf(b), serveRangeOf(s, b.owner));
 }
 
 /** The ids of this side's producers that are cut off (empty without supply lines). */
 export function cutOff(s: GameState, owner: Owner): Building[] {
   if (!supplyOn(s)) return [];
   const hubs = linkedHubs(s, owner);
-  return s.buildings.filter(b => b.owner === owner && b.hp > 0 && isProducer(b.kind) && !servedBy(hubs, centreOf(b)));
+  const range = serveRangeOf(s, owner);
+  return s.buildings.filter(b => b.owner === owner && b.hp > 0 && isProducer(b.kind) && !servedBy(hubs, centreOf(b), range));
 }
 
 /** Every SUPPLY_TICKS: each supplied Refinery and Fuel Well sends home up to its flow of what it holds. */
@@ -84,7 +93,7 @@ export function supplyStep(s: GameState): void {
     if (!b.held || b.hp <= 0) continue;
     let hubs = hubsOf.get(b.owner);
     if (!hubs) hubsOf.set(b.owner, (hubs = linkedHubs(s, b.owner)));
-    if (!servedBy(hubs, centreOf(b))) continue;
+    if (!servedBy(hubs, centreOf(b), serveRangeOf(s, b.owner))) continue;
     const p = s.players[b.owner];
     if (!p) continue;
     const flow = Math.min(b.held, b.kind === 'refinery' ? SUPPLY_FLOW_CREDITS : SUPPLY_FLOW_GOODS);

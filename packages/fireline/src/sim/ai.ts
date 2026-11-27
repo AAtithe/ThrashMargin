@@ -32,8 +32,8 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
-import { MAX_QUARTERS, depotSpot, depotToward, economyPlan, expansionTarget, industryPlanFor, unclaimedOre, wellFocus } from './aiEconomy';
-import { crewWanted, housed, territoryOn } from './territory';
+import { MAX_QUARTERS, farmUrgent, depotSpot, depotToward, economyPlan, expansionTarget, industryPlanFor, unclaimedOre, wellFocus } from './aiEconomy';
+import { crewNeed, crewWanted, housed, territoryOn } from './territory';
 import { CREW } from './rules';
 import { isProducer, linkedHubs, servedBy, supplyOn } from './supply';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
@@ -1104,7 +1104,7 @@ function nextStructure(
   const headroom = pw.made - pw.used;
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
   // Territory and workforce (2026-11-21): Quarters before a structure whose crew would not be housed.
-  const crewShort = (k: BuildingKind) => territoryOn(s) && crewWanted(s, owner) + (CREW[k] ?? 0) > housed(s, owner) && countBuildings(s, owner, 'quarters') < MAX_QUARTERS;
+  const crewShort = (k: BuildingKind) => territoryOn(s) && crewWanted(s, owner) + crewNeed(s, owner, k) > housed(s, owner) && countBuildings(s, owner, 'quarters') < MAX_QUARTERS;
   const powerFor = (k: BuildingKind): BuildingKind => {
     if (!unlocked(s, owner, k)) return 'power';
     if (k !== 'quarters' && crewShort(k)) return headroom + buildingSpec(s, owner, 'quarters').power < 10 ? 'power' : 'quarters';
@@ -1115,6 +1115,8 @@ function nextStructure(
   if (headroom < 25 && count('power') < 12) return 'power';
   // Territory and workforce: anything standing without its crew is housed first.
   if (territoryOn(s) && crewWanted(s, owner) > housed(s, owner) && count('quarters') < MAX_QUARTERS) return powerFor('quarters');
+  // Advanced production (2026-11-26): a Farm first when food is nearly gone. Never without it.
+  if (farmUrgent(s, owner) && unlocked(s, owner, 'farm')) return powerFor('farm');
   // Supply lines (2026-11-21): a cut-off producer is reconnected before anything else. Never without them.
   if (depotSpot(s, owner) && unlocked(s, owner, 'depot')) return powerFor('depot');
   const t = advanced ? TACTICS[advanced] : null;

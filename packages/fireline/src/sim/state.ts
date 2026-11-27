@@ -1,5 +1,6 @@
 import { unpackState } from './pack';
 import { migrateAir } from './air';
+import { productionOn, startProduction } from './production';
 import { migrateNaval } from './naval';
 import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
@@ -65,7 +66,7 @@ import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, 
 import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
-import { RELAY_RADIUS } from './rules';
+import { PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
@@ -171,7 +172,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // round7:adaptive begin. The adaptive commander: on only when exactly true, else the base's (off for a base without it).
   const adaptive = typeof r.adaptive === 'boolean' ? r.adaptive : (base.adaptive ?? false);
   // round7:adaptive end.
-  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, structureUpgrades, strategicBuildings, adaptive };
+  // Advanced production (2026-11-22): on only when exactly true, and only with territory.
+  const production = territory && (typeof r.production === 'boolean' ? r.production : (base.production ?? false));
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, structureUpgrades, strategicBuildings, adaptive };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -222,6 +225,8 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round7:structures begin. The four strategic structures only with setup.strategicBuildings (advanced tech).
   if (STRATEGIC_BUILDINGS.includes(kind as BuildingKind)) return strategicOn(s);
   // round7:structures end.
+  // Advanced production (2026-11-22): the Farm, the Munitions Works and the Supply Truck only with setup.production.
+  if (kind === 'farm' || kind === 'munitions' || kind === 'supplytruck' || kind === 'trainingcentre') return productionOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -369,6 +374,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     // round6:C end.
     // Industry (2026-11-21): every side's opening fuel and alloys.
     startIndustry(s);
+    // Advanced production (2026-11-22): every side's opening food and munitions.
+    startProduction(s);
     // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
     if (size !== 'standard') {
       const first = scaledFor(s, d).firstAttack;
@@ -890,19 +897,52 @@ function migrateIndustry(out: GameState): void {
       for (const cat of Object.keys(q) as (keyof typeof q)[])
         if (Array.isArray(q[cat]))
           q[cat] = q[cat].map(it => {
-            if (!it || typeof it !== 'object' || (!('alloys' in it) && !('fuel' in it))) return it;
-            const { alloys: a, fuel: f, ...item } = it;
+            if (!it || typeof it !== 'object' || (!('alloys' in it) && !('fuel' in it) && !('food' in it))) return it;
+            const { alloys: a, fuel: f, food: fd, ...item } = it;
             if (on && clean(a)) (item as QueueItem).alloys = clean(a);
             if (on && clean(f)) (item as QueueItem).fuel = clean(f);
+            // Advanced production's food on an infantryman (read directly: the setup says whether it is on).
+            if (on && out.setup?.production === true && out.setup.territory === true && out.setup.supply === true && clean(fd)) (item as QueueItem).food = clean(fd);
             return item as QueueItem;
           });
     if (!on) return rest as PlayerState;
     return { ...rest, fuel: clean(fuel), alloys: clean(alloys) } as PlayerState;
   });
+  // Advanced production: food and munitions, hungry Quarters and trucks' errands, kept only with it on.
+  const prod = productionOn(out);
+  out.players = out.players.map(p => {
+    if (!p || typeof p !== 'object') return p;
+    const { food, munitions, projects, project, ...rest } = p;
+    if (!prod) return rest as PlayerState;
+    const done = Array.isArray(projects) ? [...new Set(projects.filter(id => id in PROJECTS))] : [];
+    const running =
+      project && typeof project === 'object' && project.id in PROJECTS && !done.includes(project.id) && Number.isFinite(project.progress)
+        ? { id: project.id, progress: Math.max(0, Math.min(PROJECTS[project.id].ticks, project.progress)) }
+        : null;
+    return {
+      ...rest,
+      food: clean(food),
+      munitions: clean(munitions),
+      ...(done.length ? { projects: done } : {}),
+      ...(running ? { project: running } : {}),
+    } as PlayerState;
+  });
+  out.units = out.units.map(u => {
+    if (!u || typeof u !== 'object' || !('truck' in u)) return u;
+    const { truck, ...rest } = u;
+    const t = truck as Unit['truck'];
+    const ok = prod && u.kind === 'supplytruck' && !!t && typeof t === 'object' && [t.site, t.hub, t.credits, t.fuel, t.x, t.y].every(Number.isFinite);
+    return ok ? ({ ...rest, truck: { site: t!.site, hub: t!.hub, credits: clean(t!.credits), fuel: clean(t!.fuel), x: t!.x, y: t!.y } } as Unit) : (rest as Unit);
+  });
   // Supply lines: goods held on site, kept only with supply lines on, on a Refinery or Fuel Well.
   const supply = supplyOn(out);
   out.buildings = out.buildings.map(b => {
-    if (!b || typeof b !== 'object' || !('held' in b)) return b;
+    if (!b || typeof b !== 'object') return b;
+    if ('hungry' in b && !(prod && b.kind === 'quarters' && b.hungry === true)) {
+      const { hungry: _h, ...nb } = b;
+      b = nb as Building;
+    }
+    if (!('held' in b)) return b;
     const { held, ...rest } = b;
     const n = clean(held);
     return supply && n > 0 && (b.kind === 'refinery' || b.kind === 'fuelwell') && isProducer(b.kind) ? { ...rest, held: n } : (rest as Building);

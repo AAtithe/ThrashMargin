@@ -3236,3 +3236,120 @@ never fires there. Huge was not laddered; it sits between the two.
 **Harness** (`drive-vast.ts`, "Larger maps: surplus production"): off on standard maps however rich,
 off in missions, on from exactly 6,000; a commander handed 60,000 credits on a large map builds past
 its plan's factories and within the cap, and on a standard map keeps its one.
+### 2026-11-22: Advanced production (phase 4 of the economy)
+
+The player asked to widen the economy: new kinds of production, more to the workforce, a tech tree,
+and whether supply trucks were needed. The answer given on the last point: a truck as a unit, yes;
+trucks carrying every delivery, no (hundreds of hauling units would slow every battle and are hard
+for the computer to play), so supply keeps flowing along Depot chains and the truck fetches what is
+stranded. Built in two steps, each measured.
+
+- **The toggle.** `setup.production` ("Advanced production", in the customise step under Territory,
+  disabled until Industry, Supply lines and Territory are all on; in the orders summary when they
+  are). `normaliseSetup` turns it off without territory; absent on older setups. Phases 1 to 3 play
+  exactly as before without it. Logic in `src/sim/production.ts`.
+- **Food (4a).** A Farm (3x3, 400, crew 2) grows a food every 20 ticks, 30 a minute. Every 60 ticks
+  each Quarters, oldest first, eats one; a Quarters that finds none is hungry (`Building.hungry`)
+  until its next meal and houses half its workers. Yards feed their own. One Farm feeds three
+  Quarters. A HUNGRY badge and an "N hungry" chip in the gauge.
+- **Munitions (4a).** A Munitions Works (3x2, 1,000, -30 power, crew 3, needs a Foundry) turns 5
+  alloys and 2 fuel into 10 munitions every 60 ticks. Artillery, Missile Carriers, Battleships and
+  Railgun Tanks spend one a shot and hold fire without (reloading as if they had fired); aircraft
+  spend one a load and take twice as long without. Every side starts with 40.
+- **The Supply Truck (4a).** A vehicle (700, War Factory with a Depot standing, credits only like
+  the Ore Hauler, unarmed). Idle, it drives to the cut-off Refinery or Fuel Well holding the most,
+  loads up to 600 credits or 50 fuel, and takes it to the nearest linked yard or Depot, where it goes
+  into store. Any order takes it over; idle again, it carries on. It closes the Vehicles list after
+  the Ace, so every item before it keeps its place and hotkey for both armies.
+- **Technicians (4b).** A Training Centre (2x2, 900, -20 power, crew 2, needs a Barracks) trains 6
+  Technicians as soon as it is crewed. The Munitions Works and the Helipad need 1 beside their crews,
+  the Research Lab 2 (the Foundry needed 1 too at first; see Tuning); without them they stop like any uncrewed structure, and
+  research waits for a crewed Lab. Crews and Technicians are assigned together, in `CREW_ORDER`
+  with the Training Centre ahead of the Foundry. "Technicians wanted/have" in the gauge.
+- **Industry projects (4b).** The tech tree's new branch, kept apart from the development lines
+  (which War for the Planet shares): six one-off projects run at a Training Centre, one at a time,
+  paid up front and refunded if cancelled, half speed short of power. Prefab housing (Quarters house
+  12), Deep wells (Fuel Wells pump half as fast again), Blast furnace (13 alloys a Foundry cycle),
+  Mechanised crews (every crew one fewer, never under one), Long relays (links 3 and supply 2 tiles
+  further) and Shell casting (15 munitions a cycle). Select the Training Centre to start one.
+- **The computer.** One Farm per three Quarters, once a second Quarters stands or food runs low; a
+  Training Centre once a Munitions Works, Helipad or Research Lab is wanted or from minute 15; a
+  Munitions Works only once something fires munitions (one built ahead of any heavy gun sat full all
+  battle, a Works and its crew for nothing); a Supply Truck once 700 credits' worth is stranded and
+  none is out; Industry projects in a fixed order from minute 15, with 2,500 credits to spare beyond
+  the price.
+- **Tuning: the tech tree before the army.** The first 60-seed read had the old commander, which
+  ignores the whole economy, beating the new one 87% to 13%. The new one was paying for a Training
+  Centre ahead of its Foundry (which needed a Technician), a Farm before any Quarters could go hungry,
+  and Industry projects as soon as it had 1,500 spare. Three changes: the Foundry needs no
+  Technician, so a Training Centre is a choice for advanced production rather than a toll on basic
+  alloys; Farms wait until they are needed; projects wait for minute 15 and 2,500 spare. Then 38% at
+  60 seeds.
+- **Also found and fixed on the way** (in pull request 58 before it merged): the uncapped Watchtower
+  for room, recorded in the territory entry.
+- **Ladder** (`--production`; seat 0 wins). 60 seeds: Hard v Normal 38%, Normal v Hard 23%, Normal v
+  Easy 97%, Normal v Normal 48%. 150 seeds: Hard v Normal 47% (classic 47%), new Normal v previous
+  Normal 39% (classic 65%, territory 49%). Read plainly: the difficulty order holds, but with every
+  phase on, playing the economy is still a mild net cost against ignoring it. That is the open tuning
+  item, and the next lever is the computer's spending order, not the rules.
+- **Checks.** `scripts/drive-production.ts`, eight sections in `npm run drive` (45 assertions): the
+  setup, food and hunger, munitions made and spent, the Supply Truck fetching 300 stranded credits
+  and being taken over by an order, Technicians, Industry projects (paid, refused while one runs,
+  refunded, finished, each effect for its owner alone), four whole battles and replays and saves.
+  The whole-battle test counts a battle as finished when it is decided or the map is mined out
+  (under 1% of its ore left): `prod-a` ended mined out with both sides holding infantry behind
+  turrets, the classic game's own endgame. The hand-kept lists name the new kinds; the build-window
+  tour expects them absent with the toggle off; a factions test that checked every trailing item
+  appears with Heroes and Generals on now leaves out the Supply Truck, which needs production.
+  `npm run check`: every suite passed bar that factions check, now passing; `campaign-check` 7,699
+  of 7,699; `drive:planet` 35,255 of 35,255; `check:ui fireline` 32 of 32; the Fireline tour ok.
+  In Chromium: a battle eleven minutes in with a Farm, Training Centre, Munitions Works and Supply
+  Truck; a hungry Quarters cutting housing from 24 to 18 and two structures showing NO CREW; the
+  Training Centre's projects panel (Prefab housing done, Deep wells at 45% with Cancel); the six
+  figures of the Industry gauge on two rows on a 390px phone in dark mode, no sideways scroll.
+- **Known limit.** With Ashen, Heroes and Advanced production all on, the Vehicles list is fifteen
+  long and the Supply Truck, last, has no hotkey (it is clicked).
+
+### 2026-11-26: The economy on the first screen, and soldiers eat
+
+The player asked whether the economy was on main and said they could not play it. Industry, Supply
+lines and Territory had merged (pull requests 55 and 58) and production was live with them; but all
+three were off by default and lived at the foot of the customise step, so nothing on the first
+screen said they existed. Advanced production had not merged at all.
+
+- **The Economy step.** The lobby's first screen gains step 2, Economy, between Game size and Enemy
+  commander: five cards, Classic, Industry, Supply lines, Territory and Full economy. The four
+  toggles nest (each needs the one before), so these are the only combinations that mean anything;
+  picking a card writes all four (`src/components/EconomyPicker.tsx`). The customise step keeps the
+  four toggles for anyone who wants them there. Remembered with the rest of the setup.
+- **Soldiers eat** (Advanced production only). The 150-seed read had the commander that ignores the
+  economy winning 61%. Measured over 12 battles: at minute 8 it had 23 more units than the new one,
+  having put the 2,550 credits the new one spent on its Fuel Well, Foundry, Quarters and Farm into
+  riflemen, which asked nothing of any economy. While infantry were free of it, ignoring the economy
+  and massing infantry was the dominant play, a fault in the design, not in the commander. Now every
+  infantry kind bar the heroes and the General costs 2 food to train (`INFANTRY_FOOD`; on the queue
+  item, refunded with it, kept by a save), so the Barracks hangs on the Farms as vehicles hang on
+  the Foundry and the heavy guns on the Munitions Works. The computer builds a Farm first in its
+  chain, one more per three Quarters and another when the store runs low, at most four. Over the
+  same 12 battles the new commander then led by 2 units at minute 8 and 11 at minute 16, and won all
+  12.
+- **One Farm too many.** The first version of the computer's Farm plan (a Farm first in the chain and
+  one more than its Quarters needed) put Hard in seat 0 at 34% against Normal. Measured one change at
+  a time over 150 seeds: food was never short (both sides held 100 to 180), food at no cost still gave
+  34%, the merge with main's adaptive work moved nothing (territory alone 41%, as before it; classic
+  47%, as before it), and a Farm jumping the plan when food ran low moved nothing. Dropping the extra
+  Farm (one first, then one per three Quarters) gave 45%. One 400-credit building and a crew of two,
+  early, was the whole difference.
+- **Ladder, final** (150 seeds, seat 0 wins; classic / full economy): Hard v Normal 47% / 45%; Normal v
+  Hard 15% / 21%; Normal v Easy 100% / 97%; Normal v Normal 45% / 45%; new Normal v previous Normal 65%
+  / 76% (39% before soldiers ate). The commander that plays the economy now beats the one that
+  ignores it. 29 of those 150 went to the 100-minute cap: the previous commander, starved, holds
+  behind its turrets and the new one does not finish it. That is the next item.
+- **Checks.** Eight new assertions in `drive-production.ts` (a soldier's food; none for vehicles or
+  without production; refused short of food with the same state back; paid, recorded on the queue
+  item, refunded on cancel and kept by a save). A test from main's round 7 that listed what follows
+  Point Defence in the build menu now names advanced production's three as well. `npm run check`
+  all passed bar that line, now passing; `campaign-check` 7,713 of 7,713; `drive:planet` 33,557 of
+  33,557; `check:ui fireline` 32 of 32; the Fireline tour ok. In Chromium the Economy step at 1,280
+  and 390 wide, light and dark, no sideways scroll; Full economy writes all four toggles and Classic
+  clears them.

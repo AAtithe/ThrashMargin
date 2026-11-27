@@ -1,4 +1,5 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
+import { loadMunition } from './production';
 import { burnLoadFuel, industryOn } from './industry';
 import {
   AIR_AMMO,
@@ -457,7 +458,7 @@ function rearm(s: GameState, u: Unit, h: AirHooks, max: number): void {
     if (u.cooldown === 0) {
       u.ammo = (u.ammo ?? 0) + 1;
       // Industry: each load burns AIR_LOAD_FUEL; short of fuel it takes twice as long instead.
-      const slow = industryOn(s) && !burnLoadFuel(s.players[u.owner]) ? 2 : 1;
+      const slow = (industryOn(s) && !burnLoadFuel(s.players[u.owner])) || !loadMunition(s, u.owner) ? 2 : 1;
       u.cooldown = Math.max(1, Math.round((REARM_TICKS[u.kind] ?? 20) * rearmMulOf(s, u.owner))) * slow;
     }
     return;
