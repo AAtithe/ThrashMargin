@@ -3451,3 +3451,96 @@ and through a save). `npm run drive` (Fireline) 411,668 assertions, 0 failed; `c
 every other game's suite and typecheck passed; `check:ui fireline` 32 of 32; the Fireline tour ok. In
 Chromium the Economy step lays its six cards out three to a row at 1,280 (the sixth had sat on a row
 alone) and one to a row at 375 in dark mode, and picking the sixth card writes all five toggles.
+
+### 2026-11-27 (later): The long-game plan, built and measured
+
+The player asked for everything on the list from the earlier entry, desktop only (no phone work).
+Each piece is behind its own toggle, so every older setup, save, mission and war plays as before
+except where an AI fix below says otherwise.
+
+**1. Upkeep measured** (`ladder:fire -- --upkeep --seasons`, flags added). Normal mirror, Long pace on
+a large map, full economy, 150 seeds each: with upkeep and seasons, 29.5 minutes on average (median
+26.1), seat 0 winning 43%; without, 33.4 (median 30.9), 39%; none unfinished either way. Hard against
+Normal with them on, 60 seeds each seat: Hard wins 67.5% (95% interval 59 to 76%). Upkeep and seasons
+make battles shorter, not longer: smaller, hungrier armies break bases sooner. They are the economy
+of a long game, not its length.
+
+**2. The capped battles.** The 29 of 150 at the cap on 2026-11-26 were all against the frozen
+`prev` commander (`scripts/ai-prev.ts`, a test baseline that cannot feed infantry under the new
+economy and never finishes a beaten side). Reproduced at 6 of 30 and traced; in each one the current
+commander had been beaten early and the baseline then sat on 70,000 to 87,000 credits. Not a fault a
+player meets, but the traces showed four in the current commander, fixed:
+- *The Foundry* smelted a side's credits down to its 200 reserve even with no hauler left, so it could
+  never buy one (haulers are credits only). It now keeps a Refinery's price while the side has none,
+  and a hauler's while it has a Refinery but no hauler (`foundryReserve`, `industry.ts`). Rules for
+  every side, the player's included.
+- *Recovery* (broke, no income) sold only pre-industry structures; it now sells a Munitions Works,
+  Training Centre, Foundry and Fuel Well too.
+- *The mined-out endgame*: the last stand waited for the army to be gone before selling anything, the
+  wounded were never sent, and a broke side sent a rifleman at a time into turrets. Now everything that
+  earned from ore is sold, then spare Generators, then turrets, into one last force, which goes when
+  nothing more can be trained; the wounded go too.
+- *Mop-up* counted an Interceptor, which cannot fire at the ground, as a defence: one kept a side with
+  no other army safe to the cap.
+`adapt-b1`, which reached the cap with these missing, now ends at 55.9 minutes. These four moved 14
+of the 30 pinned pre-round-6 battles, regenerated with the proof the file records (all 30 equal with
+the four switched off).
+
+**3. Seasons and spoilage** (`setup.seasons`, needs upkeep; `src/sim/seasons.ts`). A 20-minute year:
+12 growing minutes when Farms grow a food every 13 ticks (half as fast again), 8 lean ones at every
+80 (a quarter), about the same harvest over the year. In the lean season 10% of the food above half
+the store rots each minute; all year 2% of the credits above 5,000 decay each minute. The sixth Economy
+card is now "Long game" (upkeep and seasons); the customise step has the toggle; the Industry gauge
+shows the season and minutes left; the season's turn is logged. Nothing new is saved (the season is
+the tick's).
+
+**4. Hold ground victory** (`setup.victory: 'hold'`, needs neutral sites; `src/sim/victory.ts`). Each
+site a side holds scores a point a minute; the first team to 60 points for every site on the map
+wins; conquest still wins outright; teams score together; level at the target plays on. The computer
+sends two more capture parties, one larger, and its waves go for enemy-held sites first. A Victory
+field in the customise step, a Hold ground gauge in battle, the orders line. Scores are saved and
+checked on load. Normal mirror, Long, large, Long game card and sites, 150 seeds: 32.0 minutes on
+average (median 28.9), 50% each seat, none unfinished; the same setup without hold, 24.9 (median
+22.4), seat 0 41%. Holding ground is the first of these levers that makes battles longer (by 28%), and
+it evens the seats, since the sites spread both armies over the map rather than at one base.
+
+**5. The adaptive commander's counter-punch** (`aiStrength.ts`). Against an armoured enemy army of
+about its own size it braces: its wave waits at home, within the patience limit, where its turrets
+help. Whenever the enemy army has just been ground down (70% or less of its peak in the last three
+minutes) and its own is at least as large, it strikes at once with what is ready. Adaptive sides
+only. Opening card, Long, 150 seeds: the tank column wins 74% against the fixed commander and 58%
+against the adaptive one; the artillery siege 25% and 18%. For the first time the adaptive commander
+measurably punishes a repeated plan.
+
+**6. Bigger maps.**
+- *Continental* (`'continental'`, 384, 416 and 448 tiles), with more ravines, ruined cities, ore and
+  neutral sites. Generation 0.4 s (two sides) and 0.7 s (four). Every map type at two sides and three
+  types at three and four pass the generators' own checks.
+- *Routes over regions* (`src/sim/regions.ts`), on maps wider than the balanced sizes only: the map
+  in 16-tile regions, split where a ravine or river splits one; a long route is found over regions
+  first and the tile search runs only to the end of its first leg (`Unit.pathLeg`); `findPath` itself
+  is unchanged. Base to base across a four-sided vast map in 4 legs, a two-sided Continental in 5, a
+  four-sided Continental likewise, each arriving exactly.
+- *Saves*: a Continental save keeps the ground as its seed and a checksum (`pack.ts`), rebuilt on
+  load and refused if it differs; vast saves pack as before. A new four-sided Continental save is
+  53 KB. Ten minutes in, about 200 KB, mostly units (83 KB at 248 units) and the commanders' memory
+  (46 KB): under the portal's 512 KB, but a multi-hour four-sided Continental battle may reach it.
+  That limit is shared by every game and was not changed.
+- *Tick time*, four-sided Continental, minutes 5 to 15 on a loaded machine: median 6.0 ms, p95 16,
+  p99 30, with 430 units. The commanders summed every ore tile on every decision (about a tenth of the
+  tick); the total is now worked out once a tick (`oreLeft`, the same number). What remains scales
+  with units (target finding, separation, the per-tick copy) and is the next performance item.
+
+**7. Loose ends.** Semicolon is the fifteenth build key (the Supply Truck had none). War for the
+Planet battle rules 4: a new war's battles have neutral sites, and link 6 brings 3 ore home per site
+the winners hold (at most 12); every ladder target passes at default seeds and holdout. The Fireline
+suite is split: `npm run check` (every push and deploy) runs it with `--fast`, leaving its 21 heaviest
+whole-battle sections to `npm run check:deep` and a nightly workflow; fast is about 6 minutes alone
+against 25, with 348,750 assertions.
+
+**Checks.** `drive-upkeep.ts` gains seasons and hold sections; `drive-continental.ts` is new; Industry
+gains the restart reserve. Deep tier 423,327 assertions, all passing once the pins above were
+regenerated; `npm run check` all passed; `campaign-check` 7,713 of 7,713; `drive:planet` all passed
+(its pins leave out the new `victory: 'conquest'`, as drive-size's do); `check:ui fireline` 32 of 32;
+the Fireline tour ok. In Chromium: the Victory, Seasons and Upkeep fields and the Continental note in
+the customise step, and a live battle showing the Hold ground gauge and the season chip, no page errors.

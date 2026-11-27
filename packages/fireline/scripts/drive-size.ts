@@ -93,6 +93,8 @@ const strip = (k: string, v: unknown) =>
             ((k === 'structureUpgrades' || k === 'strategicBuildings') && v === false) ||
             // round7:adaptive: the adaptive commander off is the earlier battle exactly.
             (k === 'adaptive' && v === false) ||
+            // Victory (2026-11-27): conquest is the earlier battle exactly.
+            (k === 'victory' && v === 'conquest') ||
             // Army upkeep (2026-11-27): off is the earlier battle exactly.
             ((k === 'industry' || k === 'supply' || k === 'territory' || k === 'production' || k === 'upkeep' || k === 'seasons') && v === false) ||
             (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
@@ -317,7 +319,12 @@ function rulesAndPresets(ok: Ok): void {
  * were regenerated: with that one repair block switched off, all 30 equal the values before exactly.
  * Production lines' EXTRA_LINE_RESERVE lowered from 2,000 to 1,000 (2026-11-13, so Hard fills its
  * second War Factory more often) moved the 6 Hard battles without research (no setup, standard,
- * three, both seeds), regenerated; at 2,000 all 30 equalled the values before.
+ * three, both seeds), regenerated; at 2,000 all 30 equalled the values before. *
+ * The endgame fixes (2026-11-27, fireline-design.md) moved 14 battles, regenerated: a weapon that
+ * cannot fire at the ground no longer counts as a defence for mop-up, the wounded go on a mined-out
+ * map, a mined-out side gathers one last force rather than a rifleman at a time, and its last stand
+ * sells the structures that earned from ore. In a scratch copy with those four switched off (and the
+ * setup's new `victory: 'conquest'` left out, strip above), all 30 equal the values before exactly.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -326,16 +333,16 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|normal|size-b': 'ee788c01da261681',
   'nosetup|hard|size-a': '0c8f88983c26e1e2',
   'nosetup|hard|size-b': '521c83a6d4e01fbf',
-  'lines|easy|size-a': '0ecd7800d160c695',
-  'lines|easy|size-b': '94b568def19dc3e9',
-  'lines|normal|size-a': 'd71e1a8bd4da98f0',
-  'lines|normal|size-b': '1acd764501f02f15',
+  'lines|easy|size-a': '7226f914382f9c15',
+  'lines|easy|size-b': '7944e79aab2dc78f',
+  'lines|normal|size-a': '1daece768e61321e',
+  'lines|normal|size-b': '975e506b7d97bc2b',
   'lines|hard|size-a': '1b8ca331fffad212',
   'lines|hard|size-b': '1784ee295dbf4c14',
-  'classic|easy|size-a': '037582df23193f78',
-  'classic|easy|size-b': '11189a6f60d080ca',
-  'classic|normal|size-a': 'f206f33639fb9733',
-  'classic|normal|size-b': '9efacdbff77428ae',
+  'classic|easy|size-a': '3c8b526a5f9dedcb',
+  'classic|easy|size-b': '6c424a6ac4967439',
+  'classic|normal|size-a': '2afc10b27b3a0d91',
+  'classic|normal|size-b': '0a2dd0fc4d5c850e',
   'classic|hard|size-a': 'b5a2baf45ac5dd98',
   'classic|hard|size-b': '42e1c1d08d96b6ea',
   'standard|easy|size-a': '20bd8da2b8758bc5',
@@ -344,12 +351,12 @@ const PRE_ROUND6: Record<string, string> = {
   'standard|normal|size-b': 'b91a872ee84ceff5',
   'standard|hard|size-a': '0e65ebf5a4934062',
   'standard|hard|size-b': '499823280b1925bf',
-  'three|easy|size-a': '10f32b01d00c6b55',
-  'three|easy|size-b': 'f8c120a0b8d86d72',
-  'three|normal|size-a': 'a6f3bae58f760576',
-  'three|normal|size-b': 'f6fe85e5118f9e36',
-  'three|hard|size-a': 'ee0024d21ede7f96',
-  'three|hard|size-b': 'a0863023f86f362b',
+  'three|easy|size-a': '557482930f95aa8f',
+  'three|easy|size-b': 'fa601ec93ee4aa21',
+  'three|normal|size-a': 'be3b14b27dde0b28',
+  'three|normal|size-b': '862c4c7cf33e30f0',
+  'three|hard|size-a': 'af9b10e40f9ae432',
+  'three|hard|size-b': '3ac29e79dba4b7e1',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
