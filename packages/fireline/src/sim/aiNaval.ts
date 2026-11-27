@@ -1,4 +1,5 @@
 import { extraLine } from './aiScale';
+import { upkeepAllows } from './upkeep';
 import { fund, queueStructure } from './aiAir';
 import { canQueue, doAttack, doMove, doQueue, placementProblem } from './commands';
 import { buildingCentre, dist, occupancy } from './grid';
@@ -184,7 +185,7 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
       ['battleship', t.battleships],
     ];
     const want = plan.find(([k, n]) => queued(k) < n && unlocked(s, owner, k));
-    if (want && fund(s, owner, unitSpec(s, owner, want[0]).cost) && canQueue(s, owner, 'naval', want[0])) doQueue(s, owner, 'naval', want[0]);
+    if (want && fund(s, owner, unitSpec(s, owner, want[0]).cost) && upkeepAllows(s, owner, want[0]) && canQueue(s, owner, 'naval', want[0])) doQueue(s, owner, 'naval', want[0]);
   }
 
   // 3. The fleet.

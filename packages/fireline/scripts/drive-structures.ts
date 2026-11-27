@@ -600,6 +600,9 @@ function battles(ok: Ok): void {
     { seed: 'r7-a', size: 'standard', pace: 'quick', d0: 'normal', d1: 'hard' },
     { seed: 'r7-b', size: 'standard', pace: 'quick', d0: 'hard', d1: 'normal' },
     { seed: 'r7-c', size: 'large', pace: 'long', d0: 'normal', d1: 'hard' },
+    // 2026-11-27: since the patience cap the Long commander attacks sooner, and r7-c ends at 14
+    // minutes, before the late items of Hard's plan. A second Long battle that runs to them (23.7 min).
+    { seed: 'r7-d', size: 'large', pace: 'long', d0: 'normal', d1: 'hard' },
   ];
   let decided = 0;
   let upgraded = 0;

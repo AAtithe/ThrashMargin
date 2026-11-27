@@ -74,6 +74,13 @@ function productionNote(setup: SkirmishSetup): string {
   return 'On: Farms grow food and every Quarters eats; hungry Quarters house half. A Munitions Works makes munitions from alloys and fuel; artillery, Missile Carriers, Battleships and Railgun Tanks spend one a shot, aircraft one a load. A Supply Truck fetches goods stranded at cut-off sites.';
 }
 
+/** What the Army upkeep field says. */
+function upkeepNote(setup: SkirmishSetup): string {
+  if (!setup.industry || !setup.supply || !setup.territory || !setup.production) return 'Needs Advanced production on.';
+  if (!setup.upkeep) return 'Off: an army costs nothing to keep once trained.';
+  return 'On: every minute each soldier eats 2 food and each armed machine burns 2 fuel. Go short and they fire slower; two more minutes short and they start to desert. Your army is as big as your Farms and Fuel Wells can feed. For long games.';
+}
+
 /** What the Territory and workforce field says. */
 function territoryNote(setup: SkirmishSetup): string {
   if (!setup.industry || !setup.supply) return 'Needs Industry and Supply lines on.';
@@ -189,6 +196,7 @@ export function readStoredSetup(): SkirmishSetup {
       adaptive: r.adaptive !== false,
       // round7:adaptive end.
       production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
+      upkeep: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true,
     };
   } catch {
     return FIRST_SETUP;
@@ -603,6 +611,26 @@ export default function SkirmishSetupPanel({
               ))}
             </div>
             <p className="fl-setup-note">{productionNote(value)}</p>
+          </div>
+          {/* Army upkeep (2026-11-27): needs advanced production (src/sim/upkeep.ts). */}
+          <div className="fl-setup-field" data-testid="upkeep-field">
+            <Label>Army upkeep</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Army upkeep">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!(value.industry && value.supply && value.territory && value.production) && !!value.upkeep === on}
+                  disabled={!(value.industry && value.supply && value.territory && value.production) && on}
+                  data-testid={`upkeep-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ upkeep: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{upkeepNote(value)}</p>
           </div>
         </div>
       </SetupStep>

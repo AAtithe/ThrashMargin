@@ -1779,6 +1779,12 @@ export interface SkirmishSetup {
    * Truck. Needs territory (normaliseSetup turns it off without). Absent: off.
    */
   production?: boolean;
+  /**
+   * Army upkeep (2026-11-27; upkeep.ts): soldiers eat food and armed machines burn fuel every
+   * minute, and an army that goes unfed fires slower and then deserts. Needs advanced production
+   * (normaliseSetup turns it off without). Absent: off.
+   */
+  upkeep?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1807,6 +1813,7 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   supply: false,
   territory: false,
   production: false,
+  upkeep: false,
   // round7:structures begin. On for a new skirmish (advanced tech); absent on an older setup reads as off.
   structureUpgrades: true,
   strategicBuildings: true,
@@ -1841,6 +1848,7 @@ export const LEGACY_SETUP: SkirmishSetup = {
   supply: false,
   territory: false,
   production: false,
+  upkeep: false,
   // round7:structures begin.
   structureUpgrades: false,
   strategicBuildings: false,

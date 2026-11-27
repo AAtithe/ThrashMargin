@@ -1,4 +1,4 @@
-import { MAP_SIZE_FOR, MAP_SIZE_TILES, type DifficultySpec, type MapSize, type SkirmishSetup } from './rules';
+import { GAME_PACES, MAP_SIZE_FOR, MAP_SIZE_TILES, type DifficultySpec, type GamePace, type MapSize, type SkirmishSetup } from './rules';
 import type { GameState } from './types';
 
 /**
@@ -63,18 +63,39 @@ export const AI_SCALE = {
   reserve: 30,
 };
 
-/** The difficulty's numbers for this map's size. Standard size: `d` itself. */
+/** The difficulty's numbers for this map's size. Standard size at the Quick pace: `d` itself. */
 export function scaledFor(s: GameState, d: DifficultySpec): DifficultySpec {
-  return scaledBy(mapScale(s), d);
+  const scaled = scaledBy(mapScale(s), d);
+  return s.mission || s.planet ? scaled : patienceCapped(scaled, d, s.setup?.pace);
+}
+
+/**
+ * The patience cap (2026-11-27). The game size's own slowdown (`attackMul`, round 6) was tuned on
+ * standard maps; the Long and Epic sizes then gained larger maps by default, and the map's slowdown
+ * above was multiplied on top. Normal's first wave came at 21 minutes on Long and 45 on Epic, then
+ * one every 12 and 24 minutes: a commander that hardly attacked. Combined, the first attack now
+ * comes no later than FIRST_ATTACK_CAP times the difficulty's own (or the size's own multiplier, if
+ * larger), and waves come at most ATTACK_INTERVAL_CAP times as far apart. Never in a mission or a
+ * War for the Planet battle, whose balance is its own.
+ */
+export const FIRST_ATTACK_CAP = 2.5;
+export const ATTACK_INTERVAL_CAP = 2;
+function patienceCapped(d: DifficultySpec, unscaled: DifficultySpec, pace: GamePace | undefined): DifficultySpec {
+  const mul = (GAME_PACES[pace ?? 'quick'] ?? GAME_PACES.quick).attackMul;
+  // `unscaled` (before the map's slowdown) carries the size's multiplier; the difficulty's own numbers are those over it.
+  const first = Math.round((unscaled.firstAttack / mul) * Math.max(mul, FIRST_ATTACK_CAP));
+  const interval = Math.round((unscaled.attackInterval / mul) * ATTACK_INTERVAL_CAP);
+  if (d.firstAttack <= first && d.attackInterval <= interval) return d;
+  return { ...d, firstAttack: Math.min(d.firstAttack, first), attackInterval: Math.min(d.attackInterval, interval) };
 }
 
 /**
  * The same for a setup not yet played (the lobby's enemy cards): the scale its map will have.
  * createInitialState builds the map at MAP_SIZE_TILES, so this equals mapScale of the battle.
  */
-export function scaledForSetup(setup: Pick<SkirmishSetup, 'sides' | 'size'>, d: DifficultySpec): DifficultySpec {
+export function scaledForSetup(setup: Pick<SkirmishSetup, 'sides' | 'size'> & { pace?: GamePace }, d: DifficultySpec): DifficultySpec {
   const size = setup.size ?? 'standard';
-  return scaledBy(size === 'standard' ? 1 : damped(Math.max(1, MAP_SIZE_TILES[size][setup.sides] / MAP_SIZE_FOR[setup.sides]), setup.sides), d);
+  return patienceCapped(scaledBy(size === 'standard' ? 1 : damped(Math.max(1, MAP_SIZE_TILES[size][setup.sides] / MAP_SIZE_FOR[setup.sides]), setup.sides), d), d, setup.pace);
 }
 
 function scaledBy(k: number, d: DifficultySpec): DifficultySpec {

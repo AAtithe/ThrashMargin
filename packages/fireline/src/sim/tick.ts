@@ -1,6 +1,7 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
 import { labWorking, productionOn, productionStep, spendMunition, truckStep } from './production';
+import { SHORT_RELOAD, shortOfUpkeep, upkeepStep } from './upkeep';
 import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
@@ -257,6 +258,8 @@ export function step(s: GameState): void {
   // Advanced production (2026-11-22): Farms, Munitions Works, meals and Supply Trucks. No-ops without it.
   productionStep(s, ctx.power, productionOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : new Set());
   truckStep(s);
+  // Army upkeep (2026-11-27): on the minute, every army eats and burns fuel. A no-op without it.
+  upkeepStep(s, log);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
@@ -939,6 +942,8 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           // Autoloaders (development lines): ground vehicles.
           const reload = reloadMulOf(s, u);
           if (reload !== 1) u.cooldown = Math.max(1, Math.round(u.cooldown * reload));
+          // Army upkeep: unfed soldiers and unfuelled machines reload slower.
+          if (shortOfUpkeep(s, u)) u.cooldown = Math.max(1, Math.round(u.cooldown * SHORT_RELOAD));
         }
       } else if (
         u.order.type === 'attack' ||
@@ -1436,7 +1441,8 @@ function removeDead(s: GameState): void {
       // round7:review end.
       if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
-      s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
+      // Army upkeep: a deserter walks away and an abandoned machine stands empty; neither explodes.
+      if (!u.deserted) s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
     }
     s.units = s.units.filter(u => u.hp > 0);
   }

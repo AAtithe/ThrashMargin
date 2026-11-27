@@ -49,7 +49,8 @@ import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
 import { openingGuard } from './aiOpening';
-import { OUTMATCH_WAVE, armourThreat, outmatched } from './aiStrength';
+import { WAVE_PATIENCE, armourThreat, holdWave, outmatched } from './aiStrength';
+import { upkeepAllows } from './upkeep';
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
 // round7:adaptive end.
 
@@ -292,7 +293,8 @@ function commander(s: GameState, owner: Owner): void {
   // the lines from here to "round4:B end", keeping the names enemy, enemyHome, units and foes.
   // With several enemies, `enemy` and `enemyHome` are the chosen enemy's (chooseEnemy, aiSides.ts);
   // `foes` is every enemy's units, so defence still answers anyone. One enemy: as before.
-  const { enemy, enemyHome } = enemyLists(s, owner, chooseEnemy(s, owner));
+  const aimedAt = chooseEnemy(s, owner);
+  const { enemy, enemyHome } = enemyLists(s, owner, aimedAt);
   const units = s.units.filter(u => u.owner === owner);
   const foes = s.units.filter(u => isEnemy(s, owner, u.owner));
   // round4:B end.
@@ -472,7 +474,7 @@ function commander(s: GameState, owner: Owner): void {
       riflemen = adaptShare(s, owner, 'rifleman', 'rocketeer', riflemen, 'infantry');
       // round7:adaptive end.
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
-      if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+      if (upkeepAllows(s, owner, kind) && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
     }
     if (vq.length < 1 || (vq.length < lineCount(s, owner, 'vehicle') && extraLine(s, p.credits))) {
       const roll = draw(s);
@@ -495,7 +497,7 @@ function commander(s: GameState, owner: Owner): void {
       // Keep the raiding party up to strength once raids are due.
       if (t.raidSize && raidBuggies < t.raidSize && s.tick >= t.firstRaid - 900) kind = 'buggy';
       if (!unlocked(s, owner, kind)) kind = 'tank';
-      if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
+      if (upkeepAllows(s, owner, kind) && canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     }
   }
   // round6:A end.
@@ -711,7 +713,9 @@ function commander(s: GameState, owner: Owner): void {
       // 2026-11-25 (aiStrength.ts): at a paced game size, a commander clearly outmatched in the field
       // keeps its army at home beside its turrets rather than sending it into a stronger one, unless
       // broke. Only one of two sides can be outmatched at a time, so the stronger one still comes.
-      const hold = pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE);
+      // 2026-11-27: weighed against the side the wave is aimed at, and held at most WAVE_PATIENCE
+      // intervals past due (holdWave): a hold with no end left the computer passive.
+      const hold = pacedResearch(s) && !broke && holdWave(s, owner, aimedAt, s.tick - mem.nextAttack, WAVE_PATIENCE * d.attackInterval);
       if (!hold && (fit.length >= size || overdue)) {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
@@ -730,7 +734,7 @@ function commander(s: GameState, owner: Owner): void {
     const members = waveUnits();
     // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
     const gathered = members.filter(u => dist(u.x, u.y, waveStage.x, waveStage.y) < 6).length;
-    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450) && !(pacedResearch(s) && !broke && outmatched(s, owner, OUTMATCH_WAVE))) {
+    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450) && !(pacedResearch(s) && !broke && holdWave(s, owner, aimedAt, s.tick - mem.waveTick, WAVE_PATIENCE * d.attackInterval))) {
       mem.wavePhase = 2;
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
@@ -1343,7 +1347,10 @@ function advancedUnits(
     // round7:adaptive end.
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
-    if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
+    // Army upkeep: no new machine while the army already runs short of fuel (upkeep.ts).
+    if (!upkeepAllows(s, owner, kind)) {
+      // nothing: the fuel goes to the machines already in the field
+    } else if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     else if (unlocked(s, owner, kind)) {
       waiting = vehiclePrice(s, owner, kind);
       waitingFor = kind;
@@ -1379,7 +1386,7 @@ function advancedUnits(
       // round7:adaptive end.
     }
     kind = kind ?? 'rifleman';
-    if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+    if (upkeepAllows(s, owner, kind) && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
   }
 }
 

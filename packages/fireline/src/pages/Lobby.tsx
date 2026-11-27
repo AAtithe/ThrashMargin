@@ -516,6 +516,7 @@ export default function Lobby() {
                 {setup.tech === 'advanced' && <Order k="Upgrades">{setup.structureUpgrades ? 'On' : 'Off'}</Order>}
                 {setup.tech === 'advanced' && <Order k="Strategic">{setup.strategicBuildings ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
+                {setup.industry && setup.supply && setup.territory && setup.production && <Order k="Upkeep">{setup.upkeep ? 'On' : 'Off'}</Order>}
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
                 <Order k="Your General">{generalLabel(setup)}</Order>

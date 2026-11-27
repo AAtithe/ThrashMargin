@@ -1126,6 +1126,10 @@ kbd {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
 }
+/* The Economy step's six cards: three to a row where there is room, so none is left on a row alone. */
+.fl-levels.fl-economy {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
 .fl-level {
   position: relative;
   display: flex;

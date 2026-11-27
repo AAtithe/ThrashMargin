@@ -92,6 +92,8 @@ export interface Unit {
    * climbed in (id, health, rank kept), off the map until set down. Replaced, never changed in place.
    */
   carried?: Unit[];
+  /** Army upkeep (upkeep.ts): set on a unit that deserted or was abandoned, so it leaves without an explosion. */
+  deserted?: boolean;
   /** Troop Carriers only: set its infantry down as soon as it stops (Unload given while flying). */
   drop?: true;
   /** Infantry only: the Troop Carrier it is walking to, to climb in when it is close. */
@@ -277,6 +279,8 @@ export interface PlayerState {
   /** Advanced production (setup.production): food and munitions in store. Absent on every other battle. */
   food?: number;
   munitions?: number;
+  /** Army upkeep (upkeep.ts): minutes in a row this side could not feed or fuel its army. Absent: paid in full. */
+  upkeepShort?: import('./upkeep').UpkeepShort;
   /** Advanced production: Industry projects finished, and the one under way (paid for). Absent: none. */
   projects?: import('./rules').ProjectId[];
   project?: { id: import('./rules').ProjectId; progress: number } | null;

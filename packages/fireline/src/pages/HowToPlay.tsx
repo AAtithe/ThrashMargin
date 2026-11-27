@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { INFANTRY_UPKEEP, UPKEEP_GRACE, VEHICLE_UPKEEP } from '../sim/upkeep';
 import { Link } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import { Button, ManualSection as Section, bodySmall, manualSlug as slug } from '../components/ui';
@@ -749,6 +750,13 @@ function ProductionPanel() {
         <li>
           The Training Centre also runs <strong>Industry projects</strong>, one at a time, paid up front and refunded if cancelled: select
           it to start one. {PROJECT_ORDER.map(id => `${PROJECTS[id].name} (${PROJECTS[id].cost}): ${PROJECTS[id].blurb}`).join(' ')}
+        </li>
+        <li>
+          <strong>Army upkeep</strong> (a further lobby option, on the Economy step as Full economy with upkeep): every minute each
+          soldier eats {INFANTRY_UPKEEP} food and each armed vehicle, ship or aircraft burns {VEHICLE_UPKEEP} fuel. Run short and the
+          units that go without take half as long again to reload; after {UPKEEP_GRACE} more short minutes, a quarter of those unpaid desert
+          each minute, the newest recruits first. Your army can only be as big as your Farms and Fuel Wells can feed, so growing it
+          means taking and holding the ground they stand on.
         </li>
       </ul>
     </Section>

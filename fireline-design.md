@@ -3353,3 +3353,101 @@ screen said they existed. Advanced production had not merged at all.
   33,557; `check:ui fireline` 32 of 32; the Fireline tour ok. In Chromium the Economy step at 1,280
   and 390 wide, light and dark, no sideways scroll; Full economy writes all four toggles and Classic
   clears them.
+
+### 2026-11-27: The commander attacks again; army upkeep
+
+The player said the computer had gone passive, and asked to keep building towards multi-hour games
+with food and larger maps. Two changes: the commander's patience, fixed and measured, and army
+upkeep, the first step of the long-game plan, behind a new toggle.
+
+**Why the commander went passive.** Measured with a new probe, `scripts/attack-probe.ts`: side 0 is
+the Normal commander with its waves held back all battle, standing in for a player who builds up at
+home, and the probe counts the waves the computers send. Three causes, each found in the code and
+then confirmed by the probe:
+
+- *The pace and the map size were multiplied together.* The game size's own slowdown (`attackMul`,
+  round 6) was tuned on standard maps. Long and Epic later gained larger maps by default, and the
+  larger map's slowdown (`aiScale.ts`) was applied on top. Normal's first wave came at 21 minutes on
+  Long and 45 on Epic, then one every 12 and 16 minutes. The cap (`patienceCapped`): combined, the
+  first attack comes no later than `FIRST_ATTACK_CAP` (2.5) times the difficulty's own, or the size's
+  own multiplier where that is larger, and waves come no more than `ATTACK_INTERVAL_CAP` (2) times as
+  far apart. Long now opens at 15 minutes with a wave every 8; Epic at 18 and 8. Never in a mission
+  or a War for the Planet battle. Quick on a standard map is unchanged (the same object).
+- *The hold had no end.* Since 2026-11-25 a paced commander outmatched by value holds its wave at
+  home. Against a player who never attacks, the Normal commander was outmatched 37% of the time at
+  Standard and 60% with the full economy, and nothing ever lifted the hold. A wave now waits at most
+  `WAVE_PATIENCE` (one) attack interval past due; after that it goes if its army is worth at least
+  `WAVE_NERVE` (60%) of the enemy's (`holdWave`, `aiStrength.ts`).
+- *The wave was weighed against the whole map.* `outmatched` summed every enemy, so with three or four
+  sides a commander was "outmatched" 94% of the time and held almost every wave. A wave is now
+  weighed against the side it is aimed at (`chooseEnemy`) and that side's allies.
+
+Probe results, Normal, before and after (`attack-probe.ts`, 40 minutes):
+
+| Setup | Seeds | Waves a computer, before | After | First wave, before | After |
+|---|---|---|---|---|---|
+| Standard, two sides | 6 | 4.2 | 4.2 | 7.9 min | 7.9 min |
+| Long, two sides (large map) | 6 | 1.5 (one seed: none in 40 min) | 3.3 | 21.4 min | 15.0 min |
+| Standard, four sides | 4 | 1.5 | 3.0 | 31.4 min | 7.6 min |
+
+Standard two-sided was unchanged in those six seeds: the hold rarely outlasted an interval there.
+The passivity the player saw was in long and many-sided games.
+
+The hold was put in on 2026-11-25 to stop a tank column beating Normal every time, so that test was run
+again (`ladder:fire -- --map random --pace long --opening-card normal --seeds 60`; standard maps, so it
+isolates the hold change): the tank column wins 80% against the fixed and the adaptive commander
+(73% and 75% at 150 seeds before), the infantry flood 2% and 2% (2% and 3%), the artillery siege 23%
+and 22% (25% and 24%). All within the noise of 60 seeds; the fix still holds.
+
+**The cost.** Computer against computer, Long battles are shorter: Hard's first wave now comes at 10
+minutes rather than 14 on a large map, and in the harness's fixed Long battles Hard won at 14 rather
+than 16 to 19 minutes, before the late items of its plan (the Fortification line under fire, the
+Supply Cache, the Intelligence Centre). Three harness checks that each needed one such battle to run
+long gained a fallback seed that still does (`fort-battle-3`, `r7-d`); the behaviour they check is
+unchanged. Against a player the trade is the one asked for: a commander that comes, rather than a
+long game in which nothing happens. Making the long game long is the job of the plan below, not of a
+commander that waits.
+
+**Army upkeep** (`setup.upkeep`, `src/sim/upkeep.ts`; needs advanced production, so it is the sixth
+card of the lobby's Economy step, "Full economy with upkeep", and a toggle in the customise step).
+Before it, food and fuel were paid once, at training, so an army cost nothing to keep and whoever got
+ahead snowballed. Now, every minute, each soldier eats `INFANTRY_UPKEEP` (2) food and each armed
+vehicle, ship or aircraft burns `VEHICLE_UPKEEP` (2) fuel. A side pays what it holds. Short of either,
+the units that use it reload `SHORT_RELOAD` (1.5) times slower; after `UPKEEP_GRACE` (2) more short
+minutes, a quarter of the unpaid desert each minute, newest first, never a transport with troops
+aboard. A deserter leaves no explosion. The player is told when a shortage starts, when men leave
+and when it ends; the Industry gauge shows "army unfed" or "army out of fuel", and the Food figure's
+tooltip gives what the army eats and burns. The shortage count survives a save; a junk one loads as
+none. A Farm (30 food a minute) feeds fifteen soldiers less its Quarters; a Fuel Well (40 a minute)
+twenty machines less its Foundry.
+
+The computer: Farms for its Quarters and its army with a fifth to spare and one more while short (up
+to 10 rather than 4); a Fuel Well per fifteen machines beyond the first, where a field in reach will
+take one (up to 4); and no new soldier while short of food, no new machine while short of fuel
+(`upkeepAllows`).
+
+**What it does and does not do yet.** At 1 food and 1 fuel a minute no computer ever went short, so
+the cost was doubled. At 2, four seeds at Long with the full economy, upkeep on against off: 46, 33,
+33 and 20 minutes against 34, 27, 37 and 30 (average 33 against 32). Upkeep binds now and then
+(one to four short minutes a side), but on its own it does not make battles longer: they end when a
+wave breaks a base, and that has not changed. This is what the plan given to the player expected:
+upkeep is the first of five steps (upkeep, seasons and spoilage, holding ground over time as the
+victory condition, then the larger maps behind seed-based saves and two-level pathfinding). Four seeds
+are not a balance measurement; the 150-seed ladder at Long with `--production --upkeep` is the next
+item before upkeep's numbers are tuned.
+
+**Pinned hashes.** The setup's new `upkeep: false` key is left out of `drive-size.ts`'s pre-round-6
+hashes, as the other economy toggles' are when off; the field-order checks in `drive-lines.ts` and
+`drive-size.ts` name it after `production`. Vast's first attack is now no later than huge's capped
+one, which `drive-vast.ts` states.
+
+**Checks.** `scripts/drive-upkeep.ts`, six sections inside `npm run drive` (the setup and both
+presets; paying on the minute; shortage, desertion, the newest first, recovery, fuel likewise and no
+explosion; an unfed soldier's slower fire in a duel; the patience cap at Standard, Long and Epic,
+missions and Quick unchanged, and the wave hold against the side aimed at and its time limit; whole
+battles that keep soldiers and machines, build Farms, never go below nought, replay byte-identically
+and through a save). `npm run drive` (Fireline) 411,668 assertions, 0 failed; `campaign-check` 7,713 of
+7,713; `drive:planet` all passed (its pinned hashes leave out the new key when off, as the others);
+every other game's suite and typecheck passed; `check:ui fireline` 32 of 32; the Fireline tour ok. In
+Chromium the Economy step lays its six cards out three to a row at 1,280 (the sixth had sat on a row
+alone) and one to a row at 375 in dark mode, and picking the sixth card writes all five toggles.

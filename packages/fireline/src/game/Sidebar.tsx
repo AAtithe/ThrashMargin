@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { upkeepDue, upkeepOn } from '../sim/upkeep';
 import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
 import { crewNeed, crewWanted, housed, staffed, techNeed, technicians, territoryOn, unstaffed } from '../sim/territory';
 import { foodStore, munitionsStore, productionOn, projectProblem } from '../sim/production';
@@ -1921,6 +1922,9 @@ function IndustryGauge({ state }: { state: GameState }) {
   const terr = territoryOn(state);
   const idle = terr ? unstaffed(state, 0).length : 0;
   const hungry = state.buildings.filter(b => b.owner === 0 && b.hungry).length;
+  // Army upkeep (2026-11-27): what the army eats and burns a minute, and whether it is going short.
+  const upkeep = upkeepOn(state) ? upkeepDue(state, 0) : null;
+  const short = upkeep ? p.upkeepShort : undefined;
   return (
     <div
       className="fl-d-gauge fl-d-industry"
@@ -1940,6 +1944,16 @@ function IndustryGauge({ state }: { state: GameState }) {
             {hungry} hungry
           </span>
         )}
+        {!!short?.food && (
+          <span className="fl-d-gauge-state" data-cut="1" data-testid="upkeep-unfed">
+            army unfed
+          </span>
+        )}
+        {!!short?.fuel && (
+          <span className="fl-d-gauge-state" data-cut="1" data-testid="upkeep-dry">
+            army out of fuel
+          </span>
+        )}
         {idle > 0 && (
           <span className="fl-d-gauge-state" data-cut="1" data-testid="crew-short">
             {idle} no crew
@@ -1955,7 +1969,7 @@ function IndustryGauge({ state }: { state: GameState }) {
         </span>
         {productionOn(state) && (
           <>
-            <span title="Food: Farms grow it, every Quarters eats 10 a minute.">
+            <span title={upkeep ? `Food: Farms grow it, every Quarters eats 10 a minute, and your ${upkeep.soldiers} soldiers eat ${upkeep.food} a minute. Fuel: your ${upkeep.machines} armed machines burn ${upkeep.fuel} a minute.` : 'Food: Farms grow it, every Quarters eats 10 a minute.'}>
               Food <span className="fl-d-goods-n" data-testid="food">{Math.floor(p.food ?? 0)}</span>/{foodStore(state, 0)}
             </span>
             <span title="Munitions: the heavy guns spend one a shot, aircraft one a load.">

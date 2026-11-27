@@ -174,7 +174,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // round7:adaptive end.
   // Advanced production (2026-11-22): on only when exactly true, and only with territory.
   const production = territory && (typeof r.production === 'boolean' ? r.production : (base.production ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, structureUpgrades, strategicBuildings, adaptive };
+  // Army upkeep (2026-11-27): on only when exactly true, and only with advanced production.
+  const upkeep = production && (typeof r.upkeep === 'boolean' ? r.upkeep : (base.upkeep ?? false));
+  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, structureUpgrades, strategicBuildings, adaptive };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -912,8 +914,12 @@ function migrateIndustry(out: GameState): void {
   const prod = productionOn(out);
   out.players = out.players.map(p => {
     if (!p || typeof p !== 'object') return p;
-    const { food, munitions, projects, project, ...rest } = p;
+    const { food, munitions, projects, project, upkeepShort, ...rest } = p;
     if (!prod) return rest as PlayerState;
+    // Army upkeep (2026-11-27): the minutes short, kept only with upkeep on and when well formed.
+    const sh = upkeepShort as { food?: unknown; fuel?: unknown } | undefined;
+    const shortKept =
+      out.setup?.upkeep === true && sh && typeof sh === 'object' && (clean(sh.food) > 0 || clean(sh.fuel) > 0) ? { upkeepShort: { food: clean(sh.food), fuel: clean(sh.fuel) } } : {};
     const done = Array.isArray(projects) ? [...new Set(projects.filter(id => id in PROJECTS))] : [];
     const running =
       project && typeof project === 'object' && project.id in PROJECTS && !done.includes(project.id) && Number.isFinite(project.progress)
@@ -925,6 +931,7 @@ function migrateIndustry(out: GameState): void {
       munitions: clean(munitions),
       ...(done.length ? { projects: done } : {}),
       ...(running ? { project: running } : {}),
+      ...shortKept,
     } as PlayerState;
   });
   out.units = out.units.map(u => {

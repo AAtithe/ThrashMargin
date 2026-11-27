@@ -7,7 +7,7 @@
 // upgrades while the column outbuilt it, then sent its infantry wave into the tanks and collapsed.
 // A commander that is clearly outmatched in the field now builds army before research.
 import { UNITS, type Owner } from './rules';
-import { isEnemy } from './sides';
+import { isAlly, isEnemy } from './sides';
 import { unitSpecOf } from './specs';
 import { isShip } from './naval';
 import type { GameState, Unit } from './types';
@@ -65,3 +65,42 @@ export function enemyArmourShare(s: GameState, owner: Owner): number {
 /** An armour threat: an enemy army past the floor, at least ARMOUR_THREAT of it vehicles by price. */
 export const ARMOUR_THREAT = 0.55;
 export const armourThreat = (s: GameState, owner: Owner): boolean => enemyArmyValue(s, owner) >= OUTMATCH_FLOOR && enemyArmourShare(s, owner) >= ARMOUR_THREAT;
+
+// ---- 2026-11-27: the passive commander -------------------------------------------------------------
+//
+// The hold above made the computer passive against a player who keeps a large army at home. Two
+// faults, both measured (fireline-design.md, 2026-11-27):
+// - The wave was weighed against every enemy on the map, so with three or four sides the commander
+//   was nearly always "outmatched" and sent nothing. A wave is now weighed against the side it is
+//   aimed at (and that side's allies), not the whole map.
+// - The hold had no end. Against a player who never attacked, the Normal commander held 37% of the
+//   time at the Standard pace and 50% with the full economy, and some battles saw no wave in 40
+//   minutes. A wave now waits at most WAVE_PATIENCE intervals past due; after that it goes if its
+//   army is worth at least WAVE_NERVE of the enemy's, since an army that only grows behind turrets
+//   gives the player nothing to answer.
+
+/** Intervals past due a wave may be held for being outmatched. */
+export const WAVE_PATIENCE = 1;
+/** Past that, the wave goes if its army is worth at least this share of the enemy's. */
+export const WAVE_NERVE = 0.6;
+
+/** The armed land army of `target` and every side on its team, by price. */
+export function teamArmyValue(s: GameState, target: Owner): number {
+  let v = 0;
+  for (const u of s.units) if (isAlly(s, target, u.owner) && fielded(s, u)) v += UNITS[u.kind].cost;
+  return v;
+}
+
+/**
+ * True when a wave aimed at `target` should wait at home: the target's team is past the floor and
+ * worth more than OUTMATCH_WAVE times this side's army, and the wave has not yet waited `waited`
+ * ticks past `patience`, or has and is still worth under WAVE_NERVE of the enemy. With no target,
+ * every enemy counts, as before.
+ */
+export function holdWave(s: GameState, owner: Owner, target: Owner | null, waited: number, patience: number): boolean {
+  const foe = target === null ? enemyArmyValue(s, owner) : teamArmyValue(s, target);
+  const own = armyValue(s, owner);
+  if (foe < OUTMATCH_FLOOR || foe <= own * OUTMATCH_WAVE) return false;
+  if (waited < patience) return true;
+  return own < foe * WAVE_NERVE;
+}

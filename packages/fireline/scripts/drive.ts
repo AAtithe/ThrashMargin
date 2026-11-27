@@ -85,6 +85,7 @@ import { sections as territorySections } from './drive-territory';
 // round7:structures. Structure upgrades and strategic structures: its sections.
 import { sections as structuresSections } from './drive-structures';
 import { sections as productionSections } from './drive-production';
+import { sections as upkeepSections } from './drive-upkeep';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
@@ -2833,6 +2834,8 @@ if (!CAMPAIGN_ONLY) {
     // round7:adaptive end.
     // Advanced production (2026-11-22): its sections, from scripts/drive-production.ts.
     ...productionSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Army upkeep and the commander's patience (2026-11-27): from scripts/drive-upkeep.ts.
+    ...upkeepSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

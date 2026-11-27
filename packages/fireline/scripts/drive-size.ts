@@ -93,7 +93,8 @@ const strip = (k: string, v: unknown) =>
             ((k === 'structureUpgrades' || k === 'strategicBuildings') && v === false) ||
             // round7:adaptive: the adaptive commander off is the earlier battle exactly.
             (k === 'adaptive' && v === false) ||
-            ((k === 'industry' || k === 'supply' || k === 'territory' || k === 'production') && v === false) ||
+            // Army upkeep (2026-11-27): off is the earlier battle exactly.
+            ((k === 'industry' || k === 'supply' || k === 'territory' || k === 'production' || k === 'upkeep') && v === false) ||
             (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
           ? undefined
           : // round7:review begin. The after-action history (src/sim/history.ts) records play and
@@ -190,7 +191,7 @@ function rulesAndPresets(ok: Ok): void {
   const keys = Object.keys(normaliseSetup({}));
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace,
   // and industry (2026-11-21) follows them.
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'structureUpgrades', 'strategicBuildings', 'adaptive']), "pace is the last field of a normalised setup before round 6's four, the economy's four and round 7's");
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'upkeep', 'structureUpgrades', 'strategicBuildings', 'adaptive']), "pace is the last field of a normalised setup before round 6's four, the economy's five and round 7's");
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
     ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
