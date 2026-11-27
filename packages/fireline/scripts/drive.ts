@@ -7,6 +7,8 @@ import { setAutopilotAi } from '../src/sim/ai';
  *   npm run drive -- --seeds 60   a wider sweep
  *   npm run drive -- --campaign   only the campaign sections (missions, heroes, powers, perks)
  *   npm run drive -- --deep       the full development-lines and pace sweeps (npm run check runs a lighter sample)
+ *   npm run drive -- --fast       leaves out the heaviest whole-battle sections (DEEP_SECTIONS): what
+ *                                 npm run check runs on every push and deploy; npm run check:deep runs all
  *
  * The campaign sections build their own test missions inline (the real mission list belongs to
  * the campaign layer) and cover every ability, stealth, every power, every objective and trigger
@@ -86,6 +88,7 @@ import { sections as territorySections } from './drive-territory';
 import { sections as structuresSections } from './drive-structures';
 import { sections as productionSections } from './drive-production';
 import { sections as upkeepSections } from './drive-upkeep';
+import { sections as continentalSections } from './drive-continental';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
@@ -148,6 +151,37 @@ function ok(cond: unknown, what: string): void {
 const args = process.argv.slice(2);
 const seedArg = args.indexOf('--seeds');
 const SEEDS = seedArg >= 0 ? Number(args[seedArg + 1]) : 20;
+/**
+ * `--fast` (2026-11-27): the suite had grown to 25 minutes, and Vercel runs it before every deploy.
+ * These sections, each a set of whole computer battles taking 14 to 122 seconds (about 1,000 of the
+ * 1,500), run only without it: `npm run check:deep`, and every night in CI. Every rule they touch
+ * also has quick checks that stay in the fast tier; what moves out is the long-battle evidence.
+ */
+const FAST = args.includes('--fast');
+const DEEP_SECTIONS = new Set([
+  'Bigger battles: whole battles of three and four sides',
+  'Larger maps: whole battles',
+  'Size: quick is today',
+  'Size: the computer',
+  'Lines: the computer',
+  'Lines: replay and old saves',
+  'Heroes in free play: the computer recruits and uses heroes',
+  'Structures: save size on a huge map',
+  'Larger maps: maps at large and huge',
+  'Upkeep: whole computer battles',
+  'Structures: whole computer battles',
+  'Generals: whole battles with Generals on',
+  'Vast maps: replay and saves',
+  'Production: whole computer battles',
+  'Review: real battles',
+  'Neutral sites and tier three: the computer',
+  'Fortification: replay, saves and the computer',
+  'Naval war: the computer',
+  'Review: recording never changes play',
+  'Continental: replay through a save',
+  'Hold victory: computer battles',
+]);
+let skipped = 0;
 /** `--campaign` runs only the campaign sections (missions, heroes, powers, perks). */
 const CAMPAIGN_ONLY = args.includes('--campaign');
 /**
@@ -2836,8 +2870,16 @@ if (!CAMPAIGN_ONLY) {
     ...productionSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Army upkeep and the commander's patience (2026-11-27): from scripts/drive-upkeep.ts.
     ...upkeepSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Bigger maps (2026-11-27): Continental, routes over regions, ground-from-seed saves.
+    ...continentalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
+  // A renamed section would drop out of the list unnoticed and run in the fast tier; say so.
+  for (const name of DEEP_SECTIONS) ok(freeplay.some(([n]) => n === name), `the deep-only section "${name}" exists`);
   for (const [name, fn] of freeplay) {
+    if (FAST && DEEP_SECTIONS.has(name)) {
+      skipped++;
+      continue;
+    }
     const t0 = Date.now();
     console.log(name);
     fn();
@@ -2920,6 +2962,6 @@ console.log(`  units standing at the end with rank: ${seen.veterans} veterans, $
 ok(seen.veterans + seen.elites > 0, 'units earn rank in real battles');
 ok(seen.survivors > 0, 'crews walk out of fallen structures in real battles');
 
-console.log(`\n${assertions} assertions, ${failures} failed, ${((Date.now() - started) / 1000).toFixed(1)}s`);
+console.log(`\n${assertions} assertions, ${failures} failed, ${((Date.now() - started) / 1000).toFixed(1)}s${skipped ? ` (fast: ${skipped} whole-battle sections left to npm run check:deep)` : ''}`);
 if (failures) process.exit(1);
 console.log('All checks passed');

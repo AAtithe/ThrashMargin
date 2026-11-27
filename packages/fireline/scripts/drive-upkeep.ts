@@ -12,7 +12,12 @@ import { createMissionState } from '../src/sim/mission';
 import { missionContext, newCampaign } from '../src/campaign/progression';
 import { MISSIONS } from '../src/campaign/missions';
 import { DEFAULT_SETUP, DIFFICULTIES, GAME_PACES, LEGACY_SETUP, UNITS, difficultyForPace, type Owner, type SkirmishSetup } from '../src/sim/rules';
-import { addUnit, createInitialState, migrateState, normaliseSetup } from '../src/sim/state';
+import { addBuilding, addUnit, createInitialState, migrateState, normaliseSetup } from '../src/sim/state';
+import { productionStep } from '../src/sim/production';
+import { FARM_TICKS } from '../src/sim/rules';
+import { GROWING_TICKS, HOARD_DECAY, HOARD_FREE, LEAN_ROT, SEASON_YEAR, farmBeat, seasonAt, seasonLeft, seasonsOn, seasonsStep } from '../src/sim/seasons';
+import { foodStore } from '../src/sim/production';
+import { HOLD_POINTS_PER_SITE, HOLD_TICKS, holdOn, holdStep, holdTarget, teamScore } from '../src/sim/victory';
 import { DESERT_SHARE, INFANTRY_UPKEEP, SHORT_RELOAD, VEHICLE_UPKEEP, UPKEEP_GRACE, UPKEEP_TICKS, shortOfUpkeep, upkeepAllows, upkeepDue, upkeepOn, upkeepStep } from '../src/sim/upkeep';
 import type { GameState } from '../src/sim/types';
 
@@ -250,6 +255,169 @@ function battles(ok: Ok): void {
   ok(!('upkeepShort' in migrateState(junk)!.players[0]), 'a junk shortage loads as none');
 }
 
+// ---- Seasons and spoilage (2026-11-27, src/sim/seasons.ts) ------------------------------------------
+
+const SEASONS: Partial<SkirmishSetup> = { ...ALL, seasons: true };
+
+function seasonsSetup(ok: Ok): void {
+  ok(DEFAULT_SETUP.seasons === false && LEGACY_SETUP.seasons === false, 'both presets state seasons: off');
+  ok(normaliseSetup({}).seasons === false, 'a setup saved before it reads as off');
+  ok(normaliseSetup({ industry: true, supply: true, territory: true, production: true, upkeep: true, seasons: true }).seasons === true, 'with upkeep, seasons: true is kept');
+  ok(normaliseSetup({ industry: true, supply: true, territory: true, production: true, seasons: true }).seasons === false, 'without upkeep it is off');
+  ok(seasonsOn(fresh(SEASONS)) && !seasonsOn(fresh()), 'on only when asked for');
+  ok(seasonAt(0) === 'growing' && seasonAt(GROWING_TICKS - 1) === 'growing' && seasonAt(GROWING_TICKS) === 'lean' && seasonAt(SEASON_YEAR - 1) === 'lean' && seasonAt(SEASON_YEAR) === 'growing', 'the year turns at the stated ticks');
+  ok(seasonLeft(0) === GROWING_TICKS && seasonLeft(GROWING_TICKS) === SEASON_YEAR - GROWING_TICKS, 'the minutes left are counted to the turn');
+  const off = fresh();
+  ok(farmBeat(off) === FARM_TICKS, 'without seasons a Farm keeps its beat');
+}
+
+function harvest(ok: Ok): void {
+  const grown = (tick0: number, setup: Partial<SkirmishSetup>): number => {
+    const s = fresh(setup, 'seasons-farm');
+    const hq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+    const dir = hq.x < s.mapW / 2 ? 1 : -1;
+    addBuilding(s, 0, 'farm', Math.floor(hq.x + 1.5 - dir * 6), Math.floor(hq.y + 5.5));
+    s.players[0].food = 0;
+    s.tick = tick0;
+    for (let i = 0; i < 600; i++) {
+      s.tick++;
+      productionStep(s, [false, false, false, false], new Set());
+    }
+    return s.players[0].food ?? 0;
+  };
+  const plain = grown(0, ALL);
+  const growing = grown(600, SEASONS);
+  const lean = grown(GROWING_TICKS + 600, SEASONS);
+  ok(growing > plain * 1.4 && lean < plain * 0.3, `a Farm's minute: ${growing} food growing, ${lean} lean, ${plain} without seasons`);
+  const year = (GROWING_TICKS / 600) * growing + ((SEASON_YEAR - GROWING_TICKS) / 600) * lean;
+  ok(Math.abs(year - (SEASON_YEAR / 600) * plain) <= (SEASON_YEAR / 600) * plain * 0.1, `over a year a Farm grows about what it would without seasons (${year} against ${(SEASON_YEAR / 600) * plain})`);
+}
+
+function spoilage(ok: Ok): void {
+  const s = fresh(SEASONS);
+  const cap = foodStore(s, 0);
+  s.players[0].food = cap;
+  s.players[0].credits = HOARD_FREE + 10000;
+  s.tick = 600;
+  const before = JSON.stringify(s);
+  s.tick = 599;
+  seasonsStep(s, say);
+  ok(JSON.stringify({ ...s, tick: 600 }) === before, 'off the minute nothing happens');
+  s.tick = 600;
+  seasonsStep(s, say);
+  ok(s.players[0].food === cap, 'growing season: no food rots');
+  ok(s.players[0].credits === HOARD_FREE + 10000 - Math.ceil(10000 * HOARD_DECAY), `hoarded credits lose ${HOARD_DECAY * 100}% of the excess (${s.players[0].credits})`);
+  s.tick = GROWING_TICKS;
+  seasonsStep(s, say);
+  ok(s.log.some(e => /lean season begins/.test(e.text)), 'the player is told when the lean season begins');
+  const keep = Math.floor(cap / 2);
+  ok(s.players[0].food === cap - Math.ceil((cap - keep) * LEAN_ROT), `lean season: ${LEAN_ROT * 100}% of the food above half the store rots (${s.players[0].food} of ${cap})`);
+  const low = fresh(SEASONS);
+  low.players[0].food = 5;
+  low.players[0].credits = 1000;
+  low.tick = GROWING_TICKS + 600;
+  seasonsStep(low, say);
+  ok(low.players[0].food === 5 && low.players[0].credits === 1000, 'below the thresholds nothing is lost');
+  const offS = fresh();
+  offS.players[0].credits = 50000;
+  offS.tick = 600;
+  seasonsStep(offS, say);
+  ok(offS.players[0].credits === 50000, 'without seasons nothing decays');
+}
+
+function seasonBattles(ok: Ok): void {
+  const setup: Partial<SkirmishSetup> = { map: 'random', tech: 'advanced', credits: 5000, ore: 'rich', research: 'lines', pace: 'long', industry: true, supply: true, territory: true, production: true, upkeep: true, seasons: true };
+  const play = (ticks: number, saveAt = -1): GameState => {
+    let s = createInitialState('sea-a', 'sea-a', { seed: 'sea-a', difficulty: 'normal', createdAt: 0, autopilot: true, setup });
+    s.autopilotDifficulty = 'normal';
+    while (s.winner === null && s.tick < ticks) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      if (s.tick === saveAt) s = migrateState(JSON.parse(JSON.stringify(s)))!;
+      if (s.players.some(p => (p.food ?? 0) < 0 || p.credits < 0)) break;
+    }
+    return s;
+  };
+  const a = play(GROWING_TICKS + 1800);
+  ok(a.players.every(p => (p.food ?? 0) >= 0 && p.credits >= 0), 'into the lean season, no store below nought');
+  ok(hash(a) === hash(play(GROWING_TICKS + 1800, GROWING_TICKS - 600)), 'a battle with seasons replays byte-identically through a save just before the lean season');
+}
+
+// ---- Hold victory (2026-11-27, src/sim/victory.ts) --------------------------------------------------
+
+const HOLD: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', sites: true, victory: 'hold', size: 'large' };
+
+function holdSetup(ok: Ok): void {
+  ok(DEFAULT_SETUP.victory === 'conquest' && LEGACY_SETUP.victory === 'conquest', 'both presets state victory: conquest');
+  ok(normaliseSetup({}).victory === 'conquest', 'a setup saved before it reads as conquest');
+  ok(normaliseSetup({ sites: true, victory: 'hold' }).victory === 'hold', 'with sites, hold is kept');
+  ok(normaliseSetup({ sites: false, victory: 'hold' }).victory === 'conquest', 'without sites it is conquest');
+  ok(normaliseSetup({ sites: true, victory: 'other' as never }).victory === 'conquest', 'junk reads as conquest');
+  const s = fresh(HOLD, 'hold-a');
+  ok(holdOn(s) && (s.sites?.length ?? 0) > 0 && holdTarget(s) === HOLD_POINTS_PER_SITE * s.sites!.length, `on with sites: target ${holdTarget(s)} for ${s.sites?.length} sites`);
+  ok(!holdOn(fresh({ ...HOLD, victory: 'conquest' }, 'hold-b')), 'conquest: off');
+}
+
+function holdScoring(ok: Ok): void {
+  const s = fresh(HOLD, 'hold-c');
+  const sites = s.sites!;
+  sites.forEach((x, i) => (x.owner = i === 0 ? 1 : 0));
+  s.tick = HOLD_TICKS - 1;
+  holdStep(s, say);
+  ok(s.holdScore === undefined, 'off the minute, nothing is scored');
+  s.tick = HOLD_TICKS;
+  holdStep(s, say);
+  ok(s.holdScore?.[0] === sites.length - 1 && s.holdScore?.[1] === 1, `on the minute each held site scores its holder a point (${JSON.stringify(s.holdScore)})`);
+  ok(s.winner === null, 'short of the target, nobody wins');
+  s.holdScore = [holdTarget(s) - (sites.length - 1), 0];
+  s.tick += HOLD_TICKS;
+  holdStep(s, say);
+  ok(s.winner === 0 && s.log.some(e => /held the ground/.test(e.text)), 'the first side to the target wins, and is told');
+  const tie = fresh(HOLD, 'hold-d');
+  tie.sites!.forEach((x, i) => (x.owner = i % 2 === 0 ? 0 : 1));
+  const even = tie.sites!.length % 2 === 0;
+  tie.holdScore = [holdTarget(tie), holdTarget(tie)];
+  tie.tick = HOLD_TICKS;
+  holdStep(tie, say);
+  ok(!even || tie.winner === null, 'level at the target: play on');
+  const enemy = fresh(HOLD, 'hold-e');
+  enemy.sites!.forEach(x => (x.owner = 1));
+  enemy.holdScore = [0, holdTarget(enemy) - 1];
+  enemy.tick = HOLD_TICKS;
+  holdStep(enemy, say);
+  ok(enemy.winner === 1, 'the enemy holding the ground wins');
+  // Teams: a team's score is its sides'.
+  const four = fresh({ ...HOLD, sides: 4, mode: 'teams' } as Partial<SkirmishSetup>, 'hold-f');
+  four.holdScore = [3, 4, 5, 6];
+  ok(teamScore(four, 0) === 3 + (four.teams![2] === four.teams![0] ? 5 : four.teams![1] === four.teams![0] ? 4 : 6), 'a team scores its sides together');
+  // Saves.
+  const saved = copy(s);
+  saved.winner = null;
+  ok(JSON.stringify(migrateState(JSON.parse(JSON.stringify(saved)))!.holdScore) === JSON.stringify(saved.holdScore), 'the scores survive a save');
+  const junk = copy(saved) as unknown as { holdScore: unknown };
+  junk.holdScore = ['x', 2];
+  ok(!('holdScore' in migrateState(junk)!), 'junk scores load as none');
+  const conquest = copy(saved);
+  conquest.setup = { ...conquest.setup!, victory: 'conquest' };
+  ok(!('holdScore' in migrateState(JSON.parse(JSON.stringify(conquest)))!), 'scores without hold victory are dropped');
+}
+
+function holdBattles(ok: Ok): void {
+  const setup: Partial<SkirmishSetup> = { map: 'random', tech: 'advanced', credits: 5000, ore: 'rich', research: 'lines', pace: 'long', size: 'large', sites: true, victory: 'hold' };
+  const play = (seed: string, saveAt = -1): GameState => {
+    let s = createInitialState(seed, seed, { seed, difficulty: 'normal', createdAt: 0, autopilot: true, setup });
+    s.autopilotDifficulty = 'normal';
+    while (s.winner === null && s.tick < 600 * 20) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      if (s.tick === saveAt) s = migrateState(JSON.parse(JSON.stringify(s)))!;
+    }
+    return s;
+  };
+  const a = play('hold-battle');
+  const scored = (a.holdScore ?? []).reduce((x, y) => x + y, 0);
+  ok(scored > 0, `both computers take and hold sites: ${JSON.stringify(a.holdScore)} after ${(a.tick / 600).toFixed(0)} minutes`);
+  ok(hash(a) === hash(play('hold-battle', 600 * 10)), 'a hold battle replays byte-identically through a save');
+}
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Upkeep: the setup', setup],
   ['Upkeep: paying on the minute', quiet(paying)],
@@ -257,4 +425,11 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Upkeep: an unfed soldier fires slower', quiet(reload)],
   ['Upkeep: the commander attacks (patience cap and wave hold)', patience],
   ['Upkeep: whole computer battles', battles],
+  ['Seasons: the setup and the year', seasonsSetup],
+  ['Seasons: a Farm through the year', quiet(harvest)],
+  ['Seasons: spoilage', quiet(spoilage)],
+  ['Seasons: a battle into the lean season, replayed through a save', seasonBattles],
+  ['Hold victory: the setup', holdSetup],
+  ['Hold victory: scoring, winning, teams and saves', quiet(holdScoring)],
+  ['Hold victory: computer battles', holdBattles],
 ];

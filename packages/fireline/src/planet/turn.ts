@@ -39,7 +39,7 @@ import {
 import { aliveFaction, allied, atWar, deepClone, garrisonTotal, isArmyKind, isInt, kindIndex, regionsOf } from './state';
 import { suppliedRegions, armyPath } from './supply';
 import { isDecisive, lossShare, ownedNeighbours } from './links';
-import { DECISIVE_TRUST, REPAIR_COST, RETURN_CREDITS_PER_ORE, RETURN_MAX } from './rules';
+import { DECISIVE_TRUST, REPAIR_COST, RETURN_CREDITS_PER_ORE, SITE_ORE, SITE_ORE_MAX, RETURN_MAX } from './rules';
 import { exchangeFlows, pruneRoutes, routeCost, routeProblem } from './trade';
 import { eliminate, victoryCheck } from './victory';
 import {
@@ -190,6 +190,7 @@ export function reportProblem(s: PlanetState, pb: PendingBattle, rep: unknown, h
     if (!Array.isArray(L.credits) || L.credits.length !== n || !L.credits.every(v => isInt(v, 0, 1e6))) return bad;
     if (!Array.isArray(L.harvested) || L.harvested.length !== n || !L.harvested.every(v => isInt(v, 0, 1e6))) return bad;
     if (!Array.isArray(L.wounded) || L.wounded.length !== n) return bad;
+    if (L.sitesHeld !== undefined && (!setup.links.sites || !Array.isArray(L.sitesHeld) || L.sitesHeld.length !== n || !L.sitesHeld.every(v => isInt(v, 0, 99)))) return bad;
     for (let i = 0; i < n; i++) {
       const w = L.wounded[i];
       if (!Array.isArray(w) || w.length > REPORT_SURVIVORS_MAX) return bad;
@@ -790,9 +791,12 @@ function battleIntoWar(d: PlanetState, pb: PendingBattle, rep: BattleReport, ext
       if (side.faction === NEUTRAL || !d.factions[side.faction].alive) return;
       if ((side.team === 0) !== attackerWon) return;
       const ore = Math.min(RETURN_MAX, Math.floor((back.credits[i] ?? 0) / RETURN_CREDITS_PER_ORE) + Math.floor((back.harvested[i] ?? 0) / RETURN_CREDITS_PER_ORE));
-      if (ore <= 0) return;
-      d.factions[side.faction].stock.ore += ore;
-      if (side.faction === 0) said.push(`${ore} ore comes home from the battle's unspent credits and harvest`);
+      // Battle rules 4: ore for each neutral site held at the end, on top.
+      const siteOre = Math.min(SITE_ORE_MAX, SITE_ORE * (back.sitesHeld?.[i] ?? 0));
+      if (ore + siteOre <= 0) return;
+      d.factions[side.faction].stock.ore += ore + siteOre;
+      if (side.faction === 0 && ore > 0) said.push(`${ore} ore comes home from the battle's unspent credits and harvest`);
+      if (side.faction === 0 && siteOre > 0) said.push(`${siteOre} ore from the ${back.sitesHeld![i]} neutral site${back.sitesHeld![i] === 1 ? '' : 's'} held`);
     });
   }
 
@@ -929,7 +933,7 @@ function production(d: PlanetState): void {
     }
   }
   // Round 7, battle rules 3 (link 7): workshops repair wounded vehicles while the stock allows.
-  if (d.battleRules === 3) for (const f of alive) repairArmy(d, f);
+  if (d.battleRules === 3 || d.battleRules === 4) for (const f of alive) repairArmy(d, f);
   // 6: research.
   for (const f of alive) {
     const r = d.factions[f].research;

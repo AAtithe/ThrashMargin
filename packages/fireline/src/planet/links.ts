@@ -44,7 +44,9 @@ import {
 } from './types';
 
 /** True on a war whose battles are built to rules 3. */
-export const linksOn = (s: Pick<PlanetState, 'battleRules'>): boolean => s.battleRules === 3;
+export const linksOn = (s: Pick<PlanetState, 'battleRules'>): boolean => s.battleRules === 3 || s.battleRules === 4;
+/** Battle rules 4 (2026-11-27): neutral sites in the war's battles. */
+export const sitesOn = (s: Pick<PlanetState, 'battleRules'>): boolean => s.battleRules === 4;
 
 // ---- Link 1: supply and logistics ---------------------------------------------------------------
 

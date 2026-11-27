@@ -398,8 +398,13 @@ export const REPORT_SURVIVORS_MAX = 60;
  * The battle rules a new war builds its battles to (section 9.7): 2, the map size by stakes; 3
  * (round 7), also the links between the war and its battles. A war saved without `battleRules` is
  * version 1 and fights every battle on a standard map; a version 2 war stays on 2 for good.
+ * 4 (2026-11-27): also neutral sites in its battles, and link 6 pays ore for the sites the winners
+ * hold at the end (SITE_ORE each, at most SITE_ORE_MAX). A war keeps the rules it started on.
  */
-export const BATTLE_RULES = 3 as const;
+export const BATTLE_RULES = 4 as const;
+/** Battle rules 4: ore a winning side brings home for each neutral site it holds at the end. */
+export const SITE_ORE = 3;
+export const SITE_ORE_MAX = 12;
 
 // ---- Battle rules 3: the war and its battles (round 7, fireline-round7-planet.md) -------------
 

@@ -56,13 +56,14 @@ function newBattle(seed: string, size: MapSize, sides: 2 | 3 | 4 = 2, mode: Side
 // ---- The size ------------------------------------------------------------------------------------
 
 function sizeTests(ok: Ok): void {
-  ok(MAP_SIZES[MAP_SIZES.length - 1] === 'vast' && MAP_SIZE_NAMES.vast === 'Vast' && MAP_SIZE_BLURBS.vast.length > 0, 'vast: the largest size, named and described');
+  // 2026-11-27: Continental follows vast as the largest (drive-continental.ts).
+  ok(MAP_SIZES[MAP_SIZES.length - 2] === 'vast' && MAP_SIZES[MAP_SIZES.length - 1] === 'continental' && MAP_SIZE_NAMES.vast === 'Vast' && MAP_SIZE_BLURBS.vast.length > 0, 'vast: the size before Continental, named and described');
   for (const n of [2, 3, 4] as const) {
     ok(MAP_SIZE_TILES.vast[n] === 2 * MAP_SIZE_TILES.huge[n], `vast, ${n} sides: twice as wide as huge, four times the ground (${MAP_SIZE_TILES.vast[n]} tiles)`);
     ok(MAP_SIZE_TILES.vast[n] <= MAP_TILES_MAX, `vast, ${n} sides: within MAP_TILES_MAX`);
     ok(MAP_SIZE_TILES.huge[n] <= MAP_TILES_MAX_BALANCED && MAP_SIZE_TILES.vast[n] > MAP_TILES_MAX_BALANCED, `${n} sides: huge is a balanced size, vast is beyond it`);
   }
-  ok(MAP_SIZES.every(z => sizeHasHazards(z) === (z === 'vast')), 'only vast maps carry ravines and ruined cities');
+  ok(MAP_SIZES.every(z => sizeHasHazards(z) === (z === 'vast' || z === 'continental')), 'only vast and Continental maps carry ravines and ruined cities');
   ok(normaliseSetup({ size: 'vast' }).size === 'vast' && normaliseSetup({ size: 'Vast' as MapSize }).size === 'standard', 'normaliseSetup keeps vast and refuses anything like it');
   for (const kind of ['derrick', 'hospital', 'relay'] as const) ok(SITES_PER_SIDE.vast[kind] >= SITES_PER_SIDE.huge[kind], `vast: at least as many ${kind} sites a side as huge`);
 }

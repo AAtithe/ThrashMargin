@@ -95,7 +95,7 @@ const preRound6 = (s: GameState): GameState => {
   if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
   if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
   if (!s.setup) return { ...s, players };
-  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, structureUpgrades, strategicBuildings, adaptive, ...setup } = s.setup;
+  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, ...setup } = s.setup;
   if (territory !== undefined && territory !== false) throw new Error('setup territory on');
   // Round 7's options: a war on battle rules 3 turns them on in its planet battles, so they are checked
   // off only outside a planet battle (an older war's planet battles are held to their recorded hashes).
@@ -105,6 +105,7 @@ const preRound6 = (s: GameState): GameState => {
   if (production !== undefined && production !== false) throw new Error('setup production on');
   // Army upkeep (2026-11-27): off is the earlier battle exactly.
   if (upkeep !== undefined && upkeep !== false) throw new Error('setup upkeep on');
+  if (seasons !== undefined && seasons !== false) throw new Error('setup seasons on');
   // Industry and supply lines (2026-11-21): off is the earlier battle exactly.
   if (industry !== undefined && industry !== false) throw new Error('setup industry on');
   if (supply !== undefined && supply !== false) throw new Error('setup supply lines on');
@@ -1153,7 +1154,8 @@ function mapSizeTests(ok: Ok): void {
   // sizes every setup by its stakes; a war without battleRules (one saved before larger maps) makes
   // exactly the same setups without a map size.
   const fresh = newPlanetState({ seedText: 'maps-fresh', preset: 'short', difficulty: 'normal', commander: 'Tester', createdAt: 0 });
-  ok(fresh.battleRules === 3, 'a new war is on battle rules 3');
+  // 2026-11-27: new wars are on battle rules 4 (3, and neutral sites in the battles).
+  ok(fresh.battleRules === 4, 'a new war is on battle rules 4');
   const seen = new Set<string>();
   let compared = 0;
   for (let k = 0; k < 12; k++) {
@@ -1272,7 +1274,7 @@ function mapSizeTests(ok: Ok): void {
     const a = mk();
     const b = mk();
     ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 3 replays byte-identically`);
-    ok(a.w.battleRules === 3 && a.built.length > 0, `${preset} war on battle rules 3 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
+    ok(a.w.battleRules === 4 && a.built.length > 0, `${preset} war on battle rules 4 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
   }
   const big = { ...craftSetup(1), mapSize: 'large' as const };
   const r1 = processAction(buildPlanetBattle(big, ids(1), { autopilot: true }), { type: 'tick', n: 600 });

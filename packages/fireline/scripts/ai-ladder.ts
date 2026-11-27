@@ -35,6 +35,9 @@
  *   tsx scripts/ai-ladder.ts --map random --industry --supply --territory   and territory and workforce (needs --supply)
  *   tsx scripts/ai-ladder.ts --map random --structure-upgrades --strategic   round 7: structure upgrades and strategic structures
  *   tsx scripts/ai-ladder.ts ... --territory --production   and advanced production (needs --territory)
+ *   tsx scripts/ai-ladder.ts ... --production --upkeep       and army upkeep (2026-11-27; needs --production)
+ *   tsx scripts/ai-ladder.ts ... --upkeep --seasons          and seasons and spoilage (needs --upkeep)
+ *   tsx scripts/ai-ladder.ts ... --sites --hold              neutral sites, and hold victory (needs --sites)
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -169,6 +172,16 @@ if ((UPGRADES7 || STRATEGIC7) && LEGACY) throw new Error('--structure-upgrades a
 /** Advanced production (2026-11-22): needs territory. */
 const PRODUCTION = args.includes('--production');
 if (PRODUCTION && !TERRITORY) throw new Error('--production needs --territory');
+/** Army upkeep (2026-11-27): needs advanced production. */
+const UPKEEP = args.includes('--upkeep');
+if (UPKEEP && !PRODUCTION) throw new Error('--upkeep needs --production');
+/** Seasons and spoilage (2026-11-27): needs army upkeep. */
+const SEASONS = args.includes('--seasons');
+if (SEASONS && !UPKEEP) throw new Error('--seasons needs --upkeep');
+/** Neutral sites, and hold victory (2026-11-27; --hold needs --sites). */
+const SITES_ON = args.includes('--sites');
+const HOLD = args.includes('--hold');
+if (HOLD && !SITES_ON) throw new Error('--hold needs --sites');
 if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
 // round7:fortification: the Fortification line, stated in every skirmish setup (off without the flag).
 const FORTIFICATION = args.includes('--fortification');
@@ -208,6 +221,10 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     adaptive: ADAPTIVE === 'on',
     // round7:adaptive end
     ...(PRODUCTION ? { production: true } : {}),
+    ...(UPKEEP ? { upkeep: true } : {}),
+    ...(SEASONS ? { seasons: true } : {}),
+    ...(SITES_ON ? { sites: true } : {}),
+    ...(HOLD ? { victory: 'hold' as const } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -386,7 +403,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPKEEP ? ', army upkeep on' : ''}${SEASONS ? ', seasons on' : ''}${SITES_ON ? ', sites on' : ''}${HOLD ? ', hold victory' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -414,6 +431,10 @@ if (workerAt >= 0) {
           ...(UPGRADES7 ? ['--structure-upgrades'] : []),
           ...(STRATEGIC7 ? ['--strategic'] : []),
           ...(PRODUCTION ? ['--production'] : []),
+          ...(UPKEEP ? ['--upkeep'] : []),
+          ...(SEASONS ? ['--seasons'] : []),
+          ...(SITES_ON ? ['--sites'] : []),
+          ...(HOLD ? ['--hold'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

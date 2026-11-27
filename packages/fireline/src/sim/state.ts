@@ -139,6 +139,8 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // base from before round 5 has none: 'standard'); sites are on only when exactly true.
   const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
   const sites = typeof r.sites === 'boolean' ? r.sites : (base.sites ?? false);
+  // Victory (2026-11-27): hold only when asked for and the battle has neutral sites.
+  const victory: SkirmishSetup['victory'] = sites && r.victory === 'hold' ? 'hold' : 'conquest';
   // round7:fortification begin. The Fortification line: advanced tech and development lines only;
   // anything but a boolean takes the base's (a save's base, LEGACY_SETUP, has it off).
   const fortification = tech === 'advanced' && research === 'lines' && (typeof r.fortification === 'boolean' ? r.fortification : (base.fortification ?? false));
@@ -176,7 +178,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const production = territory && (typeof r.production === 'boolean' ? r.production : (base.production ?? false));
   // Army upkeep (2026-11-27): on only when exactly true, and only with advanced production.
   const upkeep = production && (typeof r.upkeep === 'boolean' ? r.upkeep : (base.upkeep ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, structureUpgrades, strategicBuildings, adaptive };
+  // Seasons and spoilage (2026-11-27): on only when exactly true, and only with army upkeep.
+  const seasons = upkeep && (typeof r.seasons === 'boolean' ? r.seasons : (base.seasons ?? false));
+  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -476,6 +480,24 @@ export const maxHpOf = (u: Unit): number => u.maxHp ?? UNITS[u.kind].hp;
  * never change and are shared. Effects, projectiles and log entries are never edited after
  * creation, so copying their arrays is enough.
  */
+/**
+ * The ore left on the whole map (2026-11-27). The commanders asked for it on every decision, each by
+ * summing every tile: on a Continental map 200,000 tiles, several times a tick, about a tenth of the
+ * tick. The ore array is copied each tick (cloneState), so the sum is kept per array: worked out once
+ * a tick and shared. The same number as the loop it replaces.
+ */
+const oreSums = new WeakMap<number[], { tick: number; n: number }>();
+export function oreLeft(s: Pick<GameState, 'ore' | 'tick'>): number {
+  // Keyed on the array and the tick: a batch of ticks (processAction with n) reuses one array, and the
+  // commanders all decide before anything is mined in a tick, so within a tick the sum cannot change.
+  const hit = oreSums.get(s.ore);
+  if (hit && hit.tick === s.tick) return hit.n;
+  let n = 0;
+  for (const o of s.ore) n += o;
+  oreSums.set(s.ore, { tick: s.tick, n });
+  return n;
+}
+
 export function cloneState(s: GameState): GameState {
   return {
     ...s,
@@ -847,6 +869,12 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.sites;
   }
   // round5:D end.
+  // Hold victory (2026-11-27): one whole number of points per side, kept only with hold victory on.
+  if ('holdScore' in out) {
+    const hs = out.holdScore as unknown;
+    const good = out.setup?.victory === 'hold' && Array.isArray(hs) && hs.length === out.players.length && hs.every(v => Number.isInteger(v) && v >= 0 && v < 1e7);
+    if (!good) delete out.holdScore;
+  }
   // Round 6: a side's army, its perks, and squads, repaired or dropped, never trusted blind.
   migrateRound6(s, out);
   // round7:fortification begin. Counter-battery reveals and the commander's shelling counts.

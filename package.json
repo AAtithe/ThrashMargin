@@ -30,6 +30,7 @@
     "sweep:fire": "npm run campaign-sweep --workspace=packages/fireline --",
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
+    "check:deep": "CHECK_DEEP=1 bash scripts/check.sh",
     "check:loading": "node scripts/loading-check.cjs",
     "check:ui": "node scripts/ui-check.cjs",
     "sync-shared": "node scripts/sync-shared.mjs",

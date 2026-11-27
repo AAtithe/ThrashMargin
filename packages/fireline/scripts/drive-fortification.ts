@@ -120,7 +120,8 @@ function setups(ok: Ok): void {
   ok(normaliseSetup({ tech: 'advanced', research: 'lines', fortification: false }).fortification === false, 'turned off: off');
   ok(normaliseSetup({ fortification: 'yes' as never }, LEGACY_SETUP).fortification === false && normaliseSetup({ fortification: 1 as never }).fortification === true, 'junk takes the base\'s value');
   const keys = Object.keys(normaliseSetup({}));
-  ok(keys.indexOf('fortification') === keys.indexOf('sites') + 1 && keys.indexOf('research') === keys.indexOf('fortification') + 1, 'a normalised setup states it, between sites and research');
+  // 2026-11-27: the setup's victory follows sites (victory.ts), so the line now follows victory.
+  ok(keys.indexOf('victory') === keys.indexOf('sites') + 1 && keys.indexOf('fortification') === keys.indexOf('victory') + 1 && keys.indexOf('research') === keys.indexOf('fortification') + 1, 'a normalised setup states it, between sites and victory, and research');
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const)
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every field, the Fortification line included, in order`);
   for (const pace of ['quick', 'standard', 'long', 'epic'] as const) ok(applyPace(DEFAULT_SETUP, pace).fortification === true, `the ${pace} card keeps the line on`);

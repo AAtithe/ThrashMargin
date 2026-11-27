@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { INFANTRY_UPKEEP, UPKEEP_GRACE, VEHICLE_UPKEEP } from '../sim/upkeep';
+import { GROWING_TICKS, HOARD_DECAY, HOARD_FREE, LEAN_ROT, SEASON_YEAR } from '../sim/seasons';
 import { Link } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import { Button, ManualSection as Section, bodySmall, manualSlug as slug } from '../components/ui';
@@ -757,6 +758,13 @@ function ProductionPanel() {
           units that go without take half as long again to reload; after {UPKEEP_GRACE} more short minutes, a quarter of those unpaid desert
           each minute, the newest recruits first. Your army can only be as big as your Farms and Fuel Wells can feed, so growing it
           means taking and holding the ground they stand on.
+        </li>
+        <li>
+          <strong>Seasons and spoilage</strong> (with upkeep; on with the Long game card): a {SEASON_YEAR / 600}-minute year,{' '}
+          {GROWING_TICKS / 600} minutes growing, when Farms yield half as much again, then {(SEASON_YEAR - GROWING_TICKS) / 600} lean, at a
+          quarter, when {Math.round(LEAN_ROT * 100)}% of the food above half the store rots each minute. All year, credits above{' '}
+          {HOARD_FREE.toLocaleString('en-GB')} lose {Math.round(HOARD_DECAY * 100)}% of the excess a minute. The gauge shows the season and the
+          minutes left. Fill the stores while the harvest is good, and strike before the lean season starves you.
         </li>
       </ul>
     </Section>

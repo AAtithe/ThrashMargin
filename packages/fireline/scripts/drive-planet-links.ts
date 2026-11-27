@@ -23,6 +23,8 @@ import {
   REPAIR_COST,
   RETURN_CREDITS_PER_ORE,
   RETURN_MAX,
+  SITE_ORE,
+  SITE_ORE_MAX,
   SUPPLY_EFFECT,
   TIME_BASE,
   TIME_PER_LEVEL,
@@ -144,7 +146,17 @@ function fighting(sc: Scene, w: PlanetState = sc.w): PlanetState {
 function supplyTests(ok: Ok): void {
   const sc = firstScene('links-supply');
   const { w, X, C, Y } = sc;
-  ok(BATTLE_RULES === 3 && newPlanetState({ seedText: 'links-new', preset: 'short', difficulty: 'normal', commander: 'T', createdAt: 0 }).battleRules === 3, 'a new war is on battle rules 3');
+  ok(BATTLE_RULES === 4 && newPlanetState({ seedText: 'links-new', preset: 'short', difficulty: 'normal', commander: 'T', createdAt: 0 }).battleRules === 4, 'a new war is on battle rules 4');
+  // Battle rules 4 (2026-11-27): neutral sites in its battles; a war on rules 3 keeps them off.
+  ok(setupOf(sc)?.links?.sites === true, 'rules 4: the setup carries neutral sites');
+  const w3 = JSON.parse(JSON.stringify(w));
+  w3.battleRules = 3;
+  const s3 = setupOf(sc, w3);
+  ok(!!s3?.links && s3.links.sites === undefined, 'rules 3: the setup carries no sites, as before');
+  const fought = buildPlanetBattle(setupOf(sc)!, { id: 'site-b', name: 'Sites', createdAt: 0 }, { autopilot: true });
+  ok(fought.setup?.sites === true && (fought.sites?.length ?? 0) > 0, `rules 4: the battle has neutral sites (${fought.sites?.length ?? 0})`);
+  const old3 = buildPlanetBattle(s3!, { id: 'site-c', name: 'No sites', createdAt: 0 }, { autopilot: true });
+  ok(old3.setup?.sites === false && !(old3.sites?.length), 'rules 3: the battle has none');
   const base = setupOf(sc)!;
   ok(base.links?.supply === 'supplied' && base.links.creditsLost === 0 && base.links.trickle === 100 && base.links.reinforce === null, `supplied: no change (${json(base.links)})`);
   const atk = base.sides.find(x => x.role === 'attacker')!;
@@ -407,6 +419,16 @@ function returnTests(ok: Ok): void {
   credits[atkSeat] = 1e6;
   ok(apply(report(setup, 'attacker', { credits })).factions[0].stock.ore === ore0 + RETURN_MAX, `capped at ${RETURN_MAX}`);
   ok(apply(report(setup, 'defender', { credits, harvested })).factions[0].stock.ore === ore0, 'refused: the loser keeps nothing');
+  // Battle rules 4 (2026-11-27): ore for the neutral sites held at the end, on top, capped.
+  if (setup.links?.sites) {
+    const held = setup.sides.map(() => 0);
+    held[atkSeat] = 2;
+    ok(apply(report(setup, 'attacker', { credits: setup.sides.map(() => 0), sitesHeld: held })).factions[0].stock.ore === ore0 + 2 * SITE_ORE, `rules 4: two sites held bring ${2 * SITE_ORE} ore`);
+    held[atkSeat] = 50;
+    ok(apply(report(setup, 'attacker', { credits: setup.sides.map(() => 0), sitesHeld: held })).factions[0].stock.ore === ore0 + SITE_ORE_MAX, `rules 4: capped at ${SITE_ORE_MAX}`);
+    held[atkSeat] = -1;
+    ok(apply(report(setup, 'attacker', { sitesHeld: held })) === f, 'refused: a junk count of sites');
+  } else ok(false, 'rules 4: the link 6 scene has sites');
   const retreat = { ...report(setup, 'defender', { credits, harvested }), how: 'retreat' as const, ticks: 100 };
   ok(applyPlanetAction(f, { type: 'battleResult', report: retreat }).factions[0].stock.ore === ore0, 'refused: nothing from a retreat');
   ok(apply(report(setup, 'attacker', { credits: [1.5, 0] as number[] })) === f, 'refused: a report with credits that are not whole numbers');
@@ -640,7 +662,7 @@ function olderTests(ok: Ok): void {
     const a = play();
     const b = play();
     ok(json(a.w) === json(b.w), `${preset} war on battle rules 3 played twice: byte-identical`);
-    ok(a.w.result !== null && a.w.battleRules === 3, `${preset} war on battle rules 3 ends (${json(a.w.result)})`);
+    ok(a.w.result !== null && a.w.battleRules === 4, `${preset} war on battle rules 4 ends (${json(a.w.result)})`);
     console.log(`  ${preset} war on battle rules 3: ${a.w.result?.how} at turn ${a.w.turn}; open attacks ${a.seen.setups}: cut ${a.seen.cut}, short ${a.seen.short}, depot ${a.seen.depot}, with support ${a.seen.support}, with walls ${a.seen.walls}; turns with a shaken region ${a.seen.shaken}, with a wounded vehicle ${a.seen.wounded}`);
     ok(a.seen.depot > 0 && a.seen.support > 0 && a.seen.walls > 0 && a.seen.shaken > 0 && a.seen.wounded > 0, `${preset}: depots, support, walls, shaken regions and wounds all arise in a war`);
   }

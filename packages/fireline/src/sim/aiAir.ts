@@ -29,7 +29,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedResearch, powerOf, queueCap, researchModeOf, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, oreLeft, pacedResearch, powerOf, queueCap, researchModeOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
@@ -231,8 +231,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // With no refinery or no hauler the economy comes first: strikes only.
   const crisis = count('refinery') === 0 || !mine.some(u => u.kind === 'hauler');
   const lines = researchModeOf(s) === 'lines';
-  let ore = 0;
-  for (const o of s.ore) ore += o;
+  const ore = oreLeft(s);
   // 0. Loadouts (development lines): the difficulty's modules, as each is unlocked; none while the
   // economy is in crisis or the ore is running out (the last credits buy hulls, not modules).
   if (lines) fitLoadouts(s, owner, t, crisis || ore < AIR_ORE_FLOOR);
@@ -397,15 +396,49 @@ function nextResearch(s: GameState, owner: Owner, list: UpgradeId[], lines: bool
  * waves send in as a last push. Without this a side can sit for the rest of the battle on a few
  * hundred credits, saving for a structure it will never afford, while its opponent does the same.
  */
+/** With the map mined out: structures sold for a last stand, in order (never the yard, a Barracks, turrets, housing or Farms). */
+const MINED_OUT_SPARE: BuildingKind[] = ['refinery', 'fuelwell', 'foundry', 'munitions', 'trainingcentre', 'techcentre', 'strikecommand', 'protoworks', 'repairbay', 'uplink', 'shipyard', 'helipad', 'depot', 'factory'];
+
 function lastStand(s: GameState, owner: Owner, armed: number): void {
   const p = s.players[owner];
-  if (armed > 0 || p.queues.building.length) return;
+  if (p.queues.building.length) return;
+  // 2026-11-27: with the ore gone, every spare structure becomes troops, army or no army (it used to
+  // wait for the army to be gone first, and two sides with a few riflemen each traded them to the cap).
+  if (armed > 0 && p.credits >= UNITS.rifleman.cost) {
+    const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
+    if (p.queues.infantry.length < queueCap(s, owner, 'infantry') && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+    return;
+  }
   if (p.credits < 300) {
     const flying = s.units.some(u => u.owner === owner && isAir(u));
     const spare = s.buildings.find(b => b.owner === owner && (b.kind === 'researchlab' || b.kind === 'flakcannon' || /* round7:fortification */ b.kind === 'pointdefence' || (b.kind === 'helipad' && !flying)));
     if (spare) {
       doSell(s, owner, spare.id);
       return;
+    }
+    // 2026-11-27: with the ore gone, everything that only ever earned or built from it is spare too,
+    // in this order, and then every Generator but one: two mined-out commanders once sat for an hour
+    // on eighteen and twenty-four structures each, neither with the price of a rifleman.
+    if (p.credits < UNITS.rifleman.cost) {
+      for (const kind of MINED_OUT_SPARE) {
+        const b = s.buildings.find(x => x.owner === owner && x.kind === kind && x.hp > 0);
+        if (b) {
+          doSell(s, owner, b.id);
+          return;
+        }
+      }
+      const generators = s.buildings.filter(x => x.owner === owner && x.kind === 'power' && x.hp > 0);
+      if (generators.length > 1) {
+        doSell(s, owner, generators[generators.length - 1].id);
+        return;
+      }
+      // Last of all the turrets: a trickle of riflemen never breaks a turret line, and two mined-out
+      // sides behind theirs traded riflemen to the cap. A last force is worth more than a turret now.
+      const turret = s.buildings.find(x => x.owner === owner && (x.kind === 'rocketturret' || x.kind === 'turret') && x.hp > 0);
+      if (turret) {
+        doSell(s, owner, turret.id);
+        return;
+      }
     }
   }
   const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
@@ -439,6 +472,13 @@ function recover(s: GameState, owner: Owner, armed: number): void {
     ['techcentre', true],
     ['strikecommand', true],
     ['repairbay', true],
+    // 2026-11-27: the economy's own structures, which earn nothing without a refinery and a hauler.
+    // Without them a side broke after its haulers fell kept its Foundry and Munitions Works to the
+    // cap, a few hundred credits short of a hauler (fireline-design.md).
+    ['munitions', true],
+    ['trainingcentre', true],
+    ['foundry', true],
+    ['fuelwell', true],
   ];
   for (const [kind, ok] of spare) {
     if (!ok) continue;
@@ -487,7 +527,9 @@ function mopUp(s: GameState, owner: Owner, mine: Unit[]): void {
   if (s.tick < s.ai[owner].nextAttack) return;
   // Every enemy unit and structure on the map, seen or not: the commander already knows the map. A
   // side defending with turrets alone is not defenceless: the waves deal with it as ever.
-  if (s.units.some(f => f.hp > 0 && unitSpecOf(s, f).weapon && isEnemy(s, owner, f.owner))) return;
+  // 2026-11-27: a weapon that cannot fire at the ground (an Interceptor's) defends nothing from an
+  // attack on the ground: one Interceptor once kept a side with no other army safe to the cap.
+  if (s.units.some(f => f.hp > 0 && unitSpecOf(s, f).weapon && unitSpecOf(s, f).weapon!.canHitGround !== false && isEnemy(s, owner, f.owner))) return;
   if (s.buildings.some(b => b.hp > 0 && buildingSpecOf(s, b).weapon && isEnemy(s, owner, b.owner))) return;
   allIn(s, owner, mine);
 }

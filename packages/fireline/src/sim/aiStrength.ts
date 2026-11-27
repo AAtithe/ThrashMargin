@@ -104,3 +104,43 @@ export function holdWave(s: GameState, owner: Owner, target: Owner | null, waite
   if (waited < patience) return true;
   return own < foe * WAVE_NERVE;
 }
+
+// ---- 2026-11-27: the adaptive commander's counter-punch ---------------------------------------------
+//
+// Changing its unit mix never made the adaptive commander beat a repeated plan (a tank column won 75%
+// against it and against the fixed commander alike). What it lacked was timing. Against an enemy that
+// commits a heavy armoured army of about its own size, it now braces: it keeps its wave at home, where
+// its turrets fight beside it, for at most WAVE_PATIENCE intervals past due. And whenever the enemy's
+// army has just been ground down (worth PUNCH_DROP or less of its largest in the last PUNCH_LOOK
+// minutes) and its own is at least as large, it strikes at once with whatever is ready, wave due or not,
+// before the enemy rebuilds. Adaptive commanders only; the fixed commander plays as before.
+
+/** The enemy's army is "ground down" at this share of its recent peak or less. */
+export const PUNCH_DROP = 0.7;
+/** Minutes of the enemy's army value remembered (one sample a minute). */
+export const PUNCH_LOOK = 3;
+/** Bracing: the enemy's army is worth at least this share of ours. */
+export const BRACE_SHARE = 0.8;
+
+const valueOf = (s: GameState, owner: Owner, target: Owner | null): number => (target === null ? enemyArmyValue(s, owner) : teamArmyValue(s, target));
+
+/** Once a minute, the enemy's army value goes into the commander's memory (replaced, never changed in place). */
+export function sampleFoe(s: GameState, owner: Owner, target: Owner | null): void {
+  if (s.tick % 600 !== 0) return;
+  const mem = s.ai[owner];
+  mem.foeValues = [...(mem.foeValues ?? []).slice(-(PUNCH_LOOK - 1)), valueOf(s, owner, target)];
+}
+
+/** The enemy's army has just been ground down and ours is at least as large: strike now. */
+export function counterPunch(s: GameState, owner: Owner, target: Owner | null): boolean {
+  const vals = s.ai[owner].foeValues;
+  if (!vals || vals.length < 2) return false;
+  const peak = Math.max(...vals);
+  const now = valueOf(s, owner, target);
+  return peak >= OUTMATCH_FLOOR && now <= peak * PUNCH_DROP && armyValue(s, owner) >= now;
+}
+
+/** A heavy armoured enemy army of about our size: fight it at home first. */
+export function bracing(s: GameState, owner: Owner, target: Owner | null): boolean {
+  return armourThreat(s, owner) && valueOf(s, owner, target) >= armyValue(s, owner) * BRACE_SHARE;
+}

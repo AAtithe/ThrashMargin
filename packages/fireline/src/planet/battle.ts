@@ -103,7 +103,8 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
       research: 'lines',
       pace: 'quick',
       size: battleMapSizeOf(setup),
-      sites: false,
+      // Battle rules 4 (2026-11-27): neutral sites in a war that asks for them; off in every older war.
+      sites: setup.links?.sites === true,
       // round7:fortification: on in a war on battle rules 3.
       fortification: rules3,
       factions: setup.sides.map(() => 'meridian' as const),
@@ -264,6 +265,8 @@ function reportLinks(setup: BattleSetup, s: GameState, sides: { survivors: Battl
     credits: setup.sides.map((_, i) => clamp(s.players[i]?.credits ?? 0)),
     harvested: setup.sides.map((_, i) => clamp(s.players[i]?.stats.harvested ?? 0)),
     wounded,
+    // Battle rules 4: the neutral sites each side holds at the end.
+    ...(setup.links?.sites ? { sitesHeld: setup.sides.map((_, i) => (s.sites ?? []).filter(x => x.owner === i).length) } : {}),
   };
 }
 // round7:planet end

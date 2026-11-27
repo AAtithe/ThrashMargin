@@ -40,6 +40,7 @@ import {
   type Owner,
 } from './rules';
 import { centreOf, cutOff, linkedHubs } from './supply';
+import { farmBeat } from './seasons';
 import { staffed, territoryOn } from './territory';
 import { PROJECTS, SHELL_CASTING_MADE, type ProjectId } from './rules';
 import type { Building, GameState, Unit } from './types';
@@ -74,7 +75,8 @@ export function productionStep(s: GameState, low: ArrayLike<boolean>, idle: Read
     if (b.hp <= 0 || idle.has(b.id) || (b.kind !== 'farm' && b.kind !== 'munitions')) continue;
     const p = s.players[b.owner];
     if (!p) continue;
-    const beat = (b.kind === 'farm' ? FARM_TICKS : MUNITIONS_TICKS) * (low[b.owner] && b.kind === 'munitions' ? 2 : 1);
+    // Seasons (2026-11-27, seasons.ts): a Farm's beat follows the season; FARM_TICKS without them.
+    const beat = (b.kind === 'farm' ? farmBeat(s) : MUNITIONS_TICKS) * (low[b.owner] && b.kind === 'munitions' ? 2 : 1);
     if ((s.tick + b.id) % beat !== 0) continue;
     if (b.kind === 'farm') {
       if ((p.food ?? 0) < foodStore(s, b.owner)) p.food = (p.food ?? 0) + 1;

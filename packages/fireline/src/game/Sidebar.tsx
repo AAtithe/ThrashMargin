@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { upkeepDue, upkeepOn } from '../sim/upkeep';
+import { seasonAt, seasonLeft, seasonsOn } from '../sim/seasons';
+import { holdOn, holdTarget, teamScore, teamSites } from '../sim/victory';
+import { enemiesOf } from '../sim/sides';
 import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
 import { crewNeed, crewWanted, housed, staffed, techNeed, technicians, territoryOn, unstaffed } from '../sim/territory';
 import { foodStore, munitionsStore, productionOn, projectProblem } from '../sim/production';
@@ -151,8 +154,10 @@ const needsOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).requi
  * Q to Y are the original six; U and I continue the top row, and J K L the row below, because O
  * (objectives), P (pause), A, S, G, H, M, F and Z to V already have jobs. B, N and D carry the
  * Structures list on to its last three (Flak Cannon, Helipad and Research Lab on advanced tech).
+ * ; (semicolon, beside L) is the fifteenth (2026-11-27): every letter already has a job, and the
+ * Vehicles list with every option on is fifteen long, its last (the Supply Truck) keyless before.
  */
-export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l', 'b', 'n', 'd'] as const;
+export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l', 'b', 'n', 'd', ';'] as const;
 
 /**
  * Items for a tab, in menu (and hotkey) order. Given the battle, only what can be built in it: a
@@ -577,6 +582,8 @@ export function BuildPanel({
 
       {/* Industry (2026-11-21): fuel and alloys in store, against what this side may hold. */}
       {industryOn(state) && <IndustryGauge state={state} />}
+      {/* Hold victory (2026-11-27): the race to hold the neutral sites. */}
+      {holdOn(state) && <HoldGauge state={state} />}
       {/* round7:structures: every enemy's research and production, while an Intelligence Centre of yours works. */}
       <IntelPanel state={state} />
 
@@ -1911,6 +1918,28 @@ function goodsWords(g: { alloys: number; fuel: number; food?: number }): string 
   return parts.length ? ` and ${parts.join(' and ')}` : '';
 }
 
+/** Hold victory: our team's points and the best enemy team's, against the target, and the sites each holds. */
+function HoldGauge({ state }: { state: GameState }) {
+  const target = holdTarget(state);
+  const ours = teamScore(state, 0);
+  const enemies = enemiesOf(state, 0);
+  const lead = enemies.reduce<Owner | null>((b, o) => (b === null || teamScore(state, o) > teamScore(state, b) ? o : b), null);
+  const theirs = lead === null ? 0 : teamScore(state, lead);
+  return (
+    <div className="fl-d-gauge" data-testid="hold" title={`Hold ground: every site held scores a point a minute; the first side to ${target} points wins.`}>
+      <span className="fl-d-gauge-label">Hold ground</span>
+      <span className="fl-d-goods">
+        <span>
+          Us <span className="fl-d-goods-n" data-testid="hold-ours">{ours}</span>/{target} ({teamSites(state, 0)} sites)
+        </span>
+        <span>
+          Enemy <span className="fl-d-goods-n" data-testid="hold-theirs">{theirs}</span>/{target} ({lead === null ? 0 : teamSites(state, lead)} sites)
+        </span>
+      </span>
+    </div>
+  );
+}
+
 /** Industry: fuel and alloys in store, each against what this side may hold. */
 function IndustryGauge({ state }: { state: GameState }) {
   const p = state.players[0];
@@ -1947,6 +1976,11 @@ function IndustryGauge({ state }: { state: GameState }) {
         {!!short?.food && (
           <span className="fl-d-gauge-state" data-cut="1" data-testid="upkeep-unfed">
             army unfed
+          </span>
+        )}
+        {seasonsOn(state) && (
+          <span className="fl-d-gauge-state" data-cut={seasonAt(state.tick) === 'lean' ? '1' : '0'} data-testid="season" title="Seasons: Farms yield half as much again in the growing season and a quarter in the lean one, when food above half the store rots.">
+            {seasonAt(state.tick)} {Math.ceil(seasonLeft(state.tick) / 600)}m
           </span>
         )}
         {!!short?.fuel && (

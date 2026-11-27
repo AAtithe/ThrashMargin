@@ -25,7 +25,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, oreLeft, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
@@ -49,8 +49,12 @@ import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
 import { openingGuard } from './aiOpening';
-import { WAVE_PATIENCE, armourThreat, holdWave, outmatched } from './aiStrength';
+import { WAVE_PATIENCE, armourThreat, bracing, counterPunch, holdWave, outmatched, sampleFoe } from './aiStrength';
 import { upkeepAllows } from './upkeep';
+import { holdOn } from './victory';
+import { siteCentre } from './sites';
+/** Hold victory: how much nearer, in tiles, an enemy-held site counts as a wave's target. */
+const HOLD_SITE_BONUS = 12;
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
 // round7:adaptive end.
 
@@ -316,7 +320,7 @@ function commander(s: GameState, owner: Owner): void {
     const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : (expansionSpot(s, owner, ready, enemyHome) ?? findSpot(s, owner, ready, home, enemyHome));
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq' || b.kind === 'fieldyard') && !(adv && pacedResearch(s) && !s.ore.some(o => o > 0))) {
+  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq' || b.kind === 'fieldyard') && !(adv && pacedResearch(s) && oreLeft(s) <= 0)) {
     // (Paced research, round 6: on a mined-out map no new structure is bought. Credits that can
     // never be earned again go on units for the last push, not on a structure lost late.)
     // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
@@ -378,7 +382,7 @@ function commander(s: GameState, owner: Owner): void {
   // Broke: no hauler, none queued, no refinery on the way and not enough to buy one.
   // With the advanced tech, also broke when the map's ore is all gone: no income can come, so
   // waiting only lets the army waste away (and the extras are sold off below for one last push).
-  const dry = adv && !s.ore.some(o => o > 0);
+  const dry = adv && oreLeft(s) <= 0;
   const broke =
     (dry && p.credits < 1000) ||
     (!s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
@@ -695,7 +699,9 @@ function commander(s: GameState, owner: Owner): void {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
     return reserve.filter(u => {
-      if (!broke && (u.hp < unitSpecOf(s, u).hp * 0.45 || dist(u.x, u.y, home.x, home.y) > reserveRadius(s))) return false;
+      // 2026-11-27: on a mined-out map the wounded go too: nothing is coming to replace them.
+      if (!broke && !dry && u.hp < unitSpecOf(s, u).hp * 0.45) return false;
+      if (!broke && dist(u.x, u.y, home.x, home.y) > reserveRadius(s)) return false;
       if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return false;
       if (u.kind === 'buggy' && keep > 0) {
         keep--;
@@ -704,19 +710,28 @@ function commander(s: GameState, owner: Owner): void {
       return true;
     });
   };
+  // The adaptive commander's counter-punch and brace (aiStrength.ts, 2026-11-27).
+  const adapting = adaptiveOn(s, owner);
+  if (adapting) sampleFoe(s, owner, aimedAt);
+  const punch = adapting && !broke && counterPunch(s, owner, aimedAt);
   if (mem.wavePhase === 0) {
-    if (!threat && s.tick >= mem.nextAttack && enemy.length) {
+    if (!threat && (s.tick >= mem.nextAttack || punch) && enemy.length) {
       const fit = recruits();
       // A wave that has waited a whole extra interval goes with what it has; with no income left
       // and none coming, everything goes now, since waiting can only make it weaker.
-      const overdue = (s.tick >= mem.nextAttack + d.attackInterval && fit.length >= d.firstWave) || (broke && fit.length > 0);
+      // Broke: what remains goes, but on a mined-out map only once there is nothing left to train or
+      // sell for it (aiAir.ts lastStand), so the last force strikes together, not a rifleman at a time.
+      const spent = p.queues.infantry.length === 0 && p.queues.vehicle.length === 0 && (p.credits < UNITS.rifleman.cost || !canQueue(s, owner, 'infantry', 'rifleman'));
+      const overdue = (s.tick >= mem.nextAttack + d.attackInterval && fit.length >= d.firstWave) || (broke && fit.length > 0 && (!dry || spent)) || (dry && fit.length > 0 && spent);
       // 2026-11-25 (aiStrength.ts): at a paced game size, a commander clearly outmatched in the field
       // keeps its army at home beside its turrets rather than sending it into a stronger one, unless
       // broke. Only one of two sides can be outmatched at a time, so the stronger one still comes.
       // 2026-11-27: weighed against the side the wave is aimed at, and held at most WAVE_PATIENCE
       // intervals past due (holdWave): a hold with no end left the computer passive.
       const hold = pacedResearch(s) && !broke && holdWave(s, owner, aimedAt, s.tick - mem.nextAttack, WAVE_PATIENCE * d.attackInterval);
-      if (!hold && (fit.length >= size || overdue)) {
+      // Bracing against an armour column of its own size: the wave waits at home, within its patience.
+      const brace = adapting && !punch && s.tick - mem.nextAttack < WAVE_PATIENCE * d.attackInterval && bracing(s, owner, aimedAt);
+      if (!hold && !brace && (fit.length >= size || overdue || (punch && fit.length >= Math.ceil(d.firstWave / 2)))) {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
@@ -930,6 +945,18 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
       best = c;
     }
   }
+  // Hold victory (2026-11-27): a site the enemy holds is worth more than any structure, since holding
+  // it is how they win; the wave retakes it (infantry in the wave capture it as they stand by).
+  if (s && viewer !== undefined && holdOn(s))
+    for (const site of s.sites ?? []) {
+      if (site.owner === null || !isEnemy(s, viewer, site.owner)) continue;
+      const c = siteCentre(site);
+      const score = dist(from.x, from.y, c.x, c.y) - HOLD_SITE_BONUS;
+      if (score < bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
   for (const u of foes) {
     if (u.kind !== 'hauler' && u.kind !== 'artillery' && u.kind !== 'missilecarrier') continue;
     const score = dist(from.x, from.y, u.x, u.y) - 9;
@@ -1067,9 +1094,7 @@ function pacedTech(s: GameState): boolean {
 
 /** Ore left on the map, in credits. */
 function mapOre(s: GameState): number {
-  let ore = 0;
-  for (const o of s.ore) ore += o;
-  return ore;
+  return oreLeft(s);
 }
 
 /** A structure beyond what the economy and the basic defences need (advanced tech only). */

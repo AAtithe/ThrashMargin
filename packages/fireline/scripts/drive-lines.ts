@@ -166,7 +166,7 @@ function climb(s: GameState, line: LineId, branch?: UpgradeId): GameState {
 }
 
 /** The setup fields of the armies' round 6, in order, after the pace (fireline-round6-design.md, section 10). */
-const ROUND6_ARMY_FIELDS = ['factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'upkeep', 'structureUpgrades', 'strategicBuildings'];
+const ROUND6_ARMY_FIELDS = ['factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'upkeep', 'seasons', 'structureUpgrades', 'strategicBuildings'];
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
 const mctx = (): MissionContext => ({ id: 'm1', name: 'Mission', createdAt: 0, perks: { ...PERKS0 }, heroes: {}, extraTech: [], extraPowers: [] });

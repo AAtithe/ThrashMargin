@@ -14,7 +14,7 @@ export const ECONOMY_LEVELS: { id: EconomyLevel; name: string; line: string }[] 
   { id: 'supply', name: 'Supply lines', line: 'Producers deliver only when linked to a yard by Depots.' },
   { id: 'territory', name: 'Territory', line: 'Build inside your borders; buildings need crews.' },
   { id: 'production', name: 'Full economy', line: 'Farms, munitions, Supply Trucks, Technicians and Industry projects.' },
-  { id: 'upkeep', name: 'Full economy with upkeep', line: 'Armies eat and burn fuel every minute. For long games.' },
+  { id: 'upkeep', name: 'Long game', line: 'Full economy, and armies eat and burn fuel every minute, through growing and lean seasons.' },
 ];
 
 /** Which step of the ladder a setup is on. */
@@ -27,9 +27,10 @@ export function economyOf(s: Pick<SkirmishSetup, 'industry' | 'supply' | 'territ
 }
 
 /** The five toggles for a step of the ladder. */
-export function economyToggles(level: EconomyLevel): Pick<SkirmishSetup, 'industry' | 'supply' | 'territory' | 'production' | 'upkeep'> {
+export function economyToggles(level: EconomyLevel): Pick<SkirmishSetup, 'industry' | 'supply' | 'territory' | 'production' | 'upkeep' | 'seasons'> {
   const i = ECONOMY_LEVELS.findIndex(l => l.id === level);
-  return { industry: i >= 1, supply: i >= 2, territory: i >= 3, production: i >= 4, upkeep: i >= 5 };
+  // The sixth card turns on seasons with upkeep; the customise step can take seasons back off.
+  return { industry: i >= 1, supply: i >= 2, territory: i >= 3, production: i >= 4, upkeep: i >= 5, seasons: i >= 5 };
 }
 
 export default function EconomyPicker({ value, onPick }: { value: SkirmishSetup; onPick: (patch: ReturnType<typeof economyToggles>) => void }) {
