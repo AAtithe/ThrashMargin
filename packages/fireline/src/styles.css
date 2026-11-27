@@ -8732,3 +8732,562 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   background: var(--ui-accent);
 }
 /* menus polish end */
+
+/* ---- Round 8: the build window, rebuilt (fireline-round8-build-window.md) ------------------------ */
+
+/* The title bar: the view switch and the advisor switch. */
+.fl-bw-views {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fl-bw-views > button {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fl-bw-views > button + button {
+  border-left: 1px solid var(--ui-tree-rule);
+}
+.fl-bw-views > button[aria-pressed="true"] {
+  background: var(--ui-tree-tab-on);
+  color: var(--ui-text);
+  box-shadow: inset 0 -2px 0 var(--ui-accent);
+}
+.fl-bw-advisor {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fl-bw-advisor-lamp {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-rule-strong);
+}
+.fl-bw-advisor[aria-pressed="true"] {
+  color: var(--ui-text);
+  border-color: var(--ui-info);
+}
+.fl-bw-advisor[aria-pressed="true"] .fl-bw-advisor-lamp {
+  background: var(--ui-info);
+  box-shadow: 0 0 0 3px var(--ui-tint-accent);
+}
+
+/* Tabs: a dot for something newly unlocked, a ring where the advisor's suggestion is. */
+.fl-bw-tab {
+  position: relative;
+}
+.fl-bw-tab-new {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--ui-good);
+  vertical-align: 1px;
+}
+.fl-bw-tab[data-advice="1"] {
+  box-shadow: inset 0 0 0 1px var(--ui-info);
+}
+
+/* The Build view. */
+.fl-bl {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fl-bl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-bl-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  padding: 0 0 3px;
+  border: none;
+  border-bottom: 1px solid var(--ui-tree-rule);
+  background: transparent;
+  color: var(--ui-tree-heading);
+  font: inherit;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.fl-bl-group[data-active="1"] > .fl-bl-group-head {
+  color: var(--ui-text);
+  border-bottom: 2px solid var(--ui-accent);
+}
+.fl-bl-group-keys {
+  margin-left: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  color: var(--ui-text-faint);
+}
+.fl-bl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.fl-bl-empty {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ui-text-faint);
+}
+.fl-bl-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-tree-heading);
+}
+.fl-bl-next,
+.fl-bl-later {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ui-tree-rule);
+}
+.fl-bl-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 5px;
+  background: var(--ui-tree-ghost-met);
+}
+.fl-bl-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fl-bl-row-words {
+  flex: 1 1 160px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.fl-next-go {
+  padding: 4px 10px;
+  border: 1px solid var(--ui-accent);
+  border-radius: 4px;
+  background: var(--ui-tint-accent);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fl-next-go:hover:not(:disabled) {
+  background: var(--ui-tree-tab-on);
+}
+.fl-next-go[data-state="ready"] {
+  border-color: var(--ui-good);
+  background: var(--ui-tint-good);
+}
+.fl-next-cost {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 500;
+  color: var(--ui-text-soft);
+}
+.fl-bl-minis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+}
+.fl-bl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fl-bl-tree {
+  padding: 2px 8px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+/* A card: the button and its corner controls. */
+.fl-build-wrap {
+  position: relative;
+  display: flex;
+}
+.fl-build-wrap > .fl-build {
+  flex: 1;
+  min-width: 0;
+}
+.fl-tree-cell[data-variant="card"] .fl-build img {
+  height: 58px;
+  object-fit: cover;
+}
+.fl-bl .fl-tree-cell[data-variant="card"] .fl-build {
+  padding: 4px 4px 6px;
+  font-size: 0.72rem;
+}
+/* Coming next: a small card, the picture a silhouette until it unlocks. */
+.fl-tree-cell[data-variant="mini"] .fl-build {
+  font-size: 0.64rem;
+  padding: 3px 3px 4px;
+}
+.fl-tree-cell[data-variant="mini"] .fl-build img {
+  height: 34px;
+  object-fit: cover;
+}
+.fl-tree-cell[data-variant="mini"] .fl-build[data-state="locked"] img,
+.fl-tree-cell[data-variant="chip"] .fl-build[data-state="locked"] img {
+  filter: grayscale(1) brightness(0.35);
+  opacity: 0.8;
+}
+/* Later: a chip with the name and what it needs. */
+.fl-tree-cell[data-variant="chip"] {
+  background: transparent;
+}
+.fl-tree-cell[data-variant="chip"] .fl-build {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 3px 8px;
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.66rem;
+}
+.fl-tree-cell[data-variant="chip"] .fl-build-name {
+  text-align: left;
+}
+.fl-build-chipneeds {
+  font-size: 0.58rem;
+  color: var(--ui-text-soft);
+}
+
+/* Planning numbers: how long until it is affordable. */
+.fl-build-wait {
+  font-weight: 600;
+  color: var(--ui-text-soft);
+}
+
+/* Roles and the counter badge. */
+.fl-build-roles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+}
+.fl-build-role {
+  padding: 0 4px;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 2px;
+  font-size: 0.56rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+  white-space: nowrap;
+}
+.fl-build-role[data-role="air"] {
+  border-color: var(--ui-info);
+}
+.fl-build-role[data-role="armour"] {
+  border-color: var(--ui-accent);
+}
+.fl-build-counter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1px 0;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--ui-ground);
+  background: var(--ui-good);
+}
+.fl-build[data-counter="1"] {
+  border-color: var(--ui-good);
+}
+
+/* The advisor's ring. */
+.fl-tree-cell[data-advice="1"] .fl-build {
+  border-color: var(--ui-info);
+  box-shadow: 0 0 0 2px var(--ui-info);
+  animation: fl-advise 1.4s ease-in-out infinite alternate;
+}
+@keyframes fl-advise {
+  from { box-shadow: 0 0 0 1px var(--ui-info); }
+  to { box-shadow: 0 0 0 3px var(--ui-info); }
+}
+.fl-tip-advice {
+  color: var(--ui-info);
+  font-weight: 600;
+}
+
+/* A new unlock glows the first time it is seen. */
+.fl-tree-cell[data-fresh="1"] .fl-build {
+  animation: fl-fresh 0.9s ease-out 3;
+  border-color: var(--ui-good);
+}
+@keyframes fl-fresh {
+  0% { box-shadow: 0 0 0 0 var(--ui-good); transform: translateY(4px); }
+  40% { box-shadow: 0 0 0 4px var(--ui-tint-good); transform: none; }
+  100% { box-shadow: 0 0 0 0 var(--ui-tint-good); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-tree-cell[data-fresh="1"] .fl-build,
+  .fl-tree-cell[data-advice="1"] .fl-build { animation: none; }
+}
+:root[data-motion="off"] .fl-tree-cell[data-fresh="1"] .fl-build,
+:root[data-motion="off"] .fl-tree-cell[data-advice="1"] .fl-build { animation: none; }
+
+/* The pin: in the card's upper left, shown on hover or focus, and always once pinned. */
+.fl-pin {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 3px;
+  background: var(--ui-panel);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.fl-build-wrap:hover .fl-pin,
+.fl-build-wrap:focus-within .fl-pin,
+.fl-pin[data-on="1"] {
+  opacity: 1;
+}
+.fl-pin-mark {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--ui-text-soft);
+  border-radius: 50%;
+}
+.fl-pin[data-on="1"] {
+  border-color: var(--ui-accent);
+}
+.fl-pin[data-on="1"] .fl-pin-mark {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+}
+
+/* The Tech tree view: narrower columns so six tiers fit, the chain pointed at, the rest dimmed. */
+.fl-bw .fl-tree {
+  gap: 20px;
+}
+.fl-bw .fl-tree:not([data-orient="down"]) .fl-tree-col {
+  width: 86px;
+}
+.fl-bw .fl-tree:not([data-orient="down"]) .fl-tree-col[data-tier="ghost"] {
+  width: 78px;
+}
+.fl-tree [data-dim="1"] {
+  opacity: 0.32;
+  transition: opacity 0.12s;
+}
+.fl-tree-help {
+  margin-top: 0;
+}
+.fl-tree-slot {
+  display: contents;
+}
+.fl-tree-slot[data-dim="1"] > .fl-tree-cell {
+  opacity: 0.32;
+}
+
+/* The power meter's preview: the lamps the pointed-at structure would change, outlined. */
+.fl-d-meter > span[data-preview="1"] {
+  outline: 1px solid var(--ui-text);
+  outline-offset: -1px;
+  opacity: 0.7;
+}
+.fl-d-gauge-sub[data-preview="1"] {
+  color: var(--ui-text);
+  font-weight: 700;
+}
+
+/* A good-news toast (an unlock), against the usual refusal. */
+.fl-toast[data-tone="good"] {
+  color: var(--ui-good);
+  border-color: var(--ui-good);
+}
+
+/* The Build button names the active structure group. */
+.fl-d-build-group {
+  font-weight: 600;
+  color: var(--ui-text-soft);
+}
+
+/* The quick bar: the battlefield's upper left. */
+.fl-quick {
+  position: absolute;
+  z-index: 25;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 6px;
+  background: var(--ui-tree-panel);
+  box-shadow: 0 4px 14px var(--ui-shadow);
+}
+.fl-quick-slot {
+  position: relative;
+}
+.fl-quick-btn {
+  position: relative;
+  display: block;
+  width: 58px;
+  height: 46px;
+  padding: 2px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel-raised);
+  cursor: pointer;
+  overflow: hidden;
+}
+.fl-quick-btn:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+}
+.fl-quick-btn img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px;
+}
+.fl-quick-btn[data-state="locked"] img,
+.fl-quick-btn[data-afford="0"] img {
+  filter: grayscale(0.9) brightness(0.6);
+}
+.fl-quick-btn[data-state="building"] {
+  border-color: var(--ui-accent);
+}
+.fl-quick-btn[data-state="ready"],
+.fl-quick-btn[aria-pressed="true"] {
+  border-color: var(--ui-good);
+  box-shadow: inset 0 0 0 1px var(--ui-good);
+}
+.fl-quick-key {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-size: 0.58rem;
+  line-height: 1.2;
+  color: var(--ui-text);
+  background: var(--ui-panel);
+}
+.fl-quick-prog {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--ui-accent);
+}
+.fl-quick-badge,
+.fl-quick-count {
+  position: absolute;
+  right: 2px;
+  bottom: 5px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 0.56rem;
+  font-weight: 800;
+  color: var(--ui-ground);
+  background: var(--ui-good);
+}
+.fl-quick-count {
+  background: var(--ui-accent);
+}
+.fl-quick-unpin {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 50%;
+  background: var(--ui-panel);
+  color: var(--ui-text-soft);
+  font: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+.fl-quick-slot:hover .fl-quick-unpin,
+.fl-quick-unpin:focus-visible {
+  opacity: 1;
+}
+.fl-bl-group-none {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ui-text-faint);
+}
+.fl-bl-later > summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+.fl-bl-later[open] > summary {
+  margin-bottom: 8px;
+}
+.fl-bl-later-count {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ui-text-faint);
+}
+.fl-bl-later {
+  display: block;
+}
+
+/* The pin owns the upper left corner, so the Ready badge moves to the top centre. */
+.fl-build-wrap .fl-build-badge[data-kind="ready"] {
+  left: 50%;
+  transform: translateX(-50%);
+}

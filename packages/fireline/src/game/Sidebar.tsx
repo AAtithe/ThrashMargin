@@ -80,6 +80,8 @@ import { canDisband } from '../sim/commands';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralNote } from '../components/Generals';
 // round7:fortification. The Fortification line: the sixth line, structures' full health, Point Defence.
+import { ARMOR_WORDS, ROLE_LABEL, affordWords, counters, groupLabel, rolesOf, scoutedArmor, type Group } from './buildPlan';
+import { FRESH_MS, fresh, incomePerSecond, pins, preview, scouted, togglePin, useStore } from './buildStores';
 import { BATTLE_LINES, POINT_DEFENCE_CHANCE, POINT_DEFENCE_COOLDOWN, POINT_DEFENCE_RADIUS, upgradeLineOf, type BattleLineId } from '../sim/rules';
 import { linesFor, structureMaxHp } from '../sim/fortify';
 // round7:structures begin.
@@ -375,13 +377,23 @@ export function StatTip({
     const side = anchor.closest('aside');
     const win = side ? null : anchor.closest('[data-tip-host]');
     let left: number;
+    // Round 8: the build window's card stays on the battlefield (the window's parent), never over
+    // the sidebar: beside the window where the field has room, else over the window itself, on
+    // whichever side of the item has room.
+    let lo = 8;
+    let hi = window.innerWidth - 8;
     if (win) {
       const r = win.getBoundingClientRect();
-      if (r.right + w + 8 <= window.innerWidth - 8) left = r.right + 8;
-      else if (r.left - w - 8 >= 8) left = r.left - w - 8;
-      else left = a.right + w + 8 <= window.innerWidth - 8 ? a.right + 8 : a.left - w - 8;
+      const field = (win as HTMLElement).dataset.sheet === '1' ? null : win.parentElement?.getBoundingClientRect();
+      if (field) {
+        lo = Math.max(lo, field.left + 4);
+        hi = Math.min(hi, field.right - 4);
+      }
+      if (r.right + w + 8 <= hi) left = r.right + 8;
+      else if (r.left - w - 8 >= lo) left = r.left - w - 8;
+      else left = a.right + w + 8 <= hi ? a.right + 8 : a.left - w - 8;
     } else left = (side ?? anchor).getBoundingClientRect().left - w - 8;
-    el.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, left))}px`;
+    el.style.left = `${Math.max(lo, Math.min(hi - w, left))}px`;
     el.style.top = `${Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, a.top))}px`;
   });
   return (
@@ -484,10 +496,13 @@ export function BuildPanel({
   onOpenTab,
   compact = false,
   touch = false,
+  group,
 }: {
   state: GameState;
   /** The build window's tab, named on the Build button. */
   tab: Tab;
+  /** Round 8: the active structure group, named on the Build button with Structures. */
+  group?: Group;
   dispatch: (a: GameAction) => boolean;
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
@@ -507,13 +522,20 @@ export function BuildPanel({
   // The power meter: twelve lamps across the scale. Amber is drawn, green is spare, red is the
   // shortfall when more is drawn than made.
   const LAMPS = 12;
-  const lamp = (i: number): 'used' | 'spare' | 'short' | 'off' => {
-    const at = ((i + 0.5) / LAMPS) * max;
-    if (at < Math.min(pw.used, pw.made)) return 'used';
-    if (at < pw.made) return 'spare';
-    if (at < pw.used) return 'short';
+  // Round 8: a structure pointed at in the build window previews its power on the meter.
+  const pointed = useStore(preview);
+  const delta = pointed && pointed in BUILDINGS ? buildingSpecFor(factionOf(state, 0), pointed as BuildingKind).power : 0;
+  const after = { made: pw.made + Math.max(0, delta), used: pw.used + Math.max(0, -delta) };
+  const scale = delta ? Math.max(max, after.made, after.used) : max;
+  const lampOf = (i: number, v: { made: number; used: number }): 'used' | 'spare' | 'short' | 'off' => {
+    const at = ((i + 0.5) / LAMPS) * scale;
+    if (at < Math.min(v.used, v.made)) return 'used';
+    if (at < v.made) return 'spare';
+    if (at < v.used) return 'short';
     return 'off';
   };
+  const lamp = (i: number) => lampOf(i, delta ? after : pw);
+  const changed = (i: number) => !!delta && lampOf(i, after) !== lampOf(i, pw);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -535,12 +557,12 @@ export function BuildPanel({
           </span>
           <span className="fl-d-meter" aria-hidden="true">
             {Array.from({ length: LAMPS }, (_, i) => (
-              <span key={i} data-s={lamp(i)} />
+              <span key={i} data-s={lamp(i)} data-preview={changed(i) ? '1' : '0'} />
             ))}
           </span>
-          <span className="fl-d-gauge-sub">
-            <span>{pw.used} used</span>
-            <span>{pw.made} made</span>
+          <span className="fl-d-gauge-sub" data-preview={delta ? '1' : '0'} data-testid="power-sub">
+            <span>{delta ? after.used : pw.used} used</span>
+            <span>{delta ? after.made : pw.made} made</span>
           </span>
         </div>
       </div>
@@ -581,6 +603,7 @@ export function BuildPanel({
       >
         <span className="fl-build-open-label">
           <span className="fl-d-build-word">Build</span> <strong>{tabLabel(tab)}</strong>
+          {tab === 'building' && group && <span className="fl-d-build-group">: {groupLabel(group)}</span>}
         </span>
         {!touch && <kbd>`</kbd>}
       </button>
@@ -706,9 +729,12 @@ function ProductionStrip({
 }
 
 /**
- * One build button, as the build window lays it out: icon, name, cost, hotkey letter, queue count
- * and progress, the Shift batch, the ready-to-place pulse, cancel by right-click (or the ×), and a
- * line naming what it still needs when locked. The stat card shows on hover, focus or a long press.
+ * One build button, as the build window lays it out (fireline-round8-build-window.md): icon, name,
+ * cost (or how long until it is affordable), hotkey letter, queue count and progress, the Shift
+ * batch, the ready-to-place pulse, cancel by right-click (or the ×), role marks and the counter badge
+ * on units, the advisor's ring, the new-unlock glow and the quick bar pin. `variant` is the size:
+ * a full card (buildable now), a mini card (Coming next) or a chip (Later). The stat card shows on
+ * hover, focus or a long press.
  */
 export function BuildButton({
   state,
@@ -721,6 +747,8 @@ export function BuildButton({
   touch,
   tipBind,
   onLongPress,
+  variant = 'card',
+  advice = false,
 }: {
   state: GameState;
   tab: Category;
@@ -732,6 +760,8 @@ export function BuildButton({
   touch: boolean;
   tipBind: Record<string, unknown>;
   onLongPress: (el: HTMLElement | null) => void;
+  variant?: 'card' | 'mini' | 'chip';
+  advice?: boolean;
 }) {
   const p = state.players[0];
   const q = p.queues[tab];
@@ -755,6 +785,18 @@ export function BuildButton({
   // A hotkey letter means nothing without a keyboard.
   const key = touch ? undefined : hotkey?.toUpperCase();
   const missing = needsOf(kind, factionOf(state, 0)).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
+  const isUnit = !(kind in BUILDINGS);
+  // Round 8: planning numbers, roles, counters, the glow for a new unlock and the pin.
+  // "no income" only when nothing is out gathering: a hauler on its first trip will bring some.
+  const rate = incomePerSecond(state);
+  const gathering = rate === 0 && state.units.some(u => u.owner === 0 && u.kind === 'hauler');
+  const wait = open && !affordable && !inQueue && !gathering ? affordWords(cost - p.credits, rate) : null;
+  const roles = isUnit && variant === 'card' ? rolesOf(state, kind as UnitKind) : [];
+  const armor = isUnit && variant === 'card' ? scoutedArmor(scouted(state)) : null;
+  const counter = isUnit && variant === 'card' && counters(state, kind as UnitKind, armor);
+  const freshAt = useStore(fresh).kinds.get(kind);
+  const isFresh = open && freshAt !== undefined && performance.now() - freshAt < FRESH_MS;
+  const pinned = useStore(pins).includes(kind);
   const cancel = () => {
     dispatch({ type: 'cancel', category: tab, kind });
     if (placing === kind) setPlacing(null);
@@ -766,17 +808,43 @@ export function BuildButton({
     if (press.current.fired) onLongPress(null);
   };
   useEffect(() => () => window.clearTimeout(press.current.timer), []);
+  // The power meter's preview: a structure under the pointer or focus.
+  const point = (on: boolean) => {
+    if (isUnit) return;
+    if (on) preview.set(kind);
+    else if (preview.get() === kind) preview.set(null);
+  };
+  useEffect(() => () => {
+    if (preview.get() === kind) preview.set(null);
+  }, [kind]);
+  const needsWords = missing.length
+    ? `Needs ${missing.map(r => BUILDINGS[r].name).join(', ')}`
+    : doctrineLocked
+      ? 'Needs Point Defence research'
+      : null;
   return (
-    <div className="fl-tree-cell" data-node={kind} data-tier-item="1">
-      <div style={{ position: 'relative', display: 'flex' }}>
+    <div
+      className="fl-tree-cell"
+      data-node={kind}
+      data-tier-item="1"
+      data-variant={variant}
+      data-fresh={isFresh ? '1' : '0'}
+      data-advice={advice ? '1' : '0'}
+      onPointerEnter={() => point(true)}
+      onPointerLeave={() => point(false)}
+      onFocus={() => point(true)}
+      onBlur={() => point(false)}
+    >
+      <div className="fl-build-wrap">
         <button
           id={`fl-build-${kind}`}
           className={`fl-build${isReady ? ' ready' : ''}`}
           data-testid={`build-${kind}`}
           data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
           data-afford={affordable ? '1' : '0'}
+          data-counter={counter ? '1' : '0'}
           disabled={disabled}
-          aria-label={`${nameOf(kind)}, ${cost} credits${goodsWords(goods)}${key ? `, hotkey ${key}` : ''}${missing.length ? `, needs ${missing.map(r => BUILDINGS[r].name).join(', ')}` : ''}`}
+          aria-label={`${nameOf(kind)}, ${cost} credits${goodsWords(goods)}${key ? `, hotkey ${key}` : ''}${needsWords ? `, ${needsWords.toLowerCase()}` : ''}${wait ? `, affordable ${wait}` : ''}${counter && armor ? `, strong against the ${ARMOR_WORDS[armor]} you have scouted` : ''}${advice ? ', suggested next' : ''}`}
           aria-keyshortcuts={key}
           aria-pressed={placing === kind}
           {...tipBind}
@@ -806,28 +874,52 @@ export function BuildButton({
             // A finger's long press raises contextmenu too; on touch only the × cancels.
             if (inQueue && !press.current.touch) cancel();
           }}
-          style={{ flex: 1, minWidth: 0 }}
         >
-          <span className="fl-build-pic">
-            <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
-            {isHead && !isReady && (
-              <>
-                <span className="fl-build-sweep" aria-hidden="true" style={{ width: `${Math.round((1 - progress) * 100)}%` }} />
-                <span className="fl-build-pct" aria-hidden="true">
-                  {Math.floor(progress * 100)}%
+          {variant !== 'chip' && (
+            <span className="fl-build-pic">
+              <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+              {isHead && !isReady && (
+                <>
+                  <span className="fl-build-sweep" aria-hidden="true" style={{ width: `${Math.round((1 - progress) * 100)}%` }} />
+                  <span className="fl-build-pct" aria-hidden="true">
+                    {Math.floor(progress * 100)}%
+                  </span>
+                </>
+              )}
+              {counter && (
+                <span className="fl-build-counter" aria-hidden="true" title={armor ? `Strong against the ${ARMOR_WORDS[armor]} you have scouted` : undefined}>
+                  Counters scouted
                 </span>
-              </>
-            )}
-          </span>
+              )}
+            </span>
+          )}
           <span className="fl-build-name">
             {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
           </span>
-          <span className="fl-build-cost" data-short={affordable ? '0' : '1'}>
-            {cost}
-            {goods.alloys > 0 && <span className="fl-build-goods" data-good="alloys" title="Alloys">{` ${goods.alloys}A`}</span>}
-            {goods.fuel > 0 && <span className="fl-build-goods" data-good="fuel" title="Fuel">{` ${goods.fuel}F`}</span>}
-            {(goods.food ?? 0) > 0 && <span className="fl-build-goods" data-good="food" title="Food">{` ${goods.food} food`}</span>}
-          </span>
+          {variant !== 'chip' && (
+            <span className="fl-build-cost" data-short={affordable ? '0' : '1'}>
+              {cost}
+              {goods.alloys > 0 && <span className="fl-build-goods" data-good="alloys" title="Alloys">{` ${goods.alloys}A`}</span>}
+              {goods.fuel > 0 && <span className="fl-build-goods" data-good="fuel" title="Fuel">{` ${goods.fuel}F`}</span>}
+              {(goods.food ?? 0) > 0 && <span className="fl-build-goods" data-good="food" title="Food">{` ${goods.food} food`}</span>}
+              {wait && (
+                <span className="fl-build-wait" data-testid={`wait-${kind}`}>
+                  {' '}
+                  {wait}
+                </span>
+              )}
+            </span>
+          )}
+          {roles.length > 0 && (
+            <span className="fl-build-roles" aria-hidden="true">
+              {roles.map(r => (
+                <span key={r} className="fl-build-role" data-role={r}>
+                  {ROLE_LABEL[r]}
+                </span>
+              ))}
+            </span>
+          )}
+          {variant === 'chip' && needsWords && <span className="fl-build-chipneeds">{needsWords}</span>}
           {isHead && !isReady && (
             <span className="fl-build-prog" aria-hidden="true">
               <span style={{ width: `${Math.round(progress * 100)}%` }} />
@@ -852,16 +944,29 @@ export function BuildButton({
             ×
           </button>
         )}
+        {!touch && variant !== 'chip' && (
+          <button
+            type="button"
+            className="fl-pin"
+            data-testid={`pin-${kind}`}
+            data-on={pinned ? '1' : '0'}
+            aria-pressed={pinned}
+            aria-label={pinned ? `Unpin ${nameOf(kind)} from the quick bar` : `Pin ${nameOf(kind)} to the quick bar`}
+            title={pinned ? 'Unpin from the quick bar' : 'Pin to the quick bar (F1 to F7)'}
+            onClick={() => togglePin(kind)}
+          >
+            <span className="fl-pin-mark" aria-hidden="true" />
+          </button>
+        )}
       </div>
-      {missing.length > 0 && (
+      {variant === 'card' && needsWords && (
         <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
-          Needs {missing.map(r => BUILDINGS[r].name).join(', ')}
+          {needsWords}
         </span>
       )}
-      {/* round7:fortification */}
-      {missing.length === 0 && doctrineLocked && (
+      {variant === 'mini' && doctrineLocked && !missing.length && (
         <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
-          Needs Point Defence research
+          {needsWords}
         </span>
       )}
     </div>
@@ -1165,12 +1270,15 @@ export function BuildTipFooter({
   kind,
   hotkey,
   lowPower,
+  advice,
 }: {
   state: GameState;
   tab: Category;
   kind: BuildingKind | UnitKind;
   hotkey?: string;
   lowPower: boolean;
+  /** Round 8: the advisor's reason, when this is the item it suggests. */
+  advice?: string;
 }) {
   const p = state.players[0];
   const missing = needsOf(kind, factionOf(state, 0)).filter(r => !hasBuilding(state, 0, r));
@@ -1188,6 +1296,21 @@ export function BuildTipFooter({
     if ((goods.food ?? 0) > (p.food ?? 0)) notes.push(`Need ${(goods.food ?? 0) - (p.food ?? 0)} more food: a Farm grows it.`);
   }
   if (lowPower) notes.push('Power is low: everything builds at half speed.');
+  // Round 8: what buying it leaves, credits and (for a structure) power.
+  let after: string | null = null;
+  if (!missing.length && short <= 0) {
+    after = `After buying: ${money(p.credits - price)} credits`;
+    if (kind in BUILDINGS) {
+      const pw = powerOf(state, 0);
+      const d = buildingSpecFor(factionOf(state, 0), kind as BuildingKind).power;
+      if (d !== 0) {
+        const made = pw.made + Math.max(0, d);
+        const used = pw.used + Math.max(0, -d);
+        after += `, power ${used} used of ${made} made${used > made ? ' (short)' : ''}`;
+      }
+    }
+    after += '.';
+  }
   const k = hotkey?.toUpperCase();
   const how =
     tab === 'building'
@@ -1195,7 +1318,13 @@ export function BuildTipFooter({
       : `${k ? `${k} or click` : 'Click'} to train one; with Shift, ${BATCH}. Right-click cancels one.`;
   return (
     <div className="fl-tip-foot">
+      {advice && (
+        <span className="fl-tip-advice" data-testid="tip-advice">
+          Advisor: {advice}
+        </span>
+      )}
       {modules > 0 && <span>Includes {modules} for modules.</span>}
+      {after && <span data-testid="tip-after">{after}</span>}
       {notes.map(n => (
         <span key={n} className="fl-tip-warn">
           {n}

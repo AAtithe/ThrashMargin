@@ -5,16 +5,20 @@
  * place remembered per viewer. Phones and touch: a full-screen sheet. Either way it is not modal:
  * the battle keeps running, and on a desktop the map outside it stays clickable.
  *
- * Each tab lays its items out by tier (techTree.ts) with a line from each item to every structure
- * it needs; a structure on another tab shows as a small ghost node at the start of the tab, so
- * every line has both ends. Everything comes from rules.ts: no kind is named here.
+ * Round 8 (fireline-round8-build-window.md): two views. Build, the default, shows what can be built
+ * now as full cards (Structures in four groups, one of them active for the hotkeys), then Coming next
+ * (what one more structure unlocks) and Later. Tech tree lays every item out by tier (techTree.ts),
+ * drawing lines only for the chain of the item under the pointer or focus. Everything comes from
+ * rules.ts: no kind is named here.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { BUILDINGS, PRODUCER, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
-import { hasBuilding, hasProducer, powerOf, researchModeOf } from '../sim/state';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, powerOf, readyStructure, researchModeOf } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
 import type { GameAction, GameState } from '../sim/types';
-import { BUILD_KEYS, BuildButton, BuildTipFooter, LoadoutPanel, ResearchBlock, StatTip, menuFor, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
+import { BUILD_KEYS, BuildButton, BuildTipFooter, LoadoutPanel, ResearchBlock, StatTip, menuFor, pressBuild, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
+import { advise, groupLabel, groupOf, groupsFor, keyedList, planList, type Advice, type Group, type Kind } from './buildPlan';
+import { advisorOn, advisorPref, buildView, fresh, scouted, seenTab, setAdvisor, setBuildView, useStore } from './buildStores';
 import { rulesCatalogue, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
 import { factionOf } from '../sim/specs';
 
@@ -69,6 +73,9 @@ export interface BuildWindowProps {
   state: GameState;
   tab: Tab;
   setTab: (t: Tab) => void;
+  /** The active structure group (round 8): the one the hotkeys act on. */
+  group: Group;
+  setGroup: (g: Group) => void;
   dispatch: (a: GameAction) => boolean;
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
@@ -78,7 +85,7 @@ export interface BuildWindowProps {
   onClose: () => void;
 }
 
-export default function BuildWindow({ state, tab, setTab, dispatch, placing, setPlacing, touch, sheet, onClose }: BuildWindowProps) {
+export default function BuildWindow({ state, tab, setTab, group, setGroup, dispatch, placing, setPlacing, touch, sheet, onClose }: BuildWindowProps) {
   const ref = useRef<HTMLDivElement>(null);
   const tabs = tabsFor(state);
   // A tab this battle does not offer (Research with its Lab sold) shows the first one instead.
@@ -98,17 +105,18 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
     ro.observe(parent);
     return () => ro.disconnect();
   }, [sheet]);
-  // About 60% of the battlefield wide (never narrower than the tree needs, if the field allows),
-  // at most 80% of it tall.
-  const width = room ? Math.round(Math.min(room.w - 16, Math.max(room.w * 0.6, Math.min(560, room.w - 16)))) : 0;
+  // About 64% of the battlefield wide (never narrower than six tiers of the tree need, if the field
+  // allows), at most 80% of it tall.
+  const width = room ? Math.round(Math.min(room.w - 16, Math.max(room.w * 0.64, Math.min(660, room.w - 16)))) : 0;
   const maxHeight = room ? Math.round(room.h * 0.8) : 0;
   const height = ref.current?.offsetHeight ?? maxHeight;
   const freeX = room ? Math.max(0, room.w - width) : 0;
   const freeY = room ? Math.max(0, room.h - height) : 0;
-  // First time: the centre of the battlefield, a little below the top banners.
-  const at = spot ?? { fx: 0.5, fy: 0.25 };
+  // First time: the centre of the battlefield, a little below the top banners. The top edge is a
+  // fraction of the field's height (round 8), so a tab with less in it does not move the window.
+  const at = spot ?? { fx: 0.5, fy: 0.06 };
   const left = Math.round(freeX * at.fx);
-  const top = Math.round(freeY * at.fy);
+  const top = room ? Math.round(Math.min(freeY, room.h * at.fy)) : 0;
 
   const onHeadDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (sheet || e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
@@ -121,7 +129,7 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
     if (!d || d.id !== e.pointerId) return;
     const x = Math.max(0, Math.min(freeX, e.clientX - d.dx));
     const y = Math.max(0, Math.min(freeY, e.clientY - d.dy));
-    setSpot({ fx: freeX ? x / freeX : 0, fy: freeY ? y / freeY : 0 });
+    setSpot({ fx: freeX ? x / freeX : 0, fy: room && room.h ? y / room.h : 0 });
   };
   const onHeadUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -144,6 +152,15 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
   }, [visible]);
 
   const pw = powerOf(state, 0);
+  const view = useStore(buildView);
+  const advisorChoice = useStore(advisorPref);
+  const advising = advisorOn(advisorChoice, state);
+  const advice = advising ? advise(state, scouted(state)) : null;
+  const newTabs = useStore(fresh).tabs;
+  // Looking at a tab clears its new-unlock dot.
+  useEffect(() => {
+    seenTab(shown);
+  }, [shown, newTabs]);
   const style = sheet
     ? undefined
     : room
@@ -165,8 +182,27 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
     >
       <div className="fl-bw-head" onPointerDown={onHeadDown} onPointerMove={onHeadMove} onPointerUp={onHeadUp} onPointerCancel={onHeadUp} data-testid="build-window-head">
         <strong className="fl-bw-title">Build</strong>
+        <div className="fl-bw-views" role="group" aria-label="View">
+          <button type="button" id="fl-view-build" data-testid="view-build" aria-pressed={view === 'build'} onClick={() => setBuildView('build')}>
+            Build
+          </button>
+          <button type="button" id="fl-view-tree" data-testid="view-tree" aria-pressed={view === 'tree'} onClick={() => setBuildView('tree')}>
+            Tech tree
+          </button>
+        </div>
+        <button
+          type="button"
+          className="fl-bw-advisor"
+          data-testid="advisor-toggle"
+          aria-pressed={advising}
+          title="The advisor rings one sensible next item, with its reason on the item's card"
+          onClick={() => setAdvisor(!advising)}
+        >
+          <span className="fl-bw-advisor-lamp" aria-hidden="true" />
+          Advisor
+        </button>
         <span className="fl-bw-hint">
-          {touch ? 'Long press an item for its numbers.' : 'Drag here to move. Hover an item for its numbers.'}
+          {touch ? 'Long press an item for its numbers.' : 'Drag here to move. Point at an item for its numbers.'}
         </span>
         <button
           type="button"
@@ -193,11 +229,14 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
               className="fl-bw-tab"
               aria-selected={shown === t}
               data-producer={producer ? '1' : '0'}
+              data-new={newTabs.has(t) && shown !== t ? '1' : '0'}
+              data-advice={advice && advice.tab === t && shown !== t ? '1' : '0'}
               onClick={() => setTab(t)}
-              title={`${tabLabel(t)} (${touch ? 'tap' : 'Tab cycles the lists'})`}
+              title={`${tabLabel(t)}${newTabs.has(t) && shown !== t ? ': something new unlocked' : ''} (${touch ? 'tap' : 'Tab cycles the lists'})`}
             >
               {tabLabel(t)}
               {busy > 0 && <span className="fl-bw-tab-busy"> ·{busy}</span>}
+              {newTabs.has(t) && shown !== t && <span className="fl-bw-tab-new" aria-label="new" />}
             </button>
           );
         })}
@@ -205,33 +244,262 @@ export default function BuildWindow({ state, tab, setTab, dispatch, placing, set
       <div className="fl-bw-body fl-scroll" data-testid="build-window-body">
         {shown === 'research' ? (
           <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
+        ) : view === 'build' ? (
+          <BuildList
+            state={state}
+            tab={shown}
+            group={group}
+            setGroup={setGroup}
+            dispatch={dispatch}
+            placing={placing}
+            setPlacing={setPlacing}
+            touch={touch}
+            lowPower={pw.low}
+            advice={advice}
+            onTree={() => setBuildView('tree')}
+          />
         ) : (
-          <BuildTab state={state} tab={shown} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} />
+          <BuildTab state={state} tab={shown} group={group} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} advice={advice} />
         )}
       </div>
     </div>
   );
 }
 
-/** One build list as a tree. */
+/** The hotkey letter for an item: its place in the active list (a structure's group, or the tab). */
+function hotkeyFor(state: GameState, tab: Category, group: Group, kind: string): string | undefined {
+  if (tab === 'building' && groupOf(kind) !== group) return undefined;
+  const i = keyedList(state, tab, group).indexOf(kind as Kind);
+  return i >= 0 ? BUILD_KEYS[i] : undefined;
+}
+
+/** What the window does when a "no producer" note is due, shared by both views. */
+function ProducerNote({ state, tab }: { state: GameState; tab: Category }) {
+  if (hasProducer(state, 0, tab)) return null;
+  return (
+    <p className="fl-bw-note" data-testid="build-note">
+      {tab === 'building'
+        ? state.mission && !state.players[0].stats.built && !state.buildings.some(b => b.owner === 0)
+          ? 'No base in this mission: your units are all you have.'
+          : 'Your Command Yard is gone. No new structures can be built.'
+        : `Build a ${BUILDINGS[PRODUCER[tab]].name} to unlock this list.`}
+    </p>
+  );
+}
+
+/** The Air tab's room on the helipads, under either view. */
+function AirRoom({ state, tab }: { state: GameState; tab: Category }) {
+  if (tab !== 'air' || !hasBuilding(state, 0, 'helipad')) return null;
+  return (
+    <p className="fl-air-room" data-testid="air-room">
+      Helipads serve {airRoom(state, 0) + airCount(state, 0)} aircraft; {airCount(state, 0)} built or queued.
+    </p>
+  );
+}
+
+/**
+ * The Build view (round 8): what can be built now, then Coming next (one row per structure, or set
+ * of structures, whose building unlocks more), then Later.
+ */
+function BuildList({
+  state,
+  tab,
+  group,
+  setGroup,
+  dispatch,
+  placing,
+  setPlacing,
+  touch,
+  lowPower,
+  advice,
+  onTree,
+}: {
+  state: GameState;
+  tab: Category;
+  group: Group;
+  setGroup: (g: Group) => void;
+  dispatch: (a: GameAction) => boolean;
+  placing: BuildingKind | null;
+  setPlacing: (k: BuildingKind | null) => void;
+  touch: boolean;
+  lowPower: boolean;
+  advice: Advice | null;
+  onTree: () => void;
+}) {
+  const faction = factionOf(state, 0);
+  const cat = rulesCatalogue(faction);
+  const menu = menuFor(tab, state);
+  const plan = planList(state, menu);
+  const { tip, bind, clear, show } = useTip<BuildingKind | UnitKind>();
+  useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nameOf = (k: string) => cat.spec(k)?.name ?? k;
+  const button = (k: Kind, variant: 'card' | 'mini' | 'chip') => (
+    <BuildButton
+      key={k}
+      state={state}
+      tab={tab}
+      kind={k}
+      hotkey={hotkeyFor(state, tab, group, k)}
+      placing={placing}
+      setPlacing={setPlacing}
+      dispatch={dispatch}
+      touch={touch}
+      variant={variant}
+      advice={!!advice && advice.kind === k}
+      tipBind={touch ? {} : bind(k)}
+      onLongPress={el => (el ? show(k, el) : clear())}
+    />
+  );
+  const groups = tab === 'building' ? groupsFor(state) : [];
+  // Later: folded or open as the viewer last left it on this tab; null until they choose.
+  const [laterOpen, setLaterOpen] = useState<boolean | null>(null);
+  useEffect(() => setLaterOpen(null), [tab]);
+  const q = state.players[0].queues.building;
+  /** The button on a Coming next row that builds the structure the row is waiting for. */
+  const go = (r: BuildingKind) => {
+    const ready = readyStructure(state, 0) === r;
+    const underWay = q[0]?.kind === r;
+    const busy = q.length > 0 && !underWay;
+    const pct = underWay && !ready ? Math.floor((q[0].progress / buildTicksFor(state, 0, r)) * 100) : 0;
+    const label = ready ? (placing === r ? 'Placing' : 'Place it') : underWay ? `Building ${pct}%` : `Build ${nameOf(r)}`;
+    return (
+      <button
+        key={r}
+        type="button"
+        className="fl-next-go"
+        data-testid={`next-go-${r}`}
+        data-state={ready ? 'ready' : underWay ? 'building' : 'idle'}
+        disabled={(busy && !ready) || (underWay && !ready)}
+        title={busy ? 'Another structure is under way' : undefined}
+        onClick={() => pressBuild(state, 'building', r, placing, dispatch, setPlacing, false)}
+      >
+        {label}
+        {!ready && !underWay && <span className="fl-next-cost"> {costFor(state, 0, r)}</span>}
+      </button>
+    );
+  };
+  return (
+    <div className="fl-bl" data-testid="build-list">
+      <ProducerNote state={state} tab={tab} />
+      {tab === 'building' ? (
+        groups.map(g => {
+          const items = plan.now.filter(k => groupOf(k) === g);
+          const active = g === group;
+          return (
+            <section key={g} className="fl-bl-group" data-group={g} data-active={active ? '1' : '0'} data-testid={`group-${g}`}>
+              <button
+                type="button"
+                className="fl-bl-group-head"
+                id={`fl-group-${g}`}
+                aria-pressed={active}
+                title={active ? 'The hotkeys build from this group' : 'Make this group the one the hotkeys build from (or press Tab)'}
+                onClick={() => setGroup(g)}
+              >
+                {groupLabel(g)}
+                {!items.length && <span className="fl-bl-group-none">nothing yet</span>}
+                {active && !touch && <span className="fl-bl-group-keys">Q W E R T Y</span>}
+              </button>
+              {items.length > 0 && <div className="fl-bl-grid">{items.map(k => button(k, 'card'))}</div>}
+            </section>
+          );
+        })
+      ) : (
+        <section className="fl-bl-group" data-active="1">
+          {plan.now.length ? <div className="fl-bl-grid">{plan.now.map(k => button(k, 'card'))}</div> : <p className="fl-bl-empty">Nothing on this list can be built yet.</p>}
+        </section>
+      )}
+      {tab === 'vehicle' && <LoadoutPanel state={state} dispatch={dispatch} />}
+      <AirRoom state={state} tab={tab} />
+      {plan.next.length > 0 && (
+        <section className="fl-bl-next" data-testid="coming-next">
+          <h4 className="fl-bl-title">Coming next</h4>
+          {plan.next.map(row => (
+            <div key={row.needs.join('+')} className="fl-bl-row" data-needs={row.needs.join('+')}>
+              <div className="fl-bl-row-head">
+                <span className="fl-bl-row-words">
+                  {row.needs.map(nameOf).join(' and ')} {row.needs.length > 1 ? 'unlock' : 'unlocks'}{' '}
+                  {row.items.length === 1 ? nameOf(row.items[0]) : row.items.length === 2 ? `${nameOf(row.items[0])} and ${nameOf(row.items[1])}` : `${row.items.length} items`}
+                </span>
+                {row.needs.map(go)}
+              </div>
+              <div className="fl-bl-minis">{row.items.map(k => button(k, 'mini'))}</div>
+            </div>
+          ))}
+        </section>
+      )}
+      {plan.later.length > 0 && (
+        // Folded while anything nearer is on show; open when Later is all the list has.
+        <details className="fl-bl-later" data-testid="later" open={laterOpen ?? (!plan.now.length && !plan.next.length)} onToggle={e => setLaterOpen((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary className="fl-bl-title">
+            Later
+            <span className="fl-bl-later-count">
+              {plan.later.length} {plan.later.length === 1 ? 'item' : 'items'} further up the tree
+            </span>
+            <button
+              type="button"
+              className="fl-bl-tree"
+              onClick={e => {
+                e.preventDefault();
+                onTree();
+              }}
+            >
+              See the tech tree
+            </button>
+          </summary>
+          <div className="fl-bl-chips">{plan.later.map(k => button(k, 'chip'))}</div>
+        </details>
+      )}
+      {tip && (
+        <StatTip
+          kind={tip.key}
+          faction={faction}
+          state={state}
+          anchor={tip.el}
+          research={researchModeOf(state)}
+          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={hotkeyFor(state, tab, group, tip.key)} lowPower={lowPower} advice={advice && advice.kind === tip.key ? advice.reason : undefined} />}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Every structure an item depends on, however far back. */
+function chainOf(cat: Catalogue, kind: string): Set<string> {
+  const out = new Set<string>([kind]);
+  const walk = (k: string) => {
+    for (const r of cat.spec(k)?.requires ?? []) {
+      if (r === 'hq' || out.has(r)) continue;
+      out.add(r);
+      walk(r);
+    }
+  };
+  walk(kind);
+  return out;
+}
+
+/** One build list as a tree: lines only for the chain of the item pointed at. */
 function BuildTab({
   state,
   tab,
+  group,
   dispatch,
   placing,
   setPlacing,
   touch,
   orient,
   lowPower,
+  advice,
 }: {
   state: GameState;
   tab: Category;
+  group: Group;
   dispatch: (a: GameAction) => boolean;
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
   touch: boolean;
   orient: 'across' | 'down';
   lowPower: boolean;
+  advice: Advice | null;
 }) {
   const extras = readExtras();
   const extraKey = extras.map(x => `${x.tab}:${x.kind}:${x.requires.join('+')}`).join(',');
@@ -249,11 +517,18 @@ function BuildTab({
   // Which items show a "Needs" line: their height changes, so the lines are measured again.
   const lockKey = items.map(k => (cat.spec(k)?.requires ?? []).filter(r => r !== 'hq' && !stands(r)).length).join('');
 
+  // ---- The item pointed at, and its chain -------------------------------------------------------
+  const [focus, setFocus] = useState<string | null>(null);
+  useEffect(() => setFocus(null), [tab]);
+  const chain = useMemo(() => (focus ? chainOf(cat, focus) : null), [cat, focus]);
+  const nodeOf = (t: EventTarget | null) => ((t as HTMLElement | null)?.closest?.('[data-node]') as HTMLElement | null)?.dataset.node ?? null;
+
   // ---- The lines, measured from the laid-out buttons ---------------------------------------------
   const treeRef = useRef<HTMLDivElement>(null);
   const [paths, setPaths] = useState<{ from: string; to: string; d: string }[]>([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const layoutKey = `${tab}|${orient}|${items.join(',')}|${tree.ghosts.join(',')}|${lockKey}`;
+  const edges = useMemo(() => (chain ? tree.edges.filter(e => chain.has(e.from) && chain.has(e.to)) : []), [chain, tree]);
+  const layoutKey = `${tab}|${orient}|${items.join(',')}|${tree.ghosts.join(',')}|${lockKey}|${focus ?? ''}`;
   useLayoutEffect(() => {
     const root = treeRef.current;
     if (!root) return;
@@ -267,7 +542,7 @@ function BuildTab({
         return { l: r.left - box.left, t: r.top - box.top, r: r.right - box.left, b: r.bottom - box.top };
       };
       const out: { from: string; to: string; d: string }[] = [];
-      for (const e of tree.edges) {
+      for (const e of edges) {
         const a = rectOf(e.from);
         const b = rectOf(e.to);
         if (!a || !b) continue;
@@ -300,16 +575,27 @@ function BuildTab({
 
   return (
     <>
-      {!hasProducer(state, 0, tab) && (
-        <p className="fl-bw-note" data-testid="build-note">
-          {tab === 'building'
-            ? state.mission && !state.players[0].stats.built && !state.buildings.some(b => b.owner === 0)
-              ? 'No base in this mission: your units are all you have.'
-              : 'Your Command Yard is gone. No new structures can be built.'
-            : `Build a ${BUILDINGS[PRODUCER[tab]].name} to unlock this list.`}
-        </p>
-      )}
-      <div ref={treeRef} className="fl-tree" data-orient={orient} data-testid="build-tree">
+      <ProducerNote state={state} tab={tab} />
+      <p className="fl-bw-note fl-tree-help">{touch ? 'Long press an item to trace what it needs.' : 'Point at an item to trace everything it needs.'}</p>
+      <div
+        ref={treeRef}
+        className="fl-tree"
+        data-orient={orient}
+        data-testid="build-tree"
+        data-focus={focus ?? ''}
+        onPointerOver={e => {
+          const k = nodeOf(e.target);
+          if (k && k !== focus) setFocus(k);
+        }}
+        onPointerLeave={() => setFocus(null)}
+        onFocus={e => {
+          const k = nodeOf(e.target);
+          if (k) setFocus(k);
+        }}
+        onBlur={e => {
+          if (!treeRef.current?.contains(e.relatedTarget as Node | null)) setFocus(null);
+        }}
+      >
         <svg className="fl-tree-lines" width={size.w} height={size.h} aria-hidden="true" data-testid="build-lines">
           {paths.map(p => (
             <path key={`${p.from}>${p.to}`} className="fl-tree-line" d={p.d} data-from={p.from} data-to={p.to} data-met={stands(p.to) ? '1' : '0'} />
@@ -320,7 +606,7 @@ function BuildTab({
             <span className="fl-tree-head">Needs</span>
             <div className="fl-tree-items">
               {tree.ghosts.map(g => (
-                <div key={g} className="fl-tree-cell" data-node={g}>
+                <div key={g} className="fl-tree-cell" data-node={g} data-dim={chain && !chain.has(g) ? '1' : '0'}>
                   <div className="fl-tree-ghost" id={`fl-ghost-${g}`} data-met={stands(g) ? '1' : '0'} title={stands(g) ? `You have a ${nameOf(g)}` : `Build a ${nameOf(g)} first`}>
                     <span className="fl-tree-ghost-label">needs</span> {nameOf(g)}
                   </div>
@@ -335,22 +621,30 @@ function BuildTab({
             <div className="fl-tree-items">
               {col.items.map(kind => {
                 const index = menu.indexOf(kind as BuildingKind | UnitKind);
-                if (index < 0 || !isReal(kind)) return <PreviewItem key={kind} kind={kind} cat={cat} stands={stands} />;
+                const dim = chain && !chain.has(kind) ? '1' : '0';
+                if (index < 0 || !isReal(kind)) return <PreviewItem key={kind} kind={kind} cat={cat} stands={stands} dim={dim} />;
                 const k = kind as BuildingKind | UnitKind;
                 return (
-                  <BuildButton
-                    key={kind}
-                    state={state}
-                    tab={tab}
-                    kind={k}
-                    hotkey={BUILD_KEYS[index]}
-                    placing={placing}
-                    setPlacing={setPlacing}
-                    dispatch={dispatch}
-                    touch={touch}
-                    tipBind={touch ? {} : bind(k)}
-                    onLongPress={el => (el ? show(k, el) : clear())}
-                  />
+                  <div key={kind} className="fl-tree-slot" data-dim={dim}>
+                    <BuildButton
+                      state={state}
+                      tab={tab}
+                      kind={k}
+                      hotkey={hotkeyFor(state, tab, group, k)}
+                      placing={placing}
+                      setPlacing={setPlacing}
+                      dispatch={dispatch}
+                      touch={touch}
+                      advice={!!advice && advice.kind === k}
+                      tipBind={touch ? {} : bind(k)}
+                      onLongPress={el => {
+                        if (el) {
+                          show(k, el);
+                          setFocus(k);
+                        } else clear();
+                      }}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -359,11 +653,7 @@ function BuildTab({
       </div>
       {/* Development lines: the vehicle loadouts, under the Vehicles tree (round 5b). */}
       {tab === 'vehicle' && <LoadoutPanel state={state} dispatch={dispatch} />}
-      {tab === 'air' && hasBuilding(state, 0, 'helipad') && (
-        <p className="fl-air-room" data-testid="air-room">
-          Helipads serve {airRoom(state, 0) + airCount(state, 0)} aircraft; {airCount(state, 0)} built or queued.
-        </p>
-      )}
+      <AirRoom state={state} tab={tab} />
       {tip && (
         <StatTip
           kind={tip.key}
@@ -371,7 +661,7 @@ function BuildTab({
           state={state}
           anchor={tip.el}
           research={researchModeOf(state)}
-          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={lowPower} />}
+          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={hotkeyFor(state, tab, group, tip.key)} lowPower={lowPower} advice={advice && advice.kind === tip.key ? advice.reason : undefined} />}
         />
       )}
     </>
@@ -384,11 +674,11 @@ const isReal = (k: string) => rulesCatalogue('meridian').spec(k) !== null;
  * A kind the rules do not know (the test hook's extra item): laid out like any other from its spec,
  * but it cannot be built.
  */
-function PreviewItem({ kind, cat, stands }: { kind: string; cat: Catalogue; stands: (k: string) => boolean }) {
+function PreviewItem({ kind, cat, stands, dim }: { kind: string; cat: Catalogue; stands: (k: string) => boolean; dim: string }) {
   const spec = cat.spec(kind);
   const missing = (spec?.requires ?? []).filter(r => r !== 'hq' && !stands(r));
   return (
-    <div className="fl-tree-cell" data-node={kind} data-extra="1">
+    <div className="fl-tree-cell" data-node={kind} data-extra="1" data-dim={dim}>
       <div style={{ position: 'relative', display: 'flex' }}>
         <button id={`fl-build-${kind}`} className="fl-build" data-state={missing.length ? 'locked' : 'idle'} disabled style={{ flex: 1, minWidth: 0 }}>
           <span className="fl-tree-preview" aria-hidden="true" />
