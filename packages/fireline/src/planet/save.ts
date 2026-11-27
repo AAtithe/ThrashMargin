@@ -526,6 +526,7 @@ function cleanLinks(raw: unknown, seats: number, regions: number): SetupLinks | 
     support,
     reinforce,
     walls: r.walls,
+    ...(r.sites === true ? { sites: true as const } : {}),
   };
 }
 
@@ -675,7 +676,7 @@ export function migratePlanetState(raw: unknown): PlanetState | null {
     result,
     // Section 9.7: a war saved without it is on battle rules 1 (standard maps) for good; round 7's
     // version 3 is kept as it is, and never added to an older war.
-    ...(r.battleRules === 2 || r.battleRules === 3 ? { battleRules: r.battleRules } : {}),
+    ...(r.battleRules === 2 || r.battleRules === 3 || r.battleRules === 4 ? { battleRules: r.battleRules } : {}),
   };
 }
 

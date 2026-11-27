@@ -14,6 +14,9 @@ import {
   type UnitKind,
 } from './rules';
 import { siteCentre, siteDist } from './sites';
+import { holdOn } from './victory';
+/** Hold victory: capture parties beyond the difficulty's. */
+const HOLD_EXTRA_PARTIES = 2;
 import { costFor, countBuildings, lineCount, maxHpOf, powerOf, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import type { GameState, Site, Unit } from './types';
@@ -71,7 +74,9 @@ type Pt = { x: number; y: number };
 export function sitesPlan(s: GameState, owner: Owner, home: Pt, _enemyHome: Pt, units: Unit[], foes: Unit[]): void {
   if (s.mission) return;
   const diff: Difficulty = owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
-  const t = SITE_TACTICS[diff];
+  const base = SITE_TACTICS[diff];
+  // Hold victory (2026-11-27, victory.ts): the sites decide the battle, so one more party, one larger.
+  const t = holdOn(s) ? { ...base, parties: base.parties + HOLD_EXTRA_PARTIES, partySize: base.partySize + 1 } : base;
   if (s.sites && s.sites.length) captureParties(s, owner, t, home, units, foes);
   if (techAllowed(s, owner, 'protoworks')) tierThree(s, owner, diff, t, home, units, foes);
 }

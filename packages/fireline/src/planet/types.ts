@@ -267,7 +267,7 @@ export interface PlanetState {
    * 2: the map size by stakes (`battleMapSize`). 3 (round 7): also the links between the war and its
    * battles (`SetupLinks`, `ReportLinks`, fireline-round7-planet.md). New wars start at 3.
    */
-  battleRules?: 2 | 3;
+  battleRules?: 2 | 3 | 4;
 }
 
 // ---- The W1/W2 interface ---------------------------------------------------------------------
@@ -375,6 +375,8 @@ export interface SetupLinks {
   reinforce: { at: number; units: ArmyKind[] } | null;
   /** Sandbag walls the defender's fortifications put in front of its city. */
   walls: number;
+  /** Battle rules 4 (2026-11-27): neutral sites on the battle's map. Absent: none (rules 3). */
+  sites?: true;
 }
 
 /** What a battle on battle rules 3 sends back to the war (round 7). */
@@ -387,6 +389,8 @@ export interface ReportLinks {
   harvested: number[];
   /** Per side: field army slots of survivors that end the battle wounded (vehicles below half health). */
   wounded: number[][];
+  /** Battle rules 4: per side, neutral sites held at the end. Only when the setup's links have `sites`. */
+  sitesHeld?: number[];
 }
 
 export interface BattleReport {

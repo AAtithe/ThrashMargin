@@ -1087,7 +1087,7 @@ export function Battle({
       }
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Q W E R T Y (then U I J K L B N D): the open list's items in order, the active group's
+        // Q W E R T Y (then U I J K L B N D ;): the open list's items in order, the active group's
         // on Structures (round 8); Shift queues five units.
         const kind = keyedList(cur.current, tabRef.current, groupRef.current)[buildIndex];
         if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
@@ -2216,8 +2216,8 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['` (backquote) or Build', 'Open or close the build window: every structure, unit and upgrade, laid out by what each needs'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the list the Build button names, window open or closed (the letter is on each button)'],
     [
-      'U I J K L B N D',
-      'With advanced tech: the seventh to fourteenth item in that list. Items past the fourteenth (the Prototype Works, the Fortress, the Naval Yard and, with heroes on, the Command Academy) have no key: click them in the build window',
+      'U I J K L B N D ;',
+      'With advanced tech: the seventh to fifteenth item in that list (; is the semicolon key). Structures past the fifteenth (the Fortress, the Naval Yard and, with heroes on, the Command Academy) have no key: click them in the build window',
     ],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],

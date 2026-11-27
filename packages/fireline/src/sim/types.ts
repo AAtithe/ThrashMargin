@@ -92,6 +92,10 @@ export interface Unit {
    * climbed in (id, health, rank kept), off the map until set down. Replaced, never changed in place.
    */
   carried?: Unit[];
+  /** Two-level routes (regions.ts): the path is one leg of a longer route; walked, the unit asks again. */
+  pathLeg?: true;
+  /** Army upkeep (upkeep.ts): set on a unit that deserted or was abandoned, so it leaves without an explosion. */
+  deserted?: boolean;
   /** Troop Carriers only: set its infantry down as soon as it stops (Unload given while flying). */
   drop?: true;
   /** Infantry only: the Troop Carrier it is walking to, to climb in when it is close. */
@@ -277,6 +281,8 @@ export interface PlayerState {
   /** Advanced production (setup.production): food and munitions in store. Absent on every other battle. */
   food?: number;
   munitions?: number;
+  /** Army upkeep (upkeep.ts): minutes in a row this side could not feed or fuel its army. Absent: paid in full. */
+  upkeepShort?: import('./upkeep').UpkeepShort;
   /** Advanced production: Industry projects finished, and the one under way (paid for). Absent: none. */
   projects?: import('./rules').ProjectId[];
   project?: { id: import('./rules').ProjectId; progress: number } | null;
@@ -470,6 +476,8 @@ export interface AiMemory {
   /** The last tick enemy artillery was seen within reach of home: the Bunker is manned until it has been quiet a while. */
   pressureAt?: number;
   // round7:structures end.
+  /** The adaptive commander's counter-punch (aiStrength.ts, 2026-11-27): the enemy's army value, a minute apart, newest last. */
+  foeValues?: number[];
   // round7:adaptive begin. The adaptive commander (aiAdapt.ts, fireline-round7-adaptive.md): what it
   // has seen of its enemies and the plan it follows. Absent: the commander has not adapted (the
   // setup's `adaptive` is off, Easy, a mission, or a save from before round 7).
@@ -619,6 +627,8 @@ export interface GameState {
   // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
   /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
   sites?: Site[];
+  /** Hold victory (victory.ts): each side's points from the sites it has held. Absent: none scored. */
+  holdScore?: number[];
 
   // ---- Round 6 (all optional: absent on older saves, missions and setups without them) ----------
   /**

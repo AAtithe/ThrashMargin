@@ -92,7 +92,10 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 
 - **`npm run check` before pushing.** Every typecheck and every game's test suite in one command.
   The Vercel build runs it first and does not deploy on failure; GitHub Actions runs it on every
-  push (`.github/workflows/ci.yml`).
+  push (`.github/workflows/ci.yml`). It runs Fireline's suite with `--fast`, which leaves out the
+  heaviest whole-battle sections (`DEEP_SECTIONS` in `packages/fireline/scripts/drive.ts`).
+  **`npm run check:deep`** runs everything, and CI runs it every night (`nightly.yml`); run it
+  yourself before pushing any change to the AI, the balance or a battle rule.
 - **`npm run test:api` after touching anything under `api/`.** The server code against a real
   Postgres that includes Supabase's own `auth.users` table, built from `db/schema.sql`, plus a second
   pass on a pre-existing database to test the API's automatic setup. Needs

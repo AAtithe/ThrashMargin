@@ -40,7 +40,13 @@ step "Test: browser save queue"
 
 for game in thrash-margin tea-race steady-eddie niccolo niccolo-rising founders-ledger fireline; do
   step "Test suite: $game"
-  npm run drive --workspace="packages/$game" --silent | tail -3
+  # Fireline's suite leaves its heaviest whole-battle sections out unless CHECK_DEEP is set
+  # (npm run check:deep, and the nightly CI run): 25 minutes was too long for every push and deploy.
+  if [ "$game" = fireline ] && [ -z "${CHECK_DEEP:-}" ]; then
+    npm run drive --workspace="packages/$game" --silent -- --fast | tail -3
+  else
+    npm run drive --workspace="packages/$game" --silent | tail -3
+  fi
 done
 
 step "Test suite: fireline campaign (progression, the eight missions built and run)"

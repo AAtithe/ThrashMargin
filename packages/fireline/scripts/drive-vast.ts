@@ -6,7 +6,7 @@
  * hour of game time or more); scripts/long-games.ts plays them.
  */
 import { processAction } from '../src/sim/actions';
-import { mapScale, scaledFor, SURPLUS_BARRACKS, SURPLUS_CREDITS, SURPLUS_FACTORIES, surplusOn, VAST_SCALE_RATE } from '../src/sim/aiScale';
+import { ATTACK_INTERVAL_CAP, FIRST_ATTACK_CAP, mapScale, scaledFor, SURPLUS_BARRACKS, SURPLUS_CREDITS, SURPLUS_FACTORIES, surplusOn, VAST_SCALE_RATE } from '../src/sim/aiScale';
 import { placementProblem } from '../src/sim/commands';
 import { findPath, occupancy, passable } from '../src/sim/grid';
 import { RAVINE_BRIDGE_GAP, carveTile } from '../src/sim/hazards';
@@ -56,13 +56,14 @@ function newBattle(seed: string, size: MapSize, sides: 2 | 3 | 4 = 2, mode: Side
 // ---- The size ------------------------------------------------------------------------------------
 
 function sizeTests(ok: Ok): void {
-  ok(MAP_SIZES[MAP_SIZES.length - 1] === 'vast' && MAP_SIZE_NAMES.vast === 'Vast' && MAP_SIZE_BLURBS.vast.length > 0, 'vast: the largest size, named and described');
+  // 2026-11-27: Continental follows vast as the largest (drive-continental.ts).
+  ok(MAP_SIZES[MAP_SIZES.length - 2] === 'vast' && MAP_SIZES[MAP_SIZES.length - 1] === 'continental' && MAP_SIZE_NAMES.vast === 'Vast' && MAP_SIZE_BLURBS.vast.length > 0, 'vast: the size before Continental, named and described');
   for (const n of [2, 3, 4] as const) {
     ok(MAP_SIZE_TILES.vast[n] === 2 * MAP_SIZE_TILES.huge[n], `vast, ${n} sides: twice as wide as huge, four times the ground (${MAP_SIZE_TILES.vast[n]} tiles)`);
     ok(MAP_SIZE_TILES.vast[n] <= MAP_TILES_MAX, `vast, ${n} sides: within MAP_TILES_MAX`);
     ok(MAP_SIZE_TILES.huge[n] <= MAP_TILES_MAX_BALANCED && MAP_SIZE_TILES.vast[n] > MAP_TILES_MAX_BALANCED, `${n} sides: huge is a balanced size, vast is beyond it`);
   }
-  ok(MAP_SIZES.every(z => sizeHasHazards(z) === (z === 'vast')), 'only vast maps carry ravines and ruined cities');
+  ok(MAP_SIZES.every(z => sizeHasHazards(z) === (z === 'vast' || z === 'continental')), 'only vast and Continental maps carry ravines and ruined cities');
   ok(normaliseSetup({ size: 'vast' }).size === 'vast' && normaliseSetup({ size: 'Vast' as MapSize }).size === 'standard', 'normaliseSetup keeps vast and refuses anything like it');
   for (const kind of ['derrick', 'hospital', 'relay'] as const) ok(SITES_PER_SIDE.vast[kind] >= SITES_PER_SIDE.huge[kind], `vast: at least as many ${kind} sites a side as huge`);
 }
@@ -247,7 +248,12 @@ function aiTests(ok: Ok): void {
     ok(Math.abs(mapScale(vast) - (knee + (raw - knee) * VAST_SCALE_RATE)) < 1e-9, `vast, ${n} sides: scale ${mapScale(vast).toFixed(2)}, damped from ${raw.toFixed(2)}`);
     const h = scaledFor(huge, DIFFICULTIES.normal);
     const v = scaledFor(vast, DIFFICULTIES.normal);
-    ok(v.firstAttack > h.firstAttack && v.turrets >= h.turrets && v.waveCap >= h.waveCap, `vast, ${n} sides: a later first attack and at least huge's forces`);
+    // 2026-11-27: the patience cap (aiScale.ts) holds the first attack to FIRST_ATTACK_CAP times the
+    // difficulty's own and the interval to ATTACK_INTERVAL_CAP, so vast is no later than that.
+    ok(
+      v.firstAttack >= h.firstAttack && v.firstAttack <= Math.round(DIFFICULTIES.normal.firstAttack * FIRST_ATTACK_CAP) && v.attackInterval <= Math.round(DIFFICULTIES.normal.attackInterval * ATTACK_INTERVAL_CAP) && v.turrets >= h.turrets && v.waveCap >= h.waveCap,
+      `vast, ${n} sides: a first attack no earlier than huge's and within the patience cap, and at least huge's forces`,
+    );
     ok(vast.ai.every(a => a.nextAttack === v.firstAttack), `vast, ${n} sides: every commander's first attack set for the size (${v.firstAttack})`);
   }
 }

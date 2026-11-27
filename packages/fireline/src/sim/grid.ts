@@ -1,4 +1,5 @@
-import { BUILDINGS, pathExpandLimitFor, type Owner } from './rules';
+import { BUILDINGS, MAP_TILES_MAX_BALANCED, pathExpandLimitFor, type Owner } from './rules';
+import { coarseFor, legTarget } from './regions';
 import { frontDir as sideFront } from './sides';
 import type { Building, GameState, Unit } from './types';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
@@ -247,6 +248,28 @@ function scratchFor(total: number): void {
  * cannot be reached the path leads to the reachable tile closest to it.
  */
 export function findPath(s: GameState, occ: Int32Array, start: number, goal: number, sea = false): number[] {
+  // One whole search, on every size, as always; units walking use findRoute's legs on the largest maps.
+  return tilePath(s, occ, start, goal, sea);
+}
+
+/**
+ * findPath, and whether the path is only a leg of a longer route (2026-11-27, regions.ts): on maps
+ * wider than the balanced sizes a long route is found over regions first and the tile search runs only
+ * to the end of its first leg; the caller walks it and asks again. Every balanced size: findPath exactly.
+ */
+export function findRoute(s: GameState, occ: Int32Array, start: number, goal: number, sea = false): { path: number[]; leg: boolean } {
+  if (s.mapW > MAP_TILES_MAX_BALANCED && start !== goal) {
+    const leg = legTarget(coarseFor(s.tiles, s.mapW, s.mapH, groundMask(s.tiles, sea), sea), start, goal);
+    if (leg !== null) {
+      // A leg that leads nowhere (the start already at it, or walled in by structures) falls back to the plain search.
+      const path = tilePath(s, occ, start, leg, sea);
+      if (path.length) return { path, leg: true };
+    }
+  }
+  return { path: tilePath(s, occ, start, goal, sea), leg: false };
+}
+
+function tilePath(s: GameState, occ: Int32Array, start: number, goal: number, sea = false): number[] {
   if (start === goal) return [];
   const MAP_W = s.mapW;
   const total = MAP_W * s.mapH;

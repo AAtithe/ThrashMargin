@@ -47,7 +47,7 @@ export interface SaveMeta {
   sides?: 3 | 4;
   mode?: SideMode;
   /** Round 5: a battle on a larger map. Absent for standard size. */
-  size?: 'large' | 'huge' | 'vast';
+  size?: 'large' | 'huge' | 'vast' | 'continental';
 }
 
 /**
@@ -80,7 +80,7 @@ function metaOf(s: LoadedSave): SaveMeta {
   }
   return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}),
     ...(s.players.length > 2 ? { sides: s.players.length as 3 | 4, mode: s.setup?.mode === 'teams' ? ('teams' as const) : ('ffa' as const) } : {}),
-    ...(s.setup?.size === 'large' || s.setup?.size === 'huge' || s.setup?.size === 'vast' ? { size: s.setup.size } : {}),
+    ...(s.setup?.size === 'large' || s.setup?.size === 'huge' || s.setup?.size === 'vast' || s.setup?.size === 'continental' ? { size: s.setup.size } : {}),
   };
 }
 

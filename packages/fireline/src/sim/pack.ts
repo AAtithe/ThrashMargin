@@ -1,4 +1,6 @@
-import { MAP_TILES_MAX_BALANCED } from './rules';
+import { MAP_TILES_MAX_BALANCED, type MapType, type OreLevel } from './rules';
+import { generateSkirmishMap } from './maps';
+import { seedFromString } from './rng';
 import type { GameState } from './types';
 
 /**
@@ -21,6 +23,36 @@ export interface PackedFields {
   tiles: string;
   ore: string;
   explored: string;
+  /**
+   * Continental maps (2026-11-27): the ground is not saved at all (`tiles` is empty) but built again
+   * from the battle's seed and setup, as it was at the start (it never changes in a battle); this is
+   * the ground's checksum, and a save whose rebuilt ground does not match it is refused.
+   */
+  tilesSum?: number;
+}
+
+/** A string's FNV-1a checksum, as a whole number. */
+export function textSum(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+/** Whether a battle's ground is saved as its seed: Continental skirmishes. */
+const groundFromSeed = (s: Pick<GameState, 'setup' | 'mission' | 'planet' | 'mapType'>): boolean => s.setup?.size === 'continental' && !s.mission && !s.planet && !!s.mapType;
+
+/** The ground a Continental battle started on, rebuilt from its seed and setup. */
+function rebuiltGround(r: Record<string, unknown>): string | null {
+  const setup = r.setup as { ore?: OreLevel; sides?: 2 | 3 | 4 } | undefined;
+  if (typeof r.seedText !== 'string' || typeof r.mapType !== 'string' || !setup) return null;
+  try {
+    return generateSkirmishMap(seedFromString(r.seedText), r.mapType as MapType, setup.ore ?? 'normal', setup.sides ?? 2, 'continental').tiles;
+  } catch {
+    return null;
+  }
 }
 
 /** Whether a battle's save is packed: its map is wider than any balanced size. */
@@ -82,6 +114,7 @@ export function unpackNumbers(packed: string): number[] | null {
  */
 export function packState(s: GameState): GameState | (Omit<GameState, 'tiles' | 'ore' | 'explored'> & PackedFields) {
   if (!packsState(s) || !s.ore.every(Number.isInteger)) return s;
+  if (groundFromSeed(s)) return { ...s, packed: PACKED_V1, tiles: '', tilesSum: textSum(s.tiles), ore: packNumbers(s.ore), explored: packText(s.explored) };
   return { ...s, packed: PACKED_V1, tiles: packText(s.tiles), ore: packNumbers(s.ore), explored: packText(s.explored) };
 }
 
@@ -97,10 +130,12 @@ export function unpackState(raw: unknown): unknown {
   const h = r.mapH;
   if (!Number.isInteger(w) || !Number.isInteger(h)) return null;
   const n = (w as number) * (h as number);
-  const tiles = unpackText(r.tiles);
+  const seeded = (r as { tilesSum?: unknown }).tilesSum;
+  const tiles = seeded !== undefined ? (Number.isInteger(seeded) ? rebuiltGround(r as Record<string, unknown>) : null) : unpackText(r.tiles);
+  if (seeded !== undefined && (tiles === null || textSum(tiles) !== seeded)) return null;
   const ore = unpackNumbers(r.ore);
   const explored = unpackText(r.explored);
   if (tiles === null || ore === null || explored === null || tiles.length !== n || ore.length !== n || explored.length !== n) return null;
-  const { packed: _packed, ...rest } = r as PackedFields & Record<string, unknown>;
+  const { packed: _packed, tilesSum: _sum, ...rest } = r as PackedFields & Record<string, unknown>;
   return { ...rest, tiles, ore, explored };
 }

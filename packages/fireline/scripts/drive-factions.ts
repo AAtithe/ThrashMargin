@@ -622,7 +622,7 @@ import { techText } from '../src/components/SkirmishSetup';
 
 /** Keys the battle screen gives other jobs (its key table): no build key may be one of them. */
 const RESERVED_KEYS = ['o', 'p', 'a', 's', 'g', 'h', 'm', 'f', 'z', 'x', 'c', 'v', '0', '.', ' ', '`', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-/** The Structures past the fourteenth on advanced tech, clicked or tapped in the build window (the key table says so). */
+/** The Structures past the last key on advanced tech, clicked or tapped in the build window (the key table says so). */
 const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'shipyard', 'academy', /* round7:fortification */ 'pointdefence'];
 
 function buildKeys(ok: Ok): void {
@@ -642,7 +642,7 @@ function buildKeys(ok: Ok): void {
       const keys = keyed.map(x => x.split(':')[0]);
       ok(new Set(keys).size === keys.length && new Set(list).size === list.length, `${f}, ${tab}: no two items share a key (${keyed.join(' ')})`);
       const over = list.slice(BUILD_KEYS.length);
-      ok(over.every(k => KEYLESS.includes(k)), `${f}, ${tab}: past the fourteenth only ${over.length ? over.join(', ') : 'nothing'}, which the key table names as clicked`);
+      ok(over.every(k => KEYLESS.includes(k)), `${f}, ${tab}: past the last key only ${over.length ? over.join(', ') : 'nothing'}, which the key table names as clicked`);
       if (tab !== 'building') ok(list.length <= BUILD_KEYS.length, `${f}, ${tab}: every unit has a key (${list.length} items)`);
       // An everyday item keeps its key whether or not the recruits are listed.
       const before = menuFor(tab, plain);

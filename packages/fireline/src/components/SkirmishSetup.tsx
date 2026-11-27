@@ -1,4 +1,5 @@
 import { siteSpots, type SiteSpot } from '../sim/sites';
+import { HOLD_POINTS_PER_SITE } from '../sim/victory';
 import { SITE_ART } from '../game/art';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { generateSkirmishMap, randomMapType } from '../sim/maps';
@@ -72,6 +73,20 @@ function productionNote(setup: SkirmishSetup): string {
   if (!setup.industry || !setup.supply || !setup.territory) return 'Needs Industry, Supply lines and Territory on.';
   if (!setup.production) return 'Off: Quarters need no food and every gun fires freely.';
   return 'On: Farms grow food and every Quarters eats; hungry Quarters house half. A Munitions Works makes munitions from alloys and fuel; artillery, Missile Carriers, Battleships and Railgun Tanks spend one a shot, aircraft one a load. A Supply Truck fetches goods stranded at cut-off sites.';
+}
+
+/** What the Seasons and spoilage field says. */
+function seasonsNote(setup: SkirmishSetup): string {
+  if (!setup.industry || !setup.supply || !setup.territory || !setup.production || !setup.upkeep) return 'Needs Army upkeep on.';
+  if (!setup.seasons) return 'Off: Farms yield the same all battle, and stores keep.';
+  return 'On: a 20-minute year. Twelve growing minutes, when Farms yield half as much again, then eight lean ones at a quarter, when food above half the store rots. All year, credits above 5,000 lose 2% of the excess a minute. Fill the stores in the growing season.';
+}
+
+/** What the Army upkeep field says. */
+function upkeepNote(setup: SkirmishSetup): string {
+  if (!setup.industry || !setup.supply || !setup.territory || !setup.production) return 'Needs Advanced production on.';
+  if (!setup.upkeep) return 'Off: an army costs nothing to keep once trained.';
+  return 'On: every minute each soldier eats 2 food and each armed machine burns 2 fuel. Go short and they fire slower; two more minutes short and they start to desert. Your army is as big as your Farms and Fuel Wells can feed. For long games.';
 }
 
 /** What the Territory and workforce field says. */
@@ -163,6 +178,7 @@ export function readStoredSetup(): SkirmishSetup {
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
       sides,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
+      victory: r.victory === 'hold' ? 'hold' : 'conquest',
       research: r.research === 'classic' || r.research === 'lines' ? r.research : DEFAULT_SETUP.research,
       // A setup stored before the merge with main kept the pace as `size` ('quick', 'long', 'epic'
       // read as the pace; 'standard' is ambiguous and reads as the map size, with the default pace).
@@ -189,6 +205,8 @@ export function readStoredSetup(): SkirmishSetup {
       adaptive: r.adaptive !== false,
       // round7:adaptive end.
       production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
+      upkeep: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true,
+      seasons: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true && r.seasons === true,
     };
   } catch {
     return FIRST_SETUP;
@@ -532,6 +550,32 @@ export default function SkirmishSetupPanel({
             </div>
             <p className="fl-setup-note">{sitesNote(value)}</p>
           </div>
+          {/* Victory (2026-11-27): conquest, or holding the neutral sites (src/sim/victory.ts). */}
+          <div className="fl-setup-field" data-testid="victory-field">
+            <Label>Victory</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Victory">
+              {(['conquest', 'hold'] as const).map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={(value.sites && value.victory === 'hold' ? 'hold' : 'conquest') === v}
+                  disabled={v === 'hold' && !value.sites}
+                  data-testid={`victory-${v}`}
+                  onClick={() => set({ victory: v })}
+                >
+                  {v === 'conquest' ? 'Conquest' : 'Hold ground'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">
+              {!value.sites
+                ? 'Conquest: destroy every enemy structure. Hold ground needs Neutral sites on.'
+                : value.victory === 'hold'
+                  ? `Hold ground: every site you hold scores a point a minute; the first side to ${HOLD_POINTS_PER_SITE} points for every site on the map wins. Destroying every enemy structure still wins outright.`
+                  : 'Conquest: destroy every enemy structure.'}
+            </p>
+          </div>
           {/* Industry (2026-11-21): fuel and alloys beside credits (src/sim/industry.ts). */}
           <div className="fl-setup-field" data-testid="industry-field">
             <Label>Industry</Label>
@@ -603,6 +647,46 @@ export default function SkirmishSetupPanel({
               ))}
             </div>
             <p className="fl-setup-note">{productionNote(value)}</p>
+          </div>
+          {/* Army upkeep (2026-11-27): needs advanced production (src/sim/upkeep.ts). */}
+          <div className="fl-setup-field" data-testid="upkeep-field">
+            <Label>Army upkeep</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Army upkeep">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!(value.industry && value.supply && value.territory && value.production) && !!value.upkeep === on}
+                  disabled={!(value.industry && value.supply && value.territory && value.production) && on}
+                  data-testid={`upkeep-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ upkeep: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{upkeepNote(value)}</p>
+          </div>
+          {/* Seasons and spoilage (2026-11-27): needs army upkeep (src/sim/seasons.ts). */}
+          <div className="fl-setup-field" data-testid="seasons-field">
+            <Label>Seasons and spoilage</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Seasons and spoilage">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!(value.industry && value.supply && value.territory && value.production && value.upkeep) && !!value.seasons === on}
+                  disabled={!(value.industry && value.supply && value.territory && value.production && value.upkeep) && on}
+                  data-testid={`seasons-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ seasons: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{seasonsNote(value)}</p>
           </div>
         </div>
       </SetupStep>

@@ -31,7 +31,13 @@ export const MAX_ORE_FIELDS = 8;
 export const MAX_ORE_FIELDS_LARGE = 24;
 /** Vast maps: more again. */
 export const MAX_ORE_FIELDS_VAST = 44;
+/** Continental: maps wider than vast's widest. */
+export const MAX_ORE_FIELDS_CONTINENTAL = 80;
+const VAST_TILES_WIDEST = 320;
 /** Ravines, ruined cities and ruined hamlets in side 0's half of a vast two-sided map (the brush gives side 1 the mirror). */
+/** Continental (2026-11-27): more of everything, for about twice vast's ground. */
+export const CONTINENTAL_HAZARDS_2: HazardCounts = { ravines: 14, cities: 6, hamlets: 18, cityR: 14, cityRSpread: 8 };
+export const CONTINENTAL_HAZARDS_SIDES: HazardCounts = { ravines: 10, cities: 4, hamlets: 12, cityR: 12, cityRSpread: 7 };
 export const VAST_HAZARDS_2: HazardCounts = { ravines: 8, cities: 3, hamlets: 10, cityR: 13, cityRSpread: 7 };
 /** The same in side 0's wedge of a vast map of three or four sides. */
 export const VAST_HAZARDS_SIDES: Record<3 | 4, HazardCounts> = {
@@ -200,7 +206,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     pick: () => ({ x: 3 + rng.float() * (W - 6), y: CY + 1 + rng.float() * (H - CY - 4) }),
     track: (x, y) => inBounds(x, y) && tracked[idx(x, y)] === 1,
   };
-  if (hazards) layRuins(brush, VAST_HAZARDS_2);
+  if (hazards) layRuins(brush, size === 'continental' ? CONTINENTAL_HAZARDS_2 : VAST_HAZARDS_2);
 
   // 3. The type's own features.
   const contested: Pt[] = [];
@@ -403,7 +409,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   }
 
   // 3b. Vast maps: the ravines, now that the tracks are down (they bridge every track they cross).
-  if (hazards) layRavines(brush, VAST_HAZARDS_2);
+  if (hazards) layRavines(brush, size === 'continental' ? CONTINENTAL_HAZARDS_2 : VAST_HAZARDS_2);
 
   // 4. Clear, buildable ground round each base.
   disc(b0.x, b0.y, CLEARING, 'g');
@@ -488,7 +494,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     ];
     const back = backTries.find(p => fits(p, 3, true));
     if (back) field(back, 3, 0.95);
-    const flanks = size === 'vast' ? 4 : size === 'huge' ? 2 : 1;
+    const flanks = size === 'continental' ? 6 : size === 'vast' ? 4 : size === 'huge' ? 2 : 1;
     const offsets = [16, 20, 24, 28, 32, 36, 40].flatMap(v => [sc(v), -sc(v)]);
     for (let i = 0; i < flanks; i++) {
       const c = offsets.map(bisector).find(p => fits(p, 3));
@@ -497,7 +503,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   }
   // Expansions: further out, still on side 0's half (the brush gives side 1 the mirror). Larger
   // maps have more of them, further out.
-  const expansions = 1 + extraFields + (size === 'vast' ? 6 : size === 'huge' ? 3 : size === 'large' ? 2 : 0);
+  const expansions = 1 + extraFields + (size === 'continental' ? 10 : size === 'vast' ? 6 : size === 'huge' ? 3 : size === 'large' ? 2 : 0);
   for (let i = 0; i < expansions; i++) {
     for (let tries = 0; tries < 50; tries++) {
       const p = { x: 4 + rng.float() * (W - 8), y: CY + 5 + rng.float() * (H - CY - 9) };
@@ -707,7 +713,7 @@ export function mapProblem(m: GeneratedMap): string | null {
     if (m.ore[k] > 0 && !isWalkable(m.tiles[k])) return 'ore on unwalkable ground';
   }
   const fields = oreFields(m.ore, W).filter(f => f.length >= 5);
-  if (fields.length < MIN_ORE_FIELDS || fields.length > (W > MAP_TILES_MAX_BALANCED ? MAX_ORE_FIELDS_VAST : big ? MAX_ORE_FIELDS_LARGE : MAX_ORE_FIELDS)) return `${fields.length} ore fields`;
+  if (fields.length < MIN_ORE_FIELDS || fields.length > (W > VAST_TILES_WIDEST ? MAX_ORE_FIELDS_CONTINENTAL : W > MAP_TILES_MAX_BALANCED ? MAX_ORE_FIELDS_VAST : big ? MAX_ORE_FIELDS_LARGE : MAX_ORE_FIELDS)) return `${fields.length} ore fields`;
   // One near each base, an expansion of each side's own, and one contested between them.
   const c0 = { x: s0.x + 1.5, y: s0.y + 1.5 };
   const c1 = { x: s1.x + 1.5, y: s1.y + 1.5 };
@@ -954,7 +960,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     },
     track: (x, y) => inside(x, y) && tracked[at(x, y)] === 1,
   };
-  if (hazards) layRuins(brush, VAST_HAZARDS_SIDES[n]);
+  if (hazards) layRuins(brush, size === 'continental' ? CONTINENTAL_HAZARDS_SIDES : VAST_HAZARDS_SIDES[n]);
 
   // 3. The type's own features.
   let half = 1;
@@ -1028,7 +1034,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
   carve(b0.x, b0.y, cross.x, cross.y, half);
   if (type === 'canyon') carve(cross.x, cross.y, C + edge.dx * 4, C + edge.dy * 4, half);
   // 3b. Vast maps: the ravines, bridging every track they cross.
-  if (hazards) layRavines(brush, VAST_HAZARDS_SIDES[n]);
+  if (hazards) layRavines(brush, size === 'continental' ? CONTINENTAL_HAZARDS_SIDES : VAST_HAZARDS_SIDES[n]);
 
   // 4. Clear, buildable ground round the base.
   disc(b0.x, b0.y, CLEARING, 'g');
@@ -1063,7 +1069,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     field({ x: C + axis.dx * midway + axis.dy * 6, y: C + axis.dy * midway - axis.dx * 6 }, 3, 1);
     const out2 = Math.min(out + sc(12), C - 7);
     field({ x: C + edge.dx * out2, y: C + edge.dy * out2 }, 3, 1);
-    if (size === 'vast') {
+    if (size === 'vast' || size === 'continental') {
       // Vast: two more expansions in the wedge, between the axis and the edge, and a third field
       // on each border, further out again.
       for (const [u, f] of [

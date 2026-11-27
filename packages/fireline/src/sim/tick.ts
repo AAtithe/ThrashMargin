@@ -1,6 +1,9 @@
 import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
 import { labWorking, productionOn, productionStep, spendMunition, truckStep } from './production';
+import { SHORT_RELOAD, shortOfUpkeep, upkeepStep } from './upkeep';
+import { seasonsStep } from './seasons';
+import { holdStep } from './victory';
 import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
@@ -10,7 +13,7 @@ import {
   dist,
   distToTarget,
   dockTile,
-  findPath,
+  findRoute,
   nearestPassable,
   occupancy,
   passable,
@@ -257,6 +260,10 @@ export function step(s: GameState): void {
   // Advanced production (2026-11-22): Farms, Munitions Works, meals and Supply Trucks. No-ops without it.
   productionStep(s, ctx.power, productionOn(s) ? new Set(sidesOf(s).flatMap(o => unstaffed(s, o).map(b => b.id))) : new Set());
   truckStep(s);
+  // Army upkeep (2026-11-27): on the minute, every army eats and burns fuel. A no-op without it.
+  upkeepStep(s, log);
+  // Seasons and spoilage (2026-11-27): the season turns, food rots, hoards decay. A no-op without them.
+  seasonsStep(s, log);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
@@ -288,7 +295,11 @@ export function step(s: GameState): void {
 
   // A mission is decided by its objectives; a skirmish by who still has structures.
   if (s.mission) evaluateMission(s);
-  else checkVictory(s);
+  else {
+    // Hold victory (2026-11-27): the sites score on the minute, and a team at the target wins.
+    holdStep(s, log);
+    if (s.winner === null) checkVictory(s);
+  }
   // round7:review begin. The after-action review: the history's sample and events (a no-op without s.history).
   if (s.history) recordHistory(s);
   // round7:review end.
@@ -612,12 +623,22 @@ function travel(s: GameState, ctx: Ctx, u: Unit, gx: number, gy: number): boolea
   if (goalMoved && (u.pathGoal === -1 || s.tick - u.pathTick >= 6 || u.path.length === 0)) {
     if (ctx.pathBudget <= 0) return false;
     ctx.pathBudget--;
-    u.path = findPath(s, ctx.occ, here, goal, sea);
+    const route = findRoute(s, ctx.occ, here, goal, sea);
+    u.path = route.path;
     u.pathGoal = goal;
     u.pathTick = s.tick;
-    if (!u.path.length) return true;
+    // A leg of a longer route (regions.ts, the largest maps only): walk it, then ask again.
+    if (route.leg) u.pathLeg = true;
+    else if (u.pathLeg) delete u.pathLeg;
+    if (!u.path.length && !route.leg) return true;
   }
-  if (!u.path.length) return true; // A partial path has run out: as close as we can get.
+  if (!u.path.length) {
+    if (!u.pathLeg) return true; // A partial path has run out: as close as we can get.
+    // A leg walked: the next one is worked out on the next tick.
+    delete u.pathLeg;
+    u.pathGoal = -1;
+    return false;
+  }
   const k = u.path[0];
   stepAlong(s, ctx, u, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5, true);
   return false;
@@ -939,6 +960,8 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           // Autoloaders (development lines): ground vehicles.
           const reload = reloadMulOf(s, u);
           if (reload !== 1) u.cooldown = Math.max(1, Math.round(u.cooldown * reload));
+          // Army upkeep: unfed soldiers and unfuelled machines reload slower.
+          if (shortOfUpkeep(s, u)) u.cooldown = Math.max(1, Math.round(u.cooldown * SHORT_RELOAD));
         }
       } else if (
         u.order.type === 'attack' ||
@@ -1436,7 +1459,8 @@ function removeDead(s: GameState): void {
       // round7:review end.
       if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
-      s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
+      // Army upkeep: a deserter walks away and an abandoned machine stands empty; neither explodes.
+      if (!u.deserted) s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
     }
     s.units = s.units.filter(u => u.hp > 0);
   }

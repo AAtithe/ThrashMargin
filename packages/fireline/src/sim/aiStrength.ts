@@ -7,7 +7,7 @@
 // upgrades while the column outbuilt it, then sent its infantry wave into the tanks and collapsed.
 // A commander that is clearly outmatched in the field now builds army before research.
 import { UNITS, type Owner } from './rules';
-import { isEnemy } from './sides';
+import { isAlly, isEnemy } from './sides';
 import { unitSpecOf } from './specs';
 import { isShip } from './naval';
 import type { GameState, Unit } from './types';
@@ -65,3 +65,82 @@ export function enemyArmourShare(s: GameState, owner: Owner): number {
 /** An armour threat: an enemy army past the floor, at least ARMOUR_THREAT of it vehicles by price. */
 export const ARMOUR_THREAT = 0.55;
 export const armourThreat = (s: GameState, owner: Owner): boolean => enemyArmyValue(s, owner) >= OUTMATCH_FLOOR && enemyArmourShare(s, owner) >= ARMOUR_THREAT;
+
+// ---- 2026-11-27: the passive commander -------------------------------------------------------------
+//
+// The hold above made the computer passive against a player who keeps a large army at home. Two
+// faults, both measured (fireline-design.md, 2026-11-27):
+// - The wave was weighed against every enemy on the map, so with three or four sides the commander
+//   was nearly always "outmatched" and sent nothing. A wave is now weighed against the side it is
+//   aimed at (and that side's allies), not the whole map.
+// - The hold had no end. Against a player who never attacked, the Normal commander held 37% of the
+//   time at the Standard pace and 50% with the full economy, and some battles saw no wave in 40
+//   minutes. A wave now waits at most WAVE_PATIENCE intervals past due; after that it goes if its
+//   army is worth at least WAVE_NERVE of the enemy's, since an army that only grows behind turrets
+//   gives the player nothing to answer.
+
+/** Intervals past due a wave may be held for being outmatched. */
+export const WAVE_PATIENCE = 1;
+/** Past that, the wave goes if its army is worth at least this share of the enemy's. */
+export const WAVE_NERVE = 0.6;
+
+/** The armed land army of `target` and every side on its team, by price. */
+export function teamArmyValue(s: GameState, target: Owner): number {
+  let v = 0;
+  for (const u of s.units) if (isAlly(s, target, u.owner) && fielded(s, u)) v += UNITS[u.kind].cost;
+  return v;
+}
+
+/**
+ * True when a wave aimed at `target` should wait at home: the target's team is past the floor and
+ * worth more than OUTMATCH_WAVE times this side's army, and the wave has not yet waited `waited`
+ * ticks past `patience`, or has and is still worth under WAVE_NERVE of the enemy. With no target,
+ * every enemy counts, as before.
+ */
+export function holdWave(s: GameState, owner: Owner, target: Owner | null, waited: number, patience: number): boolean {
+  const foe = target === null ? enemyArmyValue(s, owner) : teamArmyValue(s, target);
+  const own = armyValue(s, owner);
+  if (foe < OUTMATCH_FLOOR || foe <= own * OUTMATCH_WAVE) return false;
+  if (waited < patience) return true;
+  return own < foe * WAVE_NERVE;
+}
+
+// ---- 2026-11-27: the adaptive commander's counter-punch ---------------------------------------------
+//
+// Changing its unit mix never made the adaptive commander beat a repeated plan (a tank column won 75%
+// against it and against the fixed commander alike). What it lacked was timing. Against an enemy that
+// commits a heavy armoured army of about its own size, it now braces: it keeps its wave at home, where
+// its turrets fight beside it, for at most WAVE_PATIENCE intervals past due. And whenever the enemy's
+// army has just been ground down (worth PUNCH_DROP or less of its largest in the last PUNCH_LOOK
+// minutes) and its own is at least as large, it strikes at once with whatever is ready, wave due or not,
+// before the enemy rebuilds. Adaptive commanders only; the fixed commander plays as before.
+
+/** The enemy's army is "ground down" at this share of its recent peak or less. */
+export const PUNCH_DROP = 0.7;
+/** Minutes of the enemy's army value remembered (one sample a minute). */
+export const PUNCH_LOOK = 3;
+/** Bracing: the enemy's army is worth at least this share of ours. */
+export const BRACE_SHARE = 0.8;
+
+const valueOf = (s: GameState, owner: Owner, target: Owner | null): number => (target === null ? enemyArmyValue(s, owner) : teamArmyValue(s, target));
+
+/** Once a minute, the enemy's army value goes into the commander's memory (replaced, never changed in place). */
+export function sampleFoe(s: GameState, owner: Owner, target: Owner | null): void {
+  if (s.tick % 600 !== 0) return;
+  const mem = s.ai[owner];
+  mem.foeValues = [...(mem.foeValues ?? []).slice(-(PUNCH_LOOK - 1)), valueOf(s, owner, target)];
+}
+
+/** The enemy's army has just been ground down and ours is at least as large: strike now. */
+export function counterPunch(s: GameState, owner: Owner, target: Owner | null): boolean {
+  const vals = s.ai[owner].foeValues;
+  if (!vals || vals.length < 2) return false;
+  const peak = Math.max(...vals);
+  const now = valueOf(s, owner, target);
+  return peak >= OUTMATCH_FLOOR && now <= peak * PUNCH_DROP && armyValue(s, owner) >= now;
+}
+
+/** A heavy armoured enemy army of about our size: fight it at home first. */
+export function bracing(s: GameState, owner: Owner, target: Owner | null): boolean {
+  return armourThreat(s, owner) && valueOf(s, owner, target) >= armyValue(s, owner) * BRACE_SHARE;
+}

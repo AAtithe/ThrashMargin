@@ -6,7 +6,8 @@ import { createHash } from 'node:crypto';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
 import { canQueue, goodsFor, placementProblem } from '../src/sim/commands';
-import { burnLoadFuel, alloyStore, fuelStore, industryOn, industryStep, oreInReach, wellDry } from '../src/sim/industry';
+import { burnLoadFuel, alloyStore, foundryReserve, fuelStore, industryOn, industryStep, oreInReach, wellDry } from '../src/sim/industry';
+import { BUILDINGS as BUILDING_SPECS, UNITS as UNIT_SPECS } from '../src/sim/rules';
 import { createMissionState } from '../src/sim/mission';
 import { missionContext, newCampaign } from '../src/campaign/progression';
 import { MISSIONS } from '../src/campaign/missions';
@@ -33,7 +34,7 @@ import {
   type Owner,
   type SkirmishSetup,
 } from '../src/sim/rules';
-import { addBuilding, costFor, costOf, createInitialState, migrateState, normaliseSetup, techAllowed } from '../src/sim/state';
+import { addBuilding, addUnit, costFor, costOf, createInitialState, migrateState, normaliseSetup, techAllowed } from '../src/sim/state';
 import type { Building, GameState } from '../src/sim/types';
 import { centreOf, cutOff, linkedHubs, supplied, supplyOn, supplyStep } from '../src/sim/supply';
 import { depotSpot } from '../src/sim/aiEconomy';
@@ -204,9 +205,35 @@ function pumping(ok: Ok): void {
   ok(s.players[1].fuel === INDUSTRY_START_FUEL, "side 1's fuel never moved");
 }
 
+/** 2026-11-27: a side that has lost the means of earning keeps the price of restarting it. */
+function restartReserve(ok: Ok): void {
+  const s = fresh();
+  addBuilding(s, 0, 'foundry', s.starts![0].x + 4, s.starts![0].y + 4);
+  s.units = s.units.filter(u => !(u.owner === 0 && u.kind === 'hauler'));
+  s.buildings = s.buildings.filter(b => !(b.owner === 0 && b.kind === 'refinery'));
+  ok(foundryReserve(s, 0) === BUILDING_SPECS.refinery.cost, `no Refinery: the Foundry keeps a Refinery's price (${foundryReserve(s, 0)})`);
+  const ref = addBuilding(s, 0, 'refinery', s.starts![0].x + 4, s.starts![0].y - 4);
+  ok(foundryReserve(s, 0) === UNIT_SPECS.hauler.cost, `a Refinery and no hauler: a hauler's price (${foundryReserve(s, 0)})`);
+  addUnit(s, 0, 'hauler', ref.x + 1, ref.y + 4);
+  ok(foundryReserve(s, 0) === FOUNDRY_RESERVE, 'earning again: FOUNDRY_RESERVE, as before');
+  s.units = s.units.filter(u => !(u.owner === 0 && u.kind === 'hauler'));
+  const p = s.players[0];
+  p.credits = UNIT_SPECS.hauler.cost + FOUNDRY_CREDITS - 1;
+  p.fuel = 100;
+  p.alloys = 0;
+  for (let t = 0; t < FOUNDRY_TICKS * 3; t++) {
+    s.tick++;
+    industryStep(s, NO_LOW);
+  }
+  ok(p.alloys === 0 && p.credits === UNIT_SPECS.hauler.cost + FOUNDRY_CREDITS - 1, 'with no hauler it never smelts away the price of one');
+}
+
 function smelting(ok: Ok): void {
   const s = fresh();
   addBuilding(s, 0, 'foundry', s.starts![0].x + 4, s.starts![0].y + 4);
+  // 2026-11-27: a side that can earn (a Refinery and a hauler) keeps FOUNDRY_RESERVE; see restartReserve.
+  const ref = addBuilding(s, 0, 'refinery', s.starts![0].x + 4, s.starts![0].y - 4);
+  if (!s.units.some(u => u.owner === 0 && u.kind === 'hauler')) addUnit(s, 0, 'hauler', ref.x + 1, ref.y + 4);
   const p = s.players[0];
   p.credits = 1000;
   p.fuel = 40;
@@ -523,6 +550,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Industry: prices in credits, alloys and fuel', prices],
   ['Industry: queueing pays goods and cancelling returns them', queueSection],
   ['Industry: a Fuel Well stands by ore', placement],
+  ['Industry: the Foundry keeps the price of a restart', restartReserve],
   ['Industry: the Fuel Well pumps, fills its store and runs dry', pumping],
   ['Industry: the Foundry smelts, and stops short of its inputs or store', smelting],
   ['Industry: whole computer battles', battles],

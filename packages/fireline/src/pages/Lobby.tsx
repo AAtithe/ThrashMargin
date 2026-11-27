@@ -509,6 +509,7 @@ export default function Lobby() {
                 <Order k="Ore">{capital(setup.ore)}</Order>
                 <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
                 <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
+                {setup.sites && <Order k="Victory">{setup.victory === 'hold' ? 'Hold ground' : 'Conquest'}</Order>}
                 <Order k="Industry">{setup.industry ? 'On' : 'Off'}</Order>
                 {setup.industry && <Order k="Supply lines">{setup.supply ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && <Order k="Territory">{setup.territory ? 'On' : 'Off'}</Order>}
@@ -516,6 +517,8 @@ export default function Lobby() {
                 {setup.tech === 'advanced' && <Order k="Upgrades">{setup.structureUpgrades ? 'On' : 'Off'}</Order>}
                 {setup.tech === 'advanced' && <Order k="Strategic">{setup.strategicBuildings ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
+                {setup.industry && setup.supply && setup.territory && setup.production && <Order k="Upkeep">{setup.upkeep ? 'On' : 'Off'}</Order>}
+                {setup.industry && setup.supply && setup.territory && setup.production && setup.upkeep && <Order k="Seasons">{setup.seasons ? 'On' : 'Off'}</Order>}
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
                 <Order k="Your General">{generalLabel(setup)}</Order>
@@ -820,7 +823,7 @@ const mapTypeOf = (s: SaveMeta): MapType | null => {
 /** "Large map" or "Huge map" for a battle on a larger map (round 5); null for standard size and older rows. */
 const sizeOfSave = (s: SaveMeta): string | null => {
   const z = (s as SaveMeta & { size?: unknown }).size;
-  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : z === 'vast' ? 'Vast map' : null;
+  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : z === 'vast' ? 'Vast map' : z === 'continental' ? 'Continental map' : null;
 };
 
 /** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */

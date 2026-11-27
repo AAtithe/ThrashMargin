@@ -79,7 +79,7 @@ function invariants(ok: Ok, s: GameState, label: string): void {
 // ---- The size option --------------------------------------------------------------------------
 
 function sizeTests(ok: Ok): void {
-  ok(MAP_SIZES.join() === 'standard,large,huge,vast', 'four sizes, smallest first');
+  ok(MAP_SIZES.join() === 'standard,large,huge,vast,continental', 'five sizes, smallest first (Continental since 2026-11-27)');
   ok(DEFAULT_SETUP.size === 'standard' && LEGACY_SETUP.size === 'standard', 'the default and legacy setups are standard size');
   for (const n of [2, 3, 4] as const) {
     ok(mapTilesFor({ sides: n, size: 'standard' }) === MAP_SIZE_FOR[n], `standard, ${n} sides: ${MAP_SIZE_FOR[n]} tiles, as before`);

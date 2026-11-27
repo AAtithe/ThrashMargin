@@ -197,7 +197,7 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
       else p.fuel = (p.fuel ?? 0) + 1;
     } else {
       if (isCut) continue;
-      if (p.credits < FOUNDRY_CREDITS + FOUNDRY_RESERVE || (p.fuel ?? 0) < FOUNDRY_FUEL) continue;
+      if (p.credits < FOUNDRY_CREDITS + foundryReserve(s, b.owner) || (p.fuel ?? 0) < FOUNDRY_FUEL) continue;
       // Advanced production's Blast furnace makes more from the same inputs.
       const made = projectDone(s, b.owner, 'blastfurnace') ? BLAST_FURNACE_ALLOYS : FOUNDRY_ALLOYS;
       if ((p.alloys ?? 0) + made > alloyStore(s, b.owner)) continue;
@@ -209,6 +209,21 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
 }
 
 const NO_CUT: ReadonlySet<number> = new Set();
+
+/**
+ * The credits a Foundry leaves (2026-11-27): FOUNDRY_RESERVE, or, while a side has lost the means of
+ * earning, enough to restart: a Refinery's price (it comes with a hauler) while it has none standing or
+ * queued, an Ore Hauler's while it has a Refinery but no hauler. Before this a side that lost its
+ * haulers watched its Foundry smelt its last credits into alloys and could never buy another: the
+ * stalled battles at the ladder's cap (fireline-design.md, 2026-11-27) all ended with exactly 200.
+ */
+export function foundryReserve(s: GameState, owner: Owner): number {
+  const p = s.players[owner];
+  const refinery = s.buildings.some(b => b.owner === owner && b.kind === 'refinery' && b.hp > 0) || p.queues.building.some(q => q.kind === 'refinery');
+  if (!refinery) return Math.max(FOUNDRY_RESERVE, BUILDINGS.refinery.cost);
+  const hauler = s.units.some(u => u.owner === owner && u.kind === 'hauler' && u.hp > 0) || p.queues.vehicle.some(q => q.kind === 'hauler');
+  return hauler ? FOUNDRY_RESERVE : Math.max(FOUNDRY_RESERVE, UNITS.hauler.cost);
+}
 
 /** An Industry project this side has finished (advanced production; read directly, production.ts imports this module's users). */
 const projectDone = (s: GameState, owner: Owner, id: ProjectId): boolean =>

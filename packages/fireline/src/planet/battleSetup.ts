@@ -12,7 +12,7 @@ import { hopsFrom, planetMapOf } from './map';
 import { ATTACK_CREDITS, DEFENCE_TERRAIN, SIDE_UNITS_MAX, structureValue, unitValue, vetMul } from './rules';
 import { aliveFaction, allied, atWar, garrisonUnits } from './state';
 import { hasPort, suppliedRegions } from './supply';
-import { arrivalHp, attackerBase, isShaken, linksOn, reinforceWave, shakenUnits, suppliedCredits, supplyOf, supportFor, timeLimitFor, wallsFor } from './links';
+import { arrivalHp, attackerBase, isShaken, linksOn, sitesOn, reinforceWave, shakenUnits, suppliedCredits, supplyOf, supportFor, timeLimitFor, wallsFor } from './links';
 import { DEF_CUT_CREDITS, SHAKEN_SHARE, SUPPLY_EFFECT, WALL_VALUE, WALLS_PER_FORT_MK, WOUNDED_HP } from './rules';
 import {
   ARMY_KINDS,
@@ -314,7 +314,7 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
   const links = linksOn(s) ? warIntoBattle(s, attacker, target, cost, atk, def, sides) : undefined;
   // Section 9.7: a war on battle rules 2 (or 3) sizes the map by the stakes; an older war never sets it.
   const mapSize =
-    s.battleRules === 2 || s.battleRules === 3 ? battleMapSize({ sides: sides.length, cityLevel: reg.city.level, capital: defender !== NEUTRAL && s.factions[defender].capital === target }) : 'standard';
+    s.battleRules === 2 || s.battleRules === 3 || s.battleRules === 4 ? battleMapSize({ sides: sides.length, cityLevel: reg.city.level, capital: defender !== NEUTRAL && s.factions[defender].capital === target }) : 'standard';
 
   return {
     battleId,
@@ -395,6 +395,8 @@ function warIntoBattle(s: PlanetState, attacker: FactionId, target: RegionId, co
     reinforce,
     // Link 3: prepared defences.
     walls: wallsFor(reg.city.b.fortifications ?? 0),
+    // Battle rules 4: neutral sites on the map.
+    ...(sitesOn(s) ? { sites: true as const } : {}),
   };
 }
 

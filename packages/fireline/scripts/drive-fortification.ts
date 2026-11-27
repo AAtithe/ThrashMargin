@@ -120,7 +120,8 @@ function setups(ok: Ok): void {
   ok(normaliseSetup({ tech: 'advanced', research: 'lines', fortification: false }).fortification === false, 'turned off: off');
   ok(normaliseSetup({ fortification: 'yes' as never }, LEGACY_SETUP).fortification === false && normaliseSetup({ fortification: 1 as never }).fortification === true, 'junk takes the base\'s value');
   const keys = Object.keys(normaliseSetup({}));
-  ok(keys.indexOf('fortification') === keys.indexOf('sites') + 1 && keys.indexOf('research') === keys.indexOf('fortification') + 1, 'a normalised setup states it, between sites and research');
+  // 2026-11-27: the setup's victory follows sites (victory.ts), so the line now follows victory.
+  ok(keys.indexOf('victory') === keys.indexOf('sites') + 1 && keys.indexOf('fortification') === keys.indexOf('victory') + 1 && keys.indexOf('research') === keys.indexOf('fortification') + 1, 'a normalised setup states it, between sites and victory, and research');
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const)
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every field, the Fortification line included, in order`);
   for (const pace of ['quick', 'standard', 'long', 'epic'] as const) ok(applyPace(DEFAULT_SETUP, pace).fortification === true, `the ${pace} card keeps the line on`);
@@ -607,13 +608,15 @@ function replayAndAi(ok: Ok): void {
 
   // Whole battles: Hard against Normal on Long with the line, the computer on both sides.
   let researched = 0;
-  for (const seed of ['fort-battle-1', 'fort-battle-2']) {
+  // 2026-11-27: since the patience cap the Long commander attacks sooner, and Hard wins the first two
+  // seeds at 14 and 19 minutes before Normal ever shells it; fort-battle-3 runs to the line (17.8 min).
+  for (const seed of ['fort-battle-1', 'fort-battle-2', 'fort-battle-3']) {
     let b2 = createInitialState(seed, seed, { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { ...applyPace({ ...DEFAULT_SETUP }, 'long') } });
     b2.autopilotDifficulty = 'normal';
     for (let i = 0; i < 48 && !b2.players.some(p => p.upgrades?.includes('concrete')) && b2.winner === null; i++) b2 = tick(b2, 500);
     ok(b2.buildings.every(x => Number.isFinite(x.hp) && x.hp <= structureMaxHp(b2, x)), `${seed}: every structure's health within its full health`);
     if (b2.players.some(p => p.upgrades?.includes('concrete'))) researched++;
-    if (researched) break; // One battle that shows it is enough; the second is the fallback.
+    if (researched) break; // One battle that shows it is enough; the others are the fallbacks.
   }
   ok(researched >= 1, `a Long battle: the computer turns to the line under fire (within 40 minutes)`);
 }

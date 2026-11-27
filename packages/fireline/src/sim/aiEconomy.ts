@@ -10,7 +10,8 @@
  */
 import { canQueue, doQueue, doSell, placementProblem } from './commands';
 import { doProject, productionOn, projectProblem } from './production';
-import { PROJECTS, type ProjectId } from './rules';
+import { FARM_TICKS, FOOD_TICKS, PROJECTS, QUARTERS_FOOD, type ProjectId } from './rules';
+import { upkeepDue, upkeepOn } from './upkeep';
 import { dist, occupancy } from './grid';
 import { centreOf, cutOff, linkedHubs, supplyOn } from './supply';
 import { NO_OWNER, territoryGrid, territoryOn } from './territory';
@@ -45,10 +46,18 @@ export function industryPlanFor(s: GameState, owner: Owner): [BuildingKind, numb
   // One of each at every level. Hard once built two of each: the second well drained the field its
   // haulers lived on and the second Foundry turned its income into stock, and in seat 0, without the
   // computer seat's income bonus, it won 15% against Normal (fireline-design.md, 2026-11-21).
+  // Army upkeep: the machines burn fuel every minute, so a Fuel Well per FUEL_MACHINES_PER_WELL of
+  // them beyond the first (whose fuel goes to the Foundry), where a field in reach will feed one.
+  let wellCount = wellWanted ? 1 : 0;
+  if (upkeepOn(s) && wellWanted && home) {
+    const want = Math.min(MAX_WELLS_UPKEEP, 1 + Math.ceil(upkeepDue(s, owner).machines / FUEL_MACHINES_PER_WELL));
+    const have = countOwn(s, owner, 'fuelwell');
+    wellCount = want > have && wellFocus(s, owner, home) === null ? Math.max(1, have) : want;
+  }
   return [
     // Advanced production: soldiers eat, so a Farm before anything else in the chain.
     ...(productionOn(s) ? ([['farm', 1]] as [BuildingKind, number][]) : []),
-    ['fuelwell', wellWanted ? 1 : 0],
+    ['fuelwell', wellCount],
     // Advanced production: the Training Centre first, since the Foundry needs a Technician.
     ...centreFirst(s),
     ['foundry', 1],
@@ -126,7 +135,15 @@ function productionPlanFor(s: GameState, owner: Owner): [BuildingKind, number][]
   // whenever the store runs low.
   const food = s.players[owner].food ?? 0;
   const standing = countOwn(s, owner, 'farm');
-  const farms = Math.min(MAX_FARMS, Math.max(1, Math.ceil(quarters / 3), food < FOOD_LOW ? standing + 1 : 0));
+  let farms = Math.min(MAX_FARMS, Math.max(1, Math.ceil(quarters / 3), food < FOOD_LOW ? standing + 1 : 0));
+  // Army upkeep (2026-11-27, upkeep.ts): the soldiers eat every minute too, so Farms for the army as
+  // well as the Quarters, with a little to spare, and one more while it goes short.
+  if (upkeepOn(s)) {
+    const eaten = quarters * (TICKS_A_MINUTE / FOOD_TICKS) * QUARTERS_FOOD + upkeepDue(s, owner).food;
+    const grown = TICKS_A_MINUTE / FARM_TICKS;
+    const short = (s.players[owner].upkeepShort?.food ?? 0) > 0 ? 1 : 0;
+    farms = Math.min(MAX_FARMS_UPKEEP, Math.max(farms, Math.ceil((eaten * UPKEEP_MARGIN) / grown) + short));
+  }
   // A Training Centre once something needing Technicians is wanted or stands (Munitions Works,
   // Helipad, Research Lab), or once the commander is ready for Industry projects.
   const techWanted = users || s.buildings.some(b => b.owner === owner && (b.kind === 'helipad' || b.kind === 'researchlab')) || s.tick >= PROJECT_FROM;
@@ -146,6 +163,14 @@ const PROJECT_FROM = 9000;
 const FOOD_LOW = 15;
 /** Most Farms the computer builds. */
 const MAX_FARMS = 4;
+/** Army upkeep (upkeep.ts): Farms enough for the army's meals too, up to this many. */
+const MAX_FARMS_UPKEEP = 10;
+/** Army upkeep: Farms for this many times what is eaten, so a growing army does not go short. */
+const UPKEEP_MARGIN = 1.2;
+/** Army upkeep: one more Fuel Well per this many armed machines (at 2 fuel a minute each), up to MAX_WELLS_UPKEEP. */
+const FUEL_MACHINES_PER_WELL = 15;
+const MAX_WELLS_UPKEEP = 4;
+const TICKS_A_MINUTE = 600;
 
 /** Advanced production: the next Industry project once it can spare the credits. */
 function projectPlan(s: GameState, owner: Owner): void {
