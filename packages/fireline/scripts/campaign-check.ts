@@ -736,7 +736,7 @@ section('act two: progression and old saves', () => {
   // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play),
   // nor the Naval Yard (the naval war): no mission map has a sea.
   // Nor industry's Fuel Well and Foundry (2026-11-21): never in a mission (industryOn).
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard', 'fuelwell', 'foundry', 'depot', 'quarters', 'watchtower', 'bunker', 'supplycache', 'intelcentre', 'decoy', /* round7:fortification */ 'pointdefence']);
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard', 'fuelwell', 'foundry', 'depot', 'quarters', 'watchtower', 'bunker', 'supplycache', 'intelcentre', 'decoy', /* round7:fortification */ 'pointdefence', 'farm', 'munitions', 'trainingcentre']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);

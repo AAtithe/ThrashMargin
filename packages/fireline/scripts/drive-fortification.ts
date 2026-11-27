@@ -307,7 +307,8 @@ function doctrine(ok: Ok): void {
   const p = processAction(s, { type: 'doctrine', line: 'fortification', branch: 'pointdef' });
   ok(techAllowed(p, 0, 'pointdefence') && !canQueue(p, 0, 'building', 'pointdefence') && processAction(p, { type: 'queue', category: 'building', kind: 'pointdefence' }) === p, 'Point Defence offered but refused before its research');
   // Round 7 merged: the strategic four follow it, so it closes the items from before round 7.
-  ok(BUILD_MENU.indexOf('pointdefence') === BUILD_MENU.indexOf('watchtower') + 1 && BUILD_MENU.slice(BUILD_MENU.indexOf('pointdefence') + 1).every(k => ['bunker', 'supplycache', 'decoy', 'intelcentre'].includes(k)), 'Point Defence follows every structure from before round 7, so none of their keys moves');
+  // Advanced production's three (2026-11-22) come after the strategic four.
+  ok(BUILD_MENU.indexOf('pointdefence') === BUILD_MENU.indexOf('watchtower') + 1 && BUILD_MENU.slice(BUILD_MENU.indexOf('pointdefence') + 1).every(k => ['bunker', 'supplycache', 'decoy', 'intelcentre', 'farm', 'munitions', 'trainingcentre'].includes(k)), 'Point Defence follows every structure from before round 7, so none of their keys moves');
   give(p, 0, ['pointdef']);
   const q = processAction(p, { type: 'queue', category: 'building', kind: 'pointdefence' });
   ok(q !== p && q.players[0].credits === p.players[0].credits - BUILDINGS.pointdefence.cost, 'researched: Point Defence queued and paid for');

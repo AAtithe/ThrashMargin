@@ -144,6 +144,8 @@ export type UnitKind =
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its unit kinds (the field General).
   | 'general'
   // round6:C end.
+  // Advanced production (2026-11-22, setup.production): the Supply Truck.
+  | 'supplytruck'
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -194,6 +196,10 @@ export type BuildingKind =
   | 'intelcentre'
   | 'decoy'
   // round7:structures end.
+  // Advanced production (2026-11-22, setup.production): the Farm and the Munitions Works.
+  | 'farm'
+  | 'munitions'
+  | 'trainingcentre'
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -773,6 +779,20 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
   // round6:B begin. Heroes in free play: the heroes above keep their campaign specs; anything B adds goes here.
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): the field General, appended here.
+  // Advanced production (2026-11-22): refused by techAllowed unless setup.production is on (production.ts).
+  supplytruck: {
+    name: 'Supply Truck',
+    category: 'vehicle',
+    cost: 700,
+    buildTicks: 90,
+    hp: 450,
+    armor: 'heavy',
+    speed: 0.085,
+    sight: 5,
+    requires: ['factory', 'depot'],
+    blurb:
+      'Advanced production on only. Drives to a cut-off Refinery or Fuel Well, loads what it holds and brings it home to the nearest linked yard or Depot. Works on its own when idle; any order takes over. Unarmed.',
+  },
   general: {
     name: 'General',
     category: 'infantry',
@@ -1116,6 +1136,18 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: [],
     blurb:
       'Territory on only. Houses 8 workers. Refineries, Fuel Wells, Foundries, Barracks, War Factories, Helipads and Naval Yards each need a crew to work; without one they stop.',
+  },  // Advanced production (2026-11-22): refused by techAllowed unless setup.production is on (production.ts).
+  farm: {
+    name: 'Farm',
+    w: 3,
+    h: 3,
+    cost: 400,
+    buildTicks: 80,
+    hp: 500,
+    power: 0,
+    sight: 4,
+    requires: [],
+    blurb: 'Advanced production on only. Grows 30 food a minute. Every soldier costs 2 food to train and every Quarters eats 10 a minute; hungry Quarters house half their workers.',
   },
   // round7:structures begin. Strategic structures: refused by techAllowed unless setup.strategicBuildings
   // is on (structures.ts). Each is built round one dilemma (fireline-round7-structures.md).
@@ -1172,6 +1204,33 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
       'Strategic structures on only. An inflatable dummy that the enemy sees as the structure you choose, to draw barrages, missiles, bombers and artillery. Worth nothing, keeps nothing alive, and bursts easily.',
   },
   // round7:structures end.
+  munitions: {
+    name: 'Munitions Works',
+    w: 3,
+    h: 2,
+    cost: 1000,
+    buildTicks: 120,
+    hp: 900,
+    power: -30,
+    sight: 4,
+    requires: ['foundry'],
+    blurb:
+      'Advanced production on only. Makes 10 munitions from 5 alloys and 2 fuel every six seconds. Artillery, Missile Carriers, Battleships and Railgun Tanks spend one a shot, and aircraft one a load.',
+  },  trainingcentre: {
+    name: 'Training Centre',
+    w: 2,
+    h: 2,
+    cost: 900,
+    buildTicks: 100,
+    hp: 700,
+    power: -20,
+    sight: 4,
+    requires: ['barracks'],
+    blurb:
+      'Advanced production on only. Trains 6 Technicians, whom the Munitions Works, Helipad and Research Lab need beside their crews, and runs Industry projects, one at a time.',
+  },
+
+
 
 
   // round7:fortification begin. Point Defence: offered only with setup.fortification, built only once
@@ -1236,6 +1295,10 @@ export const BUILD_MENU: BuildingKind[] = [
   'decoy',
   'intelcentre',
   // round7:structures end.
+  // Advanced production (2026-11-22): likewise.
+  'farm',
+  'munitions',
+  'trainingcentre',
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1272,6 +1335,8 @@ export const VEHICLE_MENU: UnitKind[] = [
   // round6:B begin. Heroes in free play: the Ace, if B lists it here.
   'ace',
   // round6:B end.
+  // Advanced production (2026-11-22): last, so turning it on moves no item already listed.
+  'supplytruck',
 ];
 /** Aircraft in the order the Air tab offers them. */
 export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber'];
@@ -1708,6 +1773,12 @@ export interface SkirmishSetup {
    */
   adaptive?: boolean;
   // round7:adaptive end.
+  /**
+   * Advanced production (2026-11-22, phase 4 of the economy; production.ts): food from Farms feeding
+   * Quarters, munitions from a Munitions Works for the heavy guns and aircraft, and the Supply
+   * Truck. Needs territory (normaliseSetup turns it off without). Absent: off.
+   */
+  production?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1735,6 +1806,7 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   industry: false,
   supply: false,
   territory: false,
+  production: false,
   // round7:structures begin. On for a new skirmish (advanced tech); absent on an older setup reads as off.
   structureUpgrades: true,
   strategicBuildings: true,
@@ -1768,6 +1840,7 @@ export const LEGACY_SETUP: SkirmishSetup = {
   industry: false,
   supply: false,
   territory: false,
+  production: false,
   // round7:structures begin.
   structureUpgrades: false,
   strategicBuildings: false,
@@ -2694,7 +2767,7 @@ export const INDUSTRY_AIR_FUEL_SHARE = 0.1;
 export const ALLOY_VALUE = 10;
 export const FUEL_VALUE = 10;
 /** Paid in credits alone whatever the setup: the economy's own vehicles, so a side can never be stuck without alloys to rebuild it. */
-export const INDUSTRY_EXEMPT: UnitKind[] = ['hauler', 'basetruck'];
+export const INDUSTRY_EXEMPT: UnitKind[] = ['hauler', 'basetruck', 'supplytruck'];
 /** A Fuel Well pumps one fuel every FUEL_WELL_TICKS (twice that short of power), drawing FUEL_WELL_ORE ore for it. */
 export const FUEL_WELL_TICKS = 15;
 export const FUEL_WELL_ORE = 3;
@@ -2745,8 +2818,8 @@ export const CLAIM_RADIUS: Partial<Record<BuildingKind, number>> = { hq: 11, fie
 /** Workers each kind houses. */
 export const HOUSING: Partial<Record<BuildingKind, number>> = { hq: 12, fieldyard: 6, quarters: 8 };
 /** Workers each kind needs to work, and the order crews are assigned in (economy first). */
-export const CREW: Partial<Record<BuildingKind, number>> = { refinery: 3, fuelwell: 2, foundry: 3, barracks: 2, factory: 4, helipad: 2, shipyard: 3 };
-export const CREW_ORDER: BuildingKind[] = ['refinery', 'fuelwell', 'foundry', 'factory', 'barracks', 'helipad', 'shipyard'];
+export const CREW: Partial<Record<BuildingKind, number>> = { refinery: 3, fuelwell: 2, foundry: 3, barracks: 2, factory: 4, helipad: 2, shipyard: 3, farm: 2, munitions: 3, trainingcentre: 2 };
+export const CREW_ORDER: BuildingKind[] = ['refinery', 'farm', 'fuelwell', 'trainingcentre', 'foundry', 'factory', 'barracks', 'munitions', 'helipad', 'shipyard'];
 
 // round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
 // ---- Structure upgrades (setup.structureUpgrades) ------------------------------------------------
@@ -2851,3 +2924,56 @@ export const DECOY_DEFAULT: BuildingKind = 'power';
 /** Structures that keep no side in the battle, extend no base and send out no crew when they fall. */
 export const OUTPOSTS: BuildingKind[] = ['supplycache', 'decoy'];
 // round7:structures end.
+
+// ---------------------------------------------------------------------------------------------
+// Advanced production (2026-11-22, setup.production; fireline-design.md). Logic in production.ts.
+
+/** A Farm grows one food every FARM_TICKS. Every FOOD_TICKS each Quarters eats QUARTERS_FOOD; one that cannot is hungry until its next meal and houses half. */
+export const FARM_TICKS = 20;
+export const FOOD_TICKS = 60;
+export const QUARTERS_FOOD = 1;
+/** Food store: a base and more per Farm. Every side starts with START_FOOD. */
+export const FOOD_STORE_BASE = 60;
+export const FOOD_STORE_PER_FARM = 60;
+export const START_FOOD = 30;
+/** Food a soldier costs to train (every infantry kind bar the heroes and the General). */
+export const INFANTRY_FOOD = 2;
+/** A Munitions Works' cycle: every MUNITIONS_TICKS, MUNITIONS_ALLOYS and MUNITIONS_FUEL into MUNITIONS_MADE munitions. */
+export const MUNITIONS_TICKS = 60;
+export const MUNITIONS_ALLOYS = 5;
+export const MUNITIONS_FUEL = 2;
+export const MUNITIONS_MADE = 10;
+/** Munitions store: a base and more per Works. Every side starts with START_MUNITIONS. */
+export const MUNITIONS_STORE_BASE = 60;
+export const MUNITIONS_STORE_PER_WORKS = 100;
+export const START_MUNITIONS = 40;
+/** The units that spend one munition a shot (aircraft spend one a load as well). */
+export const MUNITION_UNITS: UnitKind[] = ['artillery', 'missilecarrier', 'battleship', 'railtank'];
+/** A Supply Truck carries up to this much of what a cut-off site holds, and only bothers with a site holding at least TRUCK_MIN. */
+export const TRUCK_CREDITS = 600;
+export const TRUCK_FUEL = 50;
+export const TRUCK_MIN = 20;
+/** How close (tiles, centre to the structure's edge) a truck must be to load or unload. */
+export const TRUCK_REACH = 2.5;
+
+/** Advanced production: Technicians each Training Centre trains, and those a structure needs beside its crew. */
+export const TECHNICIANS_PER_CENTRE = 6;
+export const TECH_CREW: Partial<Record<BuildingKind, number>> = { munitions: 1, helipad: 1, researchlab: 2 };
+
+/** Advanced production: the Industry projects, run at a Training Centre one at a time (production.ts). */
+export type ProjectId = 'prefab' | 'deepwells' | 'blastfurnace' | 'mechanised' | 'relays' | 'shellcasting';
+export const PROJECT_ORDER: ProjectId[] = ['prefab', 'deepwells', 'blastfurnace', 'mechanised', 'relays', 'shellcasting'];
+export const PROJECTS: Record<ProjectId, { name: string; blurb: string; cost: number; ticks: number }> = {
+  prefab: { name: 'Prefab housing', blurb: 'Quarters house 12 workers instead of 8.', cost: 1000, ticks: 500 },
+  deepwells: { name: 'Deep wells', blurb: 'Fuel Wells pump half as fast again, for the same ore.', cost: 1200, ticks: 600 },
+  blastfurnace: { name: 'Blast furnace', blurb: 'A Foundry cycle makes 13 alloys instead of 10.', cost: 1500, ticks: 700 },
+  mechanised: { name: 'Mechanised crews', blurb: 'Every crew needs one worker fewer (never fewer than one).', cost: 1800, ticks: 800 },
+  relays: { name: 'Long relays', blurb: 'Supply links reach 3 tiles further, and hubs supply 2 tiles further.', cost: 1200, ticks: 600 },
+  shellcasting: { name: 'Shell casting', blurb: 'A Munitions Works cycle makes 15 munitions instead of 10.', cost: 1000, ticks: 500 },
+};
+export const PREFAB_HOUSING = 12;
+export const DEEP_WELLS_BEAT = 2 / 3;
+export const BLAST_FURNACE_ALLOYS = 13;
+export const RELAY_LINK_BONUS = 3;
+export const RELAY_SERVE_BONUS = 2;
+export const SHELL_CASTING_MADE = 15;

@@ -686,6 +686,7 @@ export class Renderer {
       }
       if (cutIds.has(b.id)) drawCutBadge(ctx, px + (spec.w * TILE) / 2, py - 4, b.held ?? 0, b.kind, t);
       else if (idleIds.has(b.id)) drawBadge(ctx, px + (spec.w * TILE) / 2, py - 4, 'NO CREW', t);
+      else if (b.owner === 0 && b.hungry) drawBadge(ctx, px + (spec.w * TILE) / 2, py - 4, 'HUNGRY', t);
       if (b.chargeAt !== undefined && b.chargeAt + 1 > rt) {
         const left = Math.max(0, Math.min(1, (b.chargeAt - rt) / CHARGE_FUSE));
         drawChargeOnBuilding(ctx, px, py, spec.w * TILE, spec.h * TILE, left, t);
@@ -1607,6 +1608,8 @@ export class Renderer {
         const p = s.players[b.owner];
         if (!p) continue;
         if (b.kind === 'fuelwell' && !wellDry(s, b) && (p.fuel ?? 0) < fuelStore(s, b.owner)) set.add(b.id);
+        if (b.kind === 'farm' || b.kind === 'munitions') set.add(b.id);
+        if (b.kind === 'trainingcentre' && p.project) set.add(b.id);
         if (b.kind === 'foundry' && p.credits >= FOUNDRY_CREDITS + FOUNDRY_RESERVE && (p.fuel ?? 0) >= FOUNDRY_FUEL && (p.alloys ?? 0) + FOUNDRY_ALLOYS <= alloyStore(s, b.owner)) set.add(b.id);
       }
     for (const u of s.units) if (u.order.type === 'harvest' && u.order.phase === 'unload' && u.order.refinery) set.add(u.order.refinery);

@@ -39,6 +39,10 @@ import {
   INDUSTRY_START_FUEL,
   UNITS,
   WELL_HOLD,
+  INFANTRY_FOOD,
+  BLAST_FURNACE_ALLOYS,
+  DEEP_WELLS_BEAT,
+  type ProjectId,
   type BuildingKind,
   type Owner,
   type UnitKind,
@@ -74,17 +78,34 @@ export function creditsPart(s: GameState, kind: BuildingKind | UnitKind, full: n
 }
 
 /** The goods part of a price whose whole is `full`, in alloys and fuel. Zero without industry. */
-export function goodsPart(s: GameState, kind: BuildingKind | UnitKind, full: number): { alloys: number; fuel: number } {
+export function goodsPart(s: GameState, kind: BuildingKind | UnitKind, full: number): Goods {
   if (!industryOn(s)) return { alloys: 0, fuel: 0 };
   const sh = shares(kind);
-  return { alloys: Math.round((full * sh.alloy) / ALLOY_VALUE), fuel: Math.round((full * sh.fuel) / FUEL_VALUE) };
+  const g: Goods = { alloys: Math.round((full * sh.alloy) / ALLOY_VALUE), fuel: Math.round((full * sh.fuel) / FUEL_VALUE) };
+  // Advanced production (2026-11-26): soldiers eat. Infantry cost food on top of their credits, so
+  // an army of riflemen needs Farms as tanks need Foundries (fireline-design.md).
+  if (productionFlag(s) && eats(kind)) g.food = INFANTRY_FOOD;
+  return g;
 }
 
+/** What a price asks for beyond credits. */
+export type Goods = { alloys: number; fuel: number; food?: number };
+
 /** True when the side holds these goods. */
-export const hasGoods = (p: PlayerState, g: { alloys: number; fuel: number }): boolean => (p.alloys ?? 0) >= g.alloys && (p.fuel ?? 0) >= g.fuel;
+export const hasGoods = (p: PlayerState, g: Goods): boolean => (p.alloys ?? 0) >= g.alloys && (p.fuel ?? 0) >= g.fuel && (p.food ?? 0) >= (g.food ?? 0);
+
+/** Advanced production is on (read directly: production.ts imports modules that import this one). */
+const productionFlag = (s: GameState): boolean => industryOn(s) && s.setup?.supply === true && s.setup.territory === true && s.setup.production === true;
+/** Infantry that eat: every infantry kind bar the heroes and the General. */
+const eats = (kind: BuildingKind | UnitKind): boolean =>
+  kind in UNITS && UNITS[kind as UnitKind].category === 'infantry' && !UNITS[kind as UnitKind].hero && kind !== 'general';
 
 /** Takes the goods from the side's store and records them on the queue item, for its refund. */
-export function payGoods(p: PlayerState, item: QueueItem, g: { alloys: number; fuel: number }): void {
+export function payGoods(p: PlayerState, item: QueueItem, g: Goods): void {
+  if (g.food) {
+    p.food = (p.food ?? 0) - g.food;
+    item.food = g.food;
+  }
   if (g.alloys) {
     p.alloys = (p.alloys ?? 0) - g.alloys;
     item.alloys = g.alloys;
@@ -99,6 +120,7 @@ export function payGoods(p: PlayerState, item: QueueItem, g: { alloys: number; f
 export function refundGoods(p: PlayerState, item: QueueItem): void {
   if (item.alloys) p.alloys = (p.alloys ?? 0) + item.alloys;
   if (item.fuel) p.fuel = (p.fuel ?? 0) + item.fuel;
+  if (item.food) p.food = (p.food ?? 0) + item.food;
 }
 
 const countOwn = (s: GameState, owner: Owner, kind: BuildingKind): number => {
@@ -158,7 +180,9 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
     if (b.hp <= 0 || (b.kind !== 'fuelwell' && b.kind !== 'foundry')) continue;
     const p = s.players[b.owner];
     if (!p) continue;
-    const beat = (b.kind === 'fuelwell' ? FUEL_WELL_TICKS : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1);
+    // Advanced production's Deep wells pump faster.
+    const deep = b.kind === 'fuelwell' && projectDone(s, b.owner, 'deepwells');
+    const beat = Math.round((b.kind === 'fuelwell' ? FUEL_WELL_TICKS * (deep ? DEEP_WELLS_BEAT : 1) : FOUNDRY_TICKS) * (low[b.owner] ? 2 : 1));
     if ((s.tick + b.id) % beat !== 0) continue;
     // Territory and workforce: without its crew it does nothing at all.
     if (idle.has(b.id)) continue;
@@ -174,15 +198,21 @@ export function industryStep(s: GameState, low: ArrayLike<boolean>, cut: Readonl
     } else {
       if (isCut) continue;
       if (p.credits < FOUNDRY_CREDITS + FOUNDRY_RESERVE || (p.fuel ?? 0) < FOUNDRY_FUEL) continue;
-      if ((p.alloys ?? 0) + FOUNDRY_ALLOYS > alloyStore(s, b.owner)) continue;
+      // Advanced production's Blast furnace makes more from the same inputs.
+      const made = projectDone(s, b.owner, 'blastfurnace') ? BLAST_FURNACE_ALLOYS : FOUNDRY_ALLOYS;
+      if ((p.alloys ?? 0) + made > alloyStore(s, b.owner)) continue;
       p.credits -= FOUNDRY_CREDITS;
       p.fuel = (p.fuel ?? 0) - FOUNDRY_FUEL;
-      p.alloys = (p.alloys ?? 0) + FOUNDRY_ALLOYS;
+      p.alloys = (p.alloys ?? 0) + made;
     }
   }
 }
 
 const NO_CUT: ReadonlySet<number> = new Set();
+
+/** An Industry project this side has finished (advanced production; read directly, production.ts imports this module's users). */
+const projectDone = (s: GameState, owner: Owner, id: ProjectId): boolean =>
+  s.setup?.production === true && s.setup.territory === true && industryOn(s) && !!s.players[owner]?.projects?.includes(id);
 
 /** An aircraft's load at its Helipad: burns AIR_LOAD_FUEL from the side's store. False when there is not enough. */
 export function burnLoadFuel(p: PlayerState | undefined): boolean {

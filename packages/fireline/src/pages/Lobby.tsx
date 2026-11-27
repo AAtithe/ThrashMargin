@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import EconomyPicker from '../components/EconomyPicker';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import GamePacePicker, { attackText } from '../components/GamePacePicker';
@@ -412,7 +413,13 @@ export default function Lobby() {
                 <GamePacePicker value={setup} onPick={pace => setSetup(applyPace(setup, pace))} />
               </SetupStep>
             )}
-            <SetupStep n={setupStep === 'size' ? 2 : 1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
+            {/* The economy (2026-11-26): the four economy toggles as one ladder, on the first screen. */}
+            {setupStep === 'size' && (
+              <SetupStep n={2} title="Economy" hint="How deep the economy runs. Each step adds to the one before; Customise sets them one by one.">
+                <EconomyPicker value={setup} onPick={patch => setSetup({ ...setup, ...patch })} />
+              </SetupStep>
+            )}
+            <SetupStep n={setupStep === 'size' ? 3 : 1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
               <div className="fl-levels" role="group" aria-label="Enemy commander">
                 {threats.map(({ d, spec, wave, tempo, base }) => {
                   return (
@@ -487,7 +494,7 @@ export default function Lobby() {
               />
             )}
             <SetupStep
-              n={setupStep === 'size' ? 3 : 5}
+              n={setupStep === 'size' ? 4 : 5}
               title="Deploy"
               hint={setupStep === 'size' ? 'Check the orders and go, or customise the map, sides and terms first.' : 'Check the orders, name the operation and go.'}
             >
@@ -508,6 +515,7 @@ export default function Lobby() {
                 {/* round7:structures: the two structure options (advanced tech only). */}
                 {setup.tech === 'advanced' && <Order k="Upgrades">{setup.structureUpgrades ? 'On' : 'Off'}</Order>}
                 {setup.tech === 'advanced' && <Order k="Strategic">{setup.strategicBuildings ? 'On' : 'Off'}</Order>}
+                {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
                 <Order k="Your General">{generalLabel(setup)}</Order>

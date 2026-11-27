@@ -34,6 +34,7 @@
  *   tsx scripts/ai-ladder.ts --map random --industry --supply   and supply lines (Depots; needs --industry)
  *   tsx scripts/ai-ladder.ts --map random --industry --supply --territory   and territory and workforce (needs --supply)
  *   tsx scripts/ai-ladder.ts --map random --structure-upgrades --strategic   round 7: structure upgrades and strategic structures
+ *   tsx scripts/ai-ladder.ts ... --territory --production   and advanced production (needs --territory)
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -165,6 +166,9 @@ const UPGRADES7 = args.includes('--structure-upgrades');
 const STRATEGIC7 = args.includes('--strategic');
 if ((UPGRADES7 || STRATEGIC7) && LEGACY) throw new Error('--structure-upgrades and --strategic need a --map other than legacy');
 // round7:structures end.
+/** Advanced production (2026-11-22): needs territory. */
+const PRODUCTION = args.includes('--production');
+if (PRODUCTION && !TERRITORY) throw new Error('--production needs --territory');
 if (LEGACY && INDUSTRY) throw new Error('--industry needs a --map other than legacy: a legacy battle has no setup, so no industry');
 // round7:fortification: the Fortification line, stated in every skirmish setup (off without the flag).
 const FORTIFICATION = args.includes('--fortification');
@@ -203,6 +207,7 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     // round7:adaptive begin
     adaptive: ADAPTIVE === 'on',
     // round7:adaptive end
+    ...(PRODUCTION ? { production: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -381,7 +386,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -408,6 +413,7 @@ if (workerAt >= 0) {
           ...(FORTIFICATION ? ['--fortification'] : []),
           ...(UPGRADES7 ? ['--structure-upgrades'] : []),
           ...(STRATEGIC7 ? ['--strategic'] : []),
+          ...(PRODUCTION ? ['--production'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

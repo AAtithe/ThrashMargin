@@ -38,6 +38,22 @@ import {
   SUPPLY_TICKS,
   WELL_HOLD,
   CLAIM_RADIUS,
+  FARM_TICKS,
+  INFANTRY_FOOD,
+  FOOD_TICKS,
+  QUARTERS_FOOD,
+  MUNITIONS_ALLOYS,
+  MUNITIONS_FUEL,
+  MUNITIONS_MADE,
+  MUNITIONS_TICKS,
+  MUNITION_UNITS,
+  START_MUNITIONS,
+  TRUCK_CREDITS,
+  TRUCK_FUEL,
+  TECHNICIANS_PER_CENTRE,
+  TECH_CREW,
+  PROJECTS,
+  PROJECT_ORDER,
   CREW,
   CREW_ORDER,
   HOUSING,
@@ -330,6 +346,8 @@ export default function HowToPlay() {
         <TerritoryPanel />
         {/* round7:structures: structure upgrades and strategic structures. */}
         <StructuresHelp />
+        {/* Advanced production (2026-11-22): its panel goes on the line below. */}
+        <ProductionPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
         <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -566,6 +584,7 @@ const SECTIONS = [
   'Territory and workforce',
   // round7:structures.
   'Upgrades and strategic structures',
+  'Advanced production',
   'Formations and groups',
   'Campaign',
   'War for the Planet',
@@ -690,6 +709,47 @@ function IndustryPanel() {
           {INDUSTRY_START_FUEL} fuel.
         </li>
         <li>The computer builds the same chain right after its first War Factory: one Fuel Well and one Foundry, at every level.</li>
+      </ul>
+    </Section>
+  );
+}
+
+// Advanced production (2026-11-22): the panel, from the same numbers the battle reads.
+function ProductionPanel() {
+  const perMin = (n: number, ticks: number) => Math.round((n * 600) / ticks);
+  return (
+    <Section title="Advanced production">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Advanced production</strong> in the lobby (it needs Industry, Supply lines and Territory). The Industry gauge
+          adds food and munitions.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.farm.name}</strong> grows {perMin(1, FARM_TICKS)} food a minute. Every Quarters eats{' '}
+          {perMin(QUARTERS_FOOD, FOOD_TICKS)} a minute; one that finds no food at its meal is HUNGRY and houses half its workers
+          until it eats again. Your yards feed their own. Every soldier costs {INFANTRY_FOOD} food to train (heroes and the General
+          excepted): an army of riflemen needs Farms as tanks need a Foundry.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.munitions.name}</strong> turns {MUNITIONS_ALLOYS} alloys and {MUNITIONS_FUEL} fuel into {MUNITIONS_MADE}{' '}
+          munitions every {MUNITIONS_TICKS / TICKS_PER_SECOND} seconds. {MUNITION_UNITS.map(k => UNITS[k].name).join(', ')} spend one a
+          shot and hold fire without; aircraft spend one a load and take twice as long without. Every side starts with {START_MUNITIONS}.
+        </li>
+        <li>
+          The <strong>{UNITS.supplytruck.name}</strong> (War Factory, with a Depot standing) drives to the cut-off Refinery or Fuel Well
+          holding the most, loads up to {TRUCK_CREDITS} credits or {TRUCK_FUEL} fuel, and brings it to the nearest linked yard or Depot.
+          It works on its own whenever it is idle; give it any order and it is yours until it is idle again. It is unarmed, and a convoy
+          worth ambushing.
+        </li>
+        <li>
+          A <strong>{BUILDINGS.trainingcentre.name}</strong> trains {TECHNICIANS_PER_CENTRE} Technicians. Beside their crews,{' '}
+          {Object.entries(TECH_CREW).map(([k, n]) => `a ${BUILDINGS[k as keyof typeof BUILDINGS].name} needs ${n}`).join(', ')}; without
+          them it stops like any uncrewed structure, and research waits for a crewed Research Lab.
+        </li>
+        <li>
+          The Training Centre also runs <strong>Industry projects</strong>, one at a time, paid up front and refunded if cancelled: select
+          it to start one. {PROJECT_ORDER.map(id => `${PROJECTS[id].name} (${PROJECTS[id].cost}): ${PROJECTS[id].blurb}`).join(' ')}
+        </li>
       </ul>
     </Section>
   );

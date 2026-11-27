@@ -244,7 +244,7 @@ export const sections: [string, (ok: Ok) => void][] = [
 // ---- Workstream A: two armies ----------------------------------------------------------------
 
 /** This round's recruits, which close every list (integration): the field General and the heroes. */
-const RECRUITS: (BuildingKind | UnitKind)[] = ['general', ...HERO_KINDS];
+const RECRUITS: (BuildingKind | UnitKind)[] = ['general', ...HERO_KINDS, 'supplytruck'];
 
 /** The four kinds workstream A adds: each army's signature unit and Ashen's two aircraft. */
 const NEW_KINDS: UnitKind[] = ['sapper', 'raider', 'kestrel', 'firebrand'];
@@ -649,7 +649,8 @@ function buildKeys(ok: Ok): void {
       // round7:fortification: Point Defence closes the list, past every key, so it may move when the Academy joins.
       ok(before.every((k, i) => RECRUITS.includes(k) || k === 'pointdefence' || list[i] === k), `${f}, ${tab}: turning Heroes and Generals on moves no key already in use`);
     }
-    ok(RECRUITS.every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
+    // The Supply Truck closes the list with the recruits but needs Advanced production, not Heroes or Generals.
+    ok(RECRUITS.filter(k => k !== 'supplytruck').every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
   }
 }
 
@@ -796,7 +797,7 @@ function navalWarBothArmies(ok: Ok): void {
     // round7:fortification: the Point Defence emplacement closes the list, after the economy's five.
     const list = menuOf(f, 'building').filter(k => k !== 'pointdefence');
     // Industry's Fuel Well and Foundry (2026-11-21) come after the Academy, so nothing before them moved.
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && menuOf(f, 'building').indexOf('pointdefence') === menuOf(f, 'building').indexOf('watchtower') + 1 && list.slice(-10).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,bunker,supplycache,decoy,intelcentre',
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && menuOf(f, 'building').indexOf('pointdefence') === menuOf(f, 'building').indexOf('watchtower') + 1 && list.slice(-13).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,bunker,supplycache,decoy,intelcentre,farm,munitions,trainingcentre',
       `${f}: the Structures list ends Fortress, Naval Yard, Academy, the economy's five, then round 7's strategic four (${list.slice(-10).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');

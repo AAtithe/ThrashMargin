@@ -94,7 +94,7 @@ async function checkBuildWindow(browser, base, problems, out) {
       // Generals on; this battle has both off, so they must be absent. Likewise the economy's
       // structures (2026-11-21): the Fuel Well and Foundry need Industry, the Depot Supply lines,
       // the Quarters and Watchtower Territory, all off here.
-      const economy = ['fuelwell', 'foundry', 'depot', 'quarters', 'watchtower'];
+      const economy = ['fuelwell', 'foundry', 'depot', 'quarters', 'watchtower', 'farm', 'munitions', 'trainingcentre', 'supplytruck'];
       const optional = k => k === r.HERO_ACADEMY || k === 'general' || economy.includes(k) || (k in r.UNITS && !!r.UNITS[k].hero);
       const menus = {};
       const absent = {};

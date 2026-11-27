@@ -67,6 +67,13 @@ import { StructuresSetup } from './StructuresSetup';
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
 
+/** What the Advanced production field says. */
+function productionNote(setup: SkirmishSetup): string {
+  if (!setup.industry || !setup.supply || !setup.territory) return 'Needs Industry, Supply lines and Territory on.';
+  if (!setup.production) return 'Off: Quarters need no food and every gun fires freely.';
+  return 'On: Farms grow food and every Quarters eats; hungry Quarters house half. A Munitions Works makes munitions from alloys and fuel; artillery, Missile Carriers, Battleships and Railgun Tanks spend one a shot, aircraft one a load. A Supply Truck fetches goods stranded at cut-off sites.';
+}
+
 /** What the Territory and workforce field says. */
 function territoryNote(setup: SkirmishSetup): string {
   if (!setup.industry || !setup.supply) return 'Needs Industry and Supply lines on.';
@@ -181,6 +188,7 @@ export function readStoredSetup(): SkirmishSetup {
       // round7:adaptive begin. On unless the player turned it off.
       adaptive: r.adaptive !== false,
       // round7:adaptive end.
+      production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
     };
   } catch {
     return FIRST_SETUP;
@@ -575,6 +583,26 @@ export default function SkirmishSetupPanel({
               ))}
             </div>
             <p className="fl-setup-note">{territoryNote(value)}</p>
+          </div>
+          {/* Advanced production (2026-11-22): phase 4, needs territory (src/sim/production.ts). */}
+          <div className="fl-setup-field" data-testid="production-field">
+            <Label>Advanced production</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Advanced production">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={!!(value.industry && value.supply && value.territory) && !!value.production === on}
+                  disabled={!(value.industry && value.supply && value.territory) && on}
+                  data-testid={`production-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ production: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{productionNote(value)}</p>
           </div>
         </div>
       </SetupStep>
