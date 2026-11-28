@@ -91,11 +91,14 @@ import { linesFor, structureMaxHp } from '../sim/fortify';
 // round7:structures begin.
 import { IntelPanel, StructureNotes } from './StructurePanel';
 import { structureStatRows } from './structureStats';
-import { apparentHp, apparentKind, apparentSpecOf } from '../sim/structures';
+import { apparentHp, apparentKind, apparentSpecOf, upgradesOn } from '../sim/structures';
 // round7:structures end.
 
-/** A tab of the build window: a build list, or Research once a Research Lab stands. */
-export type Tab = Category | 'research';
+/**
+ * A tab of the build window: a build list, Research once a Research Lab stands, or (with structure
+ * upgrades on, 2026-11-28) Upgrades, every structure of yours that can be raised a level.
+ */
+export type Tab = Category | 'research' | 'upgrades';
 
 export const TABS: { key: Tab; label: string }[] = [
   { key: 'building', label: 'Structures' },
@@ -104,7 +107,11 @@ export const TABS: { key: Tab; label: string }[] = [
   { key: 'air', label: 'Air' },
   { key: 'naval', label: 'Naval' },
   { key: 'research', label: 'Research' },
+  { key: 'upgrades', label: 'Upgrades' },
 ];
+
+/** A tab that is a panel of its own rather than a build list: no queue, no hotkeys, no producer. */
+export const isPanelTab = (t: Tab): t is 'research' | 'upgrades' => t === 'research' || t === 'upgrades';
 
 export const tabLabel = (t: Tab): string => TABS.find(x => x.key === t)?.label ?? t;
 
@@ -118,7 +125,9 @@ export const researchOpen = (state: GameState): boolean => hasBuilding(state, 0,
  */
 export const tabsFor = (state?: GameState): Tab[] =>
   TABS.map(t => t.key).filter(k =>
-    k === 'research'
+    k === 'upgrades'
+      ? !!state && upgradesOn(state)
+      : k === 'research'
       ? !!state && researchOpen(state)
       : k === 'air'
         ? !state || techAllowed(state, 0, 'helipad')
@@ -168,7 +177,7 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
  * infantry; Ashen's add the Raider Bike and fly the Kestrel and Firebrand.
  */
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
-  tab === 'research'
+  tab === 'research' || tab === 'upgrades'
     ? []
     : state
       ? menuOf(factionOf(state, 0), tab).filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
@@ -191,7 +200,7 @@ export function pressBuild(
   setPlacing: (k: BuildingKind | null) => void,
   batch: boolean,
 ): void {
-  if (tab === 'research') return;
+  if (isPanelTab(tab)) return;
   const head = state.players[0].queues[tab][0];
   if (tab === 'building' && readyStructure(state, 0) === kind) {
     setPlacing(placing === kind ? null : (kind as BuildingKind));
@@ -1093,7 +1102,7 @@ function defaultNode(state: GameState, line: /* round7:fortification */ BattleLi
  * One development line: Mk I, Mk II, then the doctrine fork. The caption under the nodes describes
  * whichever node is pointed at or focused, and otherwise the next step.
  */
-function LineRow({ state, line, dispatch }: { state: GameState; line: /* round7:fortification */ BattleLineId; dispatch: (a: GameAction) => boolean }) {
+export function LineRow({ state, line, dispatch }: { state: GameState; line: /* round7:fortification */ BattleLineId; dispatch: (a: GameAction) => boolean }) {
   const [hover, setHover] = useState<UpgradeId | null>(null);
   const l = BATTLE_LINES[line];
   const chosen = doctrineOf(state, 0, line);

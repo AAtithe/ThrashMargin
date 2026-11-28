@@ -25,6 +25,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { BUILDINGS, type BuildingKind, type Category } from '../sim/rules';
 import { countBuildings } from '../sim/state';
+import { groupOf, type Group } from '../game/buildPlan';
 import type { GameState } from '../sim/types';
 import { UI } from '../theme';
 
@@ -53,23 +54,34 @@ export interface TourView {
   selected: number[];
   placing: BuildingKind | null;
   /** The build window's tab (the one the Build button names while it is closed). */
-  tab: Category | 'research';
+  tab: Category | 'research' | 'upgrades';
   /** A finger, not a mouse: the steps say tap, and name the command bar instead of keys. */
   touch?: boolean;
   /** The build window is open (and showing): build buttons and list tabs exist only while it is. */
   buildOpen?: boolean;
   /** The window is a full-screen sheet (phones and touch): it covers everything outside it. */
   sheet?: boolean;
+  /** The structure group popped out beside the rail (desktop): only its items are on show. */
+  group?: Group;
 }
 
 /** The ids that live inside the build window. */
-const inWindow = (id: string) => id.startsWith('fl-tab-') || (id.startsWith('fl-build-') && id !== 'fl-build-open');
+const inWindow = (id: string) => id.startsWith('fl-tab-') || id.startsWith('fl-group-') || (id.startsWith('fl-build-') && id !== 'fl-build-open');
 
 /**
  * A control in the build window: while the window is closed, ring the Build button that opens it;
- * on the wrong list, ring that list's tab; otherwise the control itself.
+ * on the wrong list, ring that list's tab (on the rail, on a desktop); on a desktop's Structures,
+ * a structure in another group rings that group's button; otherwise the control itself.
  */
-const windowed = (v: TourView, tab: Category, id: string) => (!v.buildOpen ? 'fl-build-open' : v.tab !== tab ? `fl-tab-${tab}` : id);
+const windowed = (v: TourView, tab: Category, id: string) => {
+  if (!v.buildOpen) return 'fl-build-open';
+  if (v.tab !== tab) return `fl-tab-${tab}`;
+  if (!v.sheet && tab === 'building' && v.group && id.startsWith('fl-build-')) {
+    const g = groupOf(id.slice('fl-build-'.length));
+    if (g !== v.group) return `fl-group-${g}`;
+  }
+  return id;
+};
 
 /**
  * Where the step's target really is for the player. The open build window stands between the
