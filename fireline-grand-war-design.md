@@ -220,3 +220,6 @@ order, undefined keys, fresh defaults, wide objects, six malformed cases refused
 (exact load, pre-table saves unchanged, unknown version and malformed tables refused, two minutes of
 play identical after loading), and a deep-only thirty-minute battle saved and reloaded every five
 minutes under 150 KB. `npm run drive -- --fast --near-check`: 348,770 assertions, none failed.
+`npm run drive -- --near-check` (the deep tier, with every pinned byte-identical replay): 423,354
+assertions, none failed, so the indexed search changed no battle anywhere. `npm run check`: all passed
+(Fireline 348,770, campaign 7,713, War for the Planet 33,564, every other game's suite).
