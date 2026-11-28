@@ -36,12 +36,21 @@ function Toggle({ label, testid, on, disabled, onPick, note }: { label: string; 
   );
 }
 
+/** What the High tiers field does (2026-11-28; src/sim/hightiers.ts). */
+function highTiersNote(setup: SkirmishSetup): string {
+  if (setup.tech !== 'advanced') return 'Advanced tech only.';
+  if (!setup.highTiers) return 'Off: tier three is the top of the tree.';
+  return 'Tier three adds the Outrider, Mechanised Infantry, Vanguard and Scout Drone. Tier four, Battlefield Command (three upgrades researched first): the Rotary Cannon, Sea Commando, Strike Drone and Pathfinder. Tier five, the Reactor Complex (five upgrades): the Atomic Tank, the Stratos, which nothing can shoot down, and the Shadow Bomber.';
+}
+
 export function StructuresSetup({ value, set }: { value: SkirmishSetup; set: (patch: Partial<SkirmishSetup>) => void }) {
   const adv = value.tech === 'advanced';
   return (
     <>
       <Toggle label="Structure upgrades" testid="upgrades" on={!!value.structureUpgrades} disabled={!adv} onPick={v => set({ structureUpgrades: v })} note={upgradesNote(value)} />
       <Toggle label="Strategic structures" testid="strategic" on={!!value.strategicBuildings} disabled={!adv} onPick={v => set({ strategicBuildings: v })} note={strategicNote(value)} />
+      {/* High tiers (2026-11-28; src/sim/hightiers.ts). */}
+      <Toggle label="High tiers" testid="hightiers" on={!!value.highTiers} disabled={!adv} onPick={v => set({ highTiers: v })} note={highTiersNote(value)} />
     </>
   );
 }

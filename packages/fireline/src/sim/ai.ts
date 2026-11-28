@@ -33,6 +33,7 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
+import { tiersPlan } from './aiTiers';
 import { MAX_QUARTERS, farmUrgent, depotSpot, depotToward, economyPlan, expansionTarget, industryPlanFor, unclaimedOre, wellFocus } from './aiEconomy';
 import { crewNeed, crewWanted, housed, territoryOn } from './territory';
 import { CREW } from './rules';
@@ -542,6 +543,8 @@ function commander(s: GameState, owner: Owner): void {
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
   sitesPlan(s, owner, home, enemyHome, units, foes);
   // round5:D end.
+  // High tiers (2026-11-28; aiTiers.ts): tier three's additions, tiers four and five. A no-op without them.
+  tiersPlan(s, owner, home, enemyHome, units, foes);
   // round6:B begin. Heroes in free play (fireline-round6-design.md): one call into aiHeroes.ts goes
   // on the line below this comment (recruiting and errands), and nothing else in this function changes.
   heroPlan(s, owner, home, enemy, units, foes);

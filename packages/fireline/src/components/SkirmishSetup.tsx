@@ -219,6 +219,8 @@ export function readStoredSetup(): SkirmishSetup {
       // Commander characters and battlefield events (2026-11-28): on unless the player turned them off.
       characters: r.characters !== false,
       events: r.events !== false,
+      // High tiers (2026-11-28): on unless the player turned them off.
+      highTiers: r.highTiers !== false,
       production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
       upkeep: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true,
       seasons: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true && r.seasons === true,

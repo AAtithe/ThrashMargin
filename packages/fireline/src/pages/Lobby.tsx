@@ -528,6 +528,7 @@ export default function Lobby() {
                 {/* round7:structures: the two structure options (advanced tech only). */}
                 {setup.tech === 'advanced' && <Order k="Upgrades">{setup.structureUpgrades ? 'On' : 'Off'}</Order>}
                 {setup.tech === 'advanced' && <Order k="Strategic">{setup.strategicBuildings ? 'On' : 'Off'}</Order>}
+                {setup.tech === 'advanced' && <Order k="High tiers">{setup.highTiers ? 'Tiers 3 to 5' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && setup.production && <Order k="Upkeep">{setup.upkeep ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && setup.production && setup.upkeep && <Order k="Seasons">{setup.seasons ? 'On' : 'Off'}</Order>}

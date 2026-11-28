@@ -4468,6 +4468,16 @@ kbd {
   width: max-content;
   min-width: 100%;
 }
+/* High tiers add two more structure columns: past six the tree tightens so it still fits a 1280 window. */
+.fl-tree[data-orient="across"][data-cols="many"] {
+  gap: 6px;
+}
+.fl-tree[data-orient="across"][data-cols="many"] .fl-tree-col {
+  width: 80px;
+}
+.fl-tree[data-orient="across"][data-cols="many"] .fl-tree-col[data-tier="ghost"] {
+  width: 74px;
+}
 .fl-tree[data-orient="down"] {
   flex-direction: column;
   align-items: stretch;

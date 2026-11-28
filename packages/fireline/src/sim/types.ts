@@ -135,6 +135,10 @@ export interface Unit {
    * `x`, `y` where it was sent (an order to anywhere else means the player took over).
    */
   truck?: { site: number; hub: number; credits: number; fuel: number; x: number; y: number };
+  /** High tiers, Mechanised Infantry only: ticks it has stood still, to DISMOUNT_TICKS (hightiers.ts). */
+  settled?: number;
+  /** High tiers, Rotary Cannons only: shots in the current run, to SPIN_MAX (hightiers.ts). */
+  spin?: number;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */

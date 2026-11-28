@@ -3653,6 +3653,98 @@ Fireline deep tier 424,092 assertions, 0 failed; `npm run check` all passed (Fir
 the Commander character and Battlefield events fields in light and dark, and a live battle drawing crates,
 ore-strike rings and the beacon with a hold under way, no page errors.
 
+### 2026-11-28: High tiers (tier three's additions, tiers four and five)
+
+The player asked for more troop types (mechanised infantry, motorbikes, nuclear-powered tanks,
+rapid-fire guns), a drone section in the aircraft, longer-range recon planes and ultra-high planes
+that cannot be shot down, placed on tiers three, four and five so that reaching them takes many
+structures and much research, with a Battlefield Command, and the units made richer.
+
+Behind a new setup field, `highTiers` (the customise step's High tiers toggle, beside the structure
+options; advanced tech only; on for a new skirmish; absent reads as off, so every older save, mission,
+planet battle and pinned replay plays exactly as before). Rules in `src/sim/hightiers.ts`, numbers in
+`rules.ts` beside `TIER3_AI_TICKS`, the computer in `src/sim/aiTiers.ts`.
+
+| Tier | Opened by | Needs | Units |
+|---|---|---|---|
+| 3 | Prototype Works (as before) | Research Lab, Tech Centre | Outrider, Mechanised Infantry, Scout Drone (added) |
+| 4 | Battlefield Command (4000, 3x3, -120 power) | Prototype Works, Strike Command, Helipad, Research Lab, **3 upgrades researched** | Rotary Cannon, Strike Drone, Pathfinder |
+| 5 | Reactor Complex (6000, 3x3, **+250 power**) | Battlefield Command, Tech Centre, Comms Uplink, **5 upgrades researched** | Atomic Tank, Stratos |
+
+| Unit | Cost | What makes it different |
+|---|---|---|
+| Outrider | 450 | Motorcycle and sidecar gunner, 0.22 tiles a tick (the fastest ground unit), sight 8, and a detector: finds Stealth Tanks and Spies 7 tiles off |
+| Mechanised Infantry | 900 | A squad in a tracked carrier. Halted for `DISMOUNT_TICKS` (2 s) the squad climbs out (drawn kneeling behind it): 1.5x damage, +1 range, takes 0.75x. Any step puts it back aboard (`Unit.settled`) |
+| Scout Drone | 400 | Cheap unarmed quadcopter, 20 fuel loads (100 s aloft), sight 9 |
+| Rotary Cannon | 1500 | Rapid fire that spins up: each shot in a run cuts the next reload by 6%, to 10 shots (2.5x the first rate); spins down out of the fight (`Unit.spin`). Bullets, so it reaches aircraft too |
+| Strike Drone | 550 | Loitering munition: hunts like a gunship, then dives in with a 260 warhead (splash 1.2); the shot destroys the drone (`expendable`) |
+| Pathfinder | 1400 | Long-range recon jet: 36 fuel loads (3 minutes), sight 13, detector, 0.27 tiles a tick |
+| Atomic Tank | 4200 | 1700 health, twin guns (130, splash), mends itself, burns **no fuel upkeep** (`nuclear`); destroyed, its reactor breaches: 320 over 2.5 tiles to every enemy, chaining to other Atomic Tanks |
+| Stratos | 3800 | Ultra-high altitude: **never targeted, hit or splashed** by anything (`untouchable`: `acquire`, `canHit`, splash and `hurt` all refuse it), sight 15, detector, and everything within 7 tiles of it takes 1.2x from its side (`designateMul`). One per side, aloft or queued |
+
+Battlefield Command also gives **field promotion**: every unit a side's producers turn out while it
+stands arrives a Veteran. The Reactor Complex **melts down** when destroyed (600 over 3.5 tiles to
+every enemy). Breach and meltdown spare the owner's team, and an Atomic Tank abandoned for want of
+upkeep is cold and does not breach. The research gate is `researchNeeded` on the structure, read by
+`unlocked` (`researchShort` gives what is missing); the build panel says "Needs 2 more upgrades
+researched".
+
+All new items close their lists (Structures, Vehicles, Air), so no older item moves or loses its key.
+`airKindFor` (aiAir.ts) skips tiered aircraft, so the role staples (Gunship, Recon Plane and so on)
+are unchanged for both armies, Ashen included. The computer's anti-air no longer counts a Stratos,
+which it cannot fight.
+
+**The computer** (`aiTiers.ts`, called after `sitesPlan`). Battles mostly end by minute 25, when the
+earlier tier three only began, so with high tiers on the commander climbs sooner: Normal and Hard
+raise a Research Lab, Tech Centre and Prototype Works from minute 15 (`TIER3_HIGH_AI_TICKS`), then a
+Strike Command, Helipad and Battlefield Command from minute 21 once three upgrades are done, and the
+Reactor Complex from minute 27 once five are. Structures wait, as tier three's always did, for the
+army at home to be up to the next wave and to the opponent's. Units, one a decision, heaviest first
+(Normal / Hard): Atomic Tanks 1 / 2, Rotary Cannons 2 / 3, Mechanised Infantry 2 / 3, Outriders 2 / 2;
+a Stratos, Strike Drones 2 / 3 (its gunship strikes fly them), a Pathfinder on Hard and a Scout Drone.
+The Stratos and scouts go up every 30 seconds over the middle of the enemy's army, so the mark helps
+its waves. Easy fields only tier three's additions once its own Prototype Works stands. In probe
+battles (large map, long pace) Battlefield Command went up between minutes 21 and 37 and the tier four
+units followed within a minute; tier five needs a battle that lasts, and the harness proves it by
+holding side 0's base up.
+
+Art: the eight units and two structures in any side's colours (`art.ts`, end of file): a dismounting
+squad, a gatling turret that blurs and flashes, a reactor that glows green and flickers when the tank
+is badly hurt, a drone with spinning rotors, a red-nosed diving munition, a long-winged recon jet with
+a fuel strip, and the Stratos drawn faint with long contrails and a turning designation ring; a
+command post with a lit plotting table and turning dish, and a reactor with venting cooling towers and
+a glowing core. How to play has a Tiers four and five block.
+
+**Checks.** `scripts/drive-hightiers.ts`, twelve sections in `npm run drive:fire` (the whole-battle
+section in the deep tier): the setup (on, off, absent, junk, standard tech, missions, planet battles,
+older saves, menu order), requirements and the research gate, the Reactor's power, the Stratos cap and
+the illegal queue returning the same state; dismounting measured (0.75 of the damage taken); the spin
+measured shot by shot; a Strike Drone spent on a tank; a Stratos over a Flak Cannon, a Skyhunter and an
+Interceptor for 200 ticks untouched and unaimed at, the mark measured on a Barracks (1.2x); the breach
+and meltdown (enemies inside hurt, outside and own side untouched, an abandoned tank cold); field
+promotion; the Hard commander raising tiers four and five and fielding them; a whole computer battle
+replaying byte-identically, off and absent playing the same battle; purity. The existing setup-shape
+assertions (drive, lines, size, factions, variety, planet battle) now include the new key.
+`ai-ladder` takes `--high-tiers`.
+
+**Later the same day: elite warriors, sea commandos and a stealth bomber.** The player asked how
+Spies and Commandos are built (they are heroes: Heroes on in the customise step, a Command Academy,
+one of each; How to play and the high-tiers block now say so) and for stealth bombers, Navy-SEAL-style
+special forces and elite warriors. Three more high-tier units, original names:
+
+| Unit | Tier | Cost | What makes it different |
+|---|---|---|---|
+| Vanguard | 3 (Barracks, Prototype Works) | 600 | Elite warriors: trained at Elite rank (`startVet`), 200 health, heavier rifle (18, range 4.5) |
+| Sea Commando | 4 (Barracks, Battlefield Command) | 800 | Special forces with the Stealth Tank's stealth (unseen beyond 2.5 tiles, seen 3 s after a charge), charges (110, splash 0.6) that wreck structures, armour and ships. They do not swim: amphibious movement would need a third movement layer in the path search |
+| Shadow Bomber | 5 (Helipad, Reactor Complex) | 3600 | Stealth bomber: the same stealth, so flak and Interceptors see it only close up or for 3 s after each bomb; six bombs (140, splash 1.5) in one run |
+
+Stealth was already generic (`stealthSeen`, the bomb's projectile carries its shooter), so no rule
+changed for the two stealthy units. The computer trains Vanguards (Easy 2, Normal 3, Hard 4) and Sea
+Commandos (Normal 1, Hard 2), taking back a line soldier not yet started when its Barracks' queue is
+full, and flies a Shadow Bomber on Hard with its bomber strikes. Harness: the Vanguard arrives Elite;
+a Sea Commando and a Shadow Bomber sit beside a Flak Cannon and a rifleman for sixty ticks unseen and
+unhurt; the commander fields Vanguards.
+
 ### 2026-11-28: Cruise missiles, the Iron Dome and paratroopers
 
 Three support powers join the four, granted in an advanced skirmish by structures the way the others are

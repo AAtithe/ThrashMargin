@@ -43,7 +43,8 @@ export const eatsUpkeep = (kind: UnitKind): boolean => UNITS[kind].category === 
 /** An armed machine that burns fuel: anything armed that is not infantry and not a hero. */
 export function burnsUpkeep(s: GameState, u: Unit): boolean {
   const spec = UNITS[u.kind];
-  return spec.category !== 'infantry' && !spec.hero && !!unitSpecOf(s, u).weapon;
+  // High tiers: a nuclear machine (the Atomic Tank) burns no fuel.
+  return spec.category !== 'infantry' && !spec.hero && !spec.nuclear && !!unitSpecOf(s, u).weapon;
 }
 
 /** How many minutes in a row a side has been short of each good. Absent: never. */
@@ -80,7 +81,7 @@ export function upkeepAllows(s: GameState, owner: Owner, kind: UnitKind): boolea
   if (!short) return true;
   const spec = UNITS[kind];
   if (eatsUpkeep(kind)) return short.food === 0;
-  if (spec.category !== 'infantry' && !spec.hero && spec.weapon) return short.fuel === 0;
+  if (spec.category !== 'infantry' && !spec.hero && !spec.nuclear && spec.weapon) return short.fuel === 0;
   return true;
 }
 

@@ -71,7 +71,7 @@ import {
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
 } from '../sim/rules';
-import { buildTicksFor, costFor, hasBuilding, hasProducer, lineCount, maxHpOf, powerOf, queueCap, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, lineCount, maxHpOf, powerOf, queueCap, readyStructure, researchModeOf, researchShort, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom, padSpot } from '../sim/air';
 import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
@@ -835,11 +835,16 @@ export function BuildButton({
   useEffect(() => () => {
     if (preview.get() === kind) preview.set(null);
   }, [kind]);
+  // High tiers: Battlefield Command and the Reactor Complex wait for finished research too.
+  const short = kind in BUILDINGS ? researchShort(state, 0, kind as BuildingKind) : 0;
+  const researchWords = short > 0 ? `${short} more upgrade${short === 1 ? '' : 's'} researched` : null;
   const needsWords = missing.length
-    ? `Needs ${missing.map(r => BUILDINGS[r].name).join(', ')}`
+    ? `Needs ${missing.map(r => BUILDINGS[r].name).join(', ')}${researchWords ? ` and ${researchWords}` : ''}`
     : doctrineLocked
       ? 'Needs Point Defence research'
-      : null;
+      : researchWords
+        ? `Needs ${researchWords}`
+        : null;
   return (
     <div
       className="fl-tree-cell"
@@ -982,7 +987,7 @@ export function BuildButton({
           {needsWords}
         </span>
       )}
-      {variant === 'mini' && doctrineLocked && !missing.length && (
+      {variant === 'mini' && (doctrineLocked || short > 0) && !missing.length && (
         <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
           {needsWords}
         </span>
