@@ -2083,7 +2083,11 @@ export function Battle({
               Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
               implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
           {/* round6:C end. */}
-          {railShown && <BuildRail state={s} tab={tab} open={buildOpen} touch={layout.touch} onPick={pickRail} />}
+          {railShown && (
+            <BuildRail state={s} tab={tab} open={buildOpen} touch={layout.touch} onPick={pickRail}>
+              <QuickBar state={s} dispatch={dispatch} placing={placing} setPlacing={choosePlacing} inRail />
+            </BuildRail>
+          )}
           {buildOpen && !help && !ended && (
             <BuildWindow
               state={s}
@@ -2102,7 +2106,7 @@ export function Battle({
               }}
             />
           )}
-          {!help && !ended && !layout.touch && <QuickBar state={s} dispatch={dispatch} placing={placing} setPlacing={choosePlacing} />}
+          {!help && !ended && !layout.touch && !railShown && <QuickBar state={s} dispatch={dispatch} placing={placing} setPlacing={choosePlacing} />}
           {/* round7:pause begin. A tactical pause: the battle holds but the map stays live, so
               orders, selections, queues and placements can be given while time stands still. A
               banner, not a scrim, so nothing on the battlefield is covered. */}

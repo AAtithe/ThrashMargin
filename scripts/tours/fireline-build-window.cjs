@@ -26,7 +26,8 @@
  *   leaves; the stat card never covers the sidebar;
  * - the advisor rings an item, with its reason on the card; unit roles and counters read the rules;
  * - pinning puts an item on the quick bar, F1 queues it, unpinning removes it;
- * - the window is docked against the rail, full height, never over the sidebar;
+ * - the window is docked against the rail at the battlefield's top, inside it, never over the sidebar;
+ * - pinned items sit in the rail, under the lists, where the window never covers them;
  * - no sideways scroll in the window at 1280 by 720, in either view.
  * No page or console errors.
  */
@@ -139,7 +140,7 @@ async function checkBuildWindow(browser, base, problems, out) {
       if (Math.abs(rail.x - field0.x) > 2) await fail(`the build rail is not on the battlefield's left edge (${rail.x} against ${field0.x})`);
       const win = await page.locator('#fl-build-window').boundingBox();
       if (Math.abs(win.x - (rail.x + rail.width)) > 2) await fail(`the window is not docked against the rail (${win.x} against ${rail.x + rail.width})`);
-      if (Math.abs(win.y - field0.y) > 2 || Math.abs(win.y + win.height - (field0.y + field0.height)) > 2) await fail('the docked window does not run the battlefield\'s full height');
+      if (win.y < field0.y || win.y - field0.y > 12 || win.y + win.height > field0.y + field0.height) await fail('the docked window is not at the top of the battlefield, inside it');
       await page.locator('#fl-tab-building').click();
       if (!(await until(async () => !(await isOpen()), 2000))) await fail('pressing the open list on the rail did not close the window');
       await page.locator('#fl-tab-infantry').click();
@@ -431,9 +432,14 @@ async function checkBuildWindow(browser, base, problems, out) {
     if (!(await until(async () => (await page.getByTestId('quick-barracks').count()) > 0, 2000))) await fail('pinning the Barracks put nothing on the quick bar');
     else {
       const qbox = await page.getByTestId('quick-bar').boundingBox();
+      const railBox = await page.getByTestId('build-rail').boundingBox();
+      if (qbox.x < railBox.x || qbox.x + qbox.width > railBox.x + railBox.width + 1) await fail('the pins are not in the build rail');
       const field = await page.locator('#fl-battlefield').boundingBox();
       if (qbox.x < field.x || qbox.x + qbox.width > field.x + field.width) await fail('the quick bar is not on the battlefield');
       // The ready Refinery holds the structure line: cancel it (a full refund), then F1.
+      // Its cancel button is on its card, in the Economy group.
+      await page.locator('#fl-group-economy').click();
+      await sleep(150);
       if (await page.getByTestId('cancel-refinery').count()) await page.getByTestId('cancel-refinery').click();
       await until(async () => (await page.locator('[data-testid=strip-building]').count()) === 0, 5000);
       await page.keyboard.press('F1');

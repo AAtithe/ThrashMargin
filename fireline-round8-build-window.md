@@ -125,3 +125,16 @@ scroll in the window at 1280 by 720; the stat card never overlaps the sidebar.
   against it and full height, a second press closes, Structures pops out its groups) and pops out each
   structure's group before checking it; the drag check is replaced by the sidebar check alone.
   `fireline.cjs` presses Production before queueing the Barracks mid-run.
+
+**2026-11-28, later. Polish.**
+
+- The docked window fits its content (8px from the top, at most the field's height) rather than running
+  empty to the floor, and slides out on a springier curve. A change of list, view or group crossfades in.
+- Resting the mouse on a structure group for 160ms pops it out, as a click does (mouse only).
+- The rail marks the list the hotkeys act on with an accent bar; buttons and cards lift on hover. Every
+  movement follows the game's Motion setting and the system's reduced motion.
+- The quick bar's pins moved into the rail, under the lists, so the window never covers them.
+- Verified: `npm run tours fireline` (guided run and build window, ok), `npm run tours fireline-touch
+  --quick` (ok), `npm run check:ui fireline` (32 of 32). Not run here: the whole of `npm run check`,
+  which stops in this container at Thrash Margin's missing install; Fireline's client and API typecheck
+  clean, and no file under `src/sim/` changed.

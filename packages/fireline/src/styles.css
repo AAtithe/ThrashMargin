@@ -9416,17 +9416,32 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
 
 /* The window docked against the rail: full height, sliding out from under it. */
 .fl-bw[data-docked="1"] {
-  top: 0;
-  bottom: 0;
+  top: 8px;
+  max-height: calc(100% - 16px);
   z-index: 31;
   border-left: none;
-  border-radius: 0 6px 6px 0;
-  box-shadow: 10px 0 30px var(--ui-shadow);
-  animation: fl-bw-out calc(180ms * var(--tm-motion, 1)) ease-out;
+  border-radius: 0 8px 8px 0;
+  box-shadow: 14px 6px 36px var(--ui-shadow), 2px 0 0 var(--ui-accent) inset;
+  transform-origin: left center;
+  animation: fl-bw-out calc(260ms * var(--tm-motion, 1)) cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes fl-bw-out {
   from {
-    transform: translateX(-24px);
+    transform: translateX(-28px) scaleX(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* A new list, view or group: its content crossfades in. */
+.fl-bw-swap {
+  animation: fl-bw-swap calc(200ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes fl-bw-swap {
+  from {
+    transform: translateX(8px);
     opacity: 0;
   }
   to {
@@ -9436,13 +9451,29 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
 }
 @media (prefers-reduced-motion: reduce) {
   .fl-bw[data-docked="1"],
-  .fl-bw-groups {
+  .fl-bw-groups,
+  .fl-bw-swap {
     animation: none;
+  }
+  .fl-rail-btn,
+  .fl-rail-btn img,
+  .fl-rail-btn::before,
+  .fl-bw-grp,
+  .fl-bw[data-docked="1"] .fl-build {
+    transition: none;
   }
 }
 :root[data-motion="off"] .fl-bw[data-docked="1"],
-:root[data-motion="off"] .fl-bw-groups {
+:root[data-motion="off"] .fl-bw-groups,
+:root[data-motion="off"] .fl-bw-swap {
   animation: none;
+}
+:root[data-motion="off"] .fl-rail-btn,
+:root[data-motion="off"] .fl-rail-btn img,
+:root[data-motion="off"] .fl-rail-btn::before,
+:root[data-motion="off"] .fl-bw-grp,
+:root[data-motion="off"] .fl-bw[data-docked="1"] .fl-build {
+  transition: none;
 }
 .fl-bw[data-docked="1"] .fl-bw-head {
   cursor: default;
@@ -9513,7 +9544,7 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   font-weight: 700;
 }
 .fl-bw-grp[aria-pressed="true"] .fl-bw-grp-name::after {
-  content: " \203A";
+  content: "\203A";
   color: var(--ui-accent);
 }
 .fl-bw-grp-count {
@@ -9536,4 +9567,107 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+/* ---- The rail, polished (2026-11-28) -------------------------------------------------------------- */
+.fl-rail-btn {
+  transition:
+    background-color calc(140ms * var(--tm-motion, 1)) ease,
+    border-color calc(140ms * var(--tm-motion, 1)) ease,
+    transform calc(160ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1),
+    margin calc(160ms * var(--tm-motion, 1)) ease;
+}
+.fl-rail-btn img {
+  transition: transform calc(180ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fl-rail-btn:hover img {
+  transform: scale(1.07);
+}
+.fl-rail-btn:hover:not([data-open="1"]) {
+  transform: translateX(2px);
+}
+.fl-rail-btn:active {
+  transform: scale(0.96);
+}
+/* The marker for the list the hotkeys act on: an accent bar that grows in from the middle. */
+.fl-rail-btn::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ui-accent);
+  transform: scaleY(0);
+  transition: transform calc(200ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fl-rail-btn[aria-selected="true"]::before {
+  transform: scaleY(1);
+}
+.fl-rail-btn[data-open="1"] {
+  box-shadow: none;
+}
+.fl-rail-busy {
+  box-shadow: 0 1px 4px var(--ui-shadow);
+}
+
+/* The pins, stacked in the rail under the lists. */
+.fl-quick[data-rail="1"] {
+  position: static;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 0 0;
+  border: none;
+  border-top: 1px solid var(--ui-tree-rule);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.fl-quick[data-rail="1"] .fl-quick-unpin {
+  top: -5px;
+  right: -5px;
+}
+
+/* The groups: a soft fill on hover, the open one with its chevron nudged out. */
+.fl-bw-grp {
+  transition:
+    background-color calc(140ms * var(--tm-motion, 1)) ease,
+    border-color calc(140ms * var(--tm-motion, 1)) ease;
+}
+.fl-bw-grp:hover:not([aria-pressed="true"]) {
+  background: var(--ui-tree-tab-on);
+}
+.fl-bw-grp-name::after {
+  display: inline-block;
+  margin-left: 4px;
+}
+
+/* The docked window's header and cards. */
+.fl-bw[data-docked="1"] .fl-bw-head {
+  padding: 8px 8px 8px 14px;
+}
+.fl-bw[data-docked="1"] .fl-bw-title {
+  font-size: 0.86rem;
+  letter-spacing: 0.1em;
+}
+.fl-bw[data-docked="1"] .fl-bw-close {
+  border-radius: 50%;
+  transition: background-color calc(140ms * var(--tm-motion, 1)) ease, border-color calc(140ms * var(--tm-motion, 1)) ease;
+}
+.fl-bw[data-docked="1"] .fl-bw-close:hover {
+  border-color: var(--ui-accent);
+  background: var(--ui-tree-tab-on);
+}
+.fl-bw[data-docked="1"] .fl-build {
+  transition:
+    transform calc(140ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow calc(140ms * var(--tm-motion, 1)) ease,
+    border-color calc(140ms * var(--tm-motion, 1)) ease;
+}
+.fl-bw[data-docked="1"] .fl-build:not(:disabled):not([data-state="locked"]):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px var(--ui-shadow);
 }

@@ -3,6 +3,9 @@
  * list, along the battlefield's upper left whether the build window is open or not. A slot queues
  * or places exactly as its card does (pressBuild), shows its progress, and right-click cancels the
  * last one queued. Keys F1 F2 F3 F4 F6 F7 (GameScreen's keyboard handler).
+ *
+ * On a desktop with the build rail (2026-11-28) the pins sit in the rail, under the lists, so the
+ * build window sliding out never covers them (`inRail`).
  */
 import { BUILDINGS, type BuildingKind, type UnitKind } from '../sim/rules';
 import { buildTicksFor, categoryOf, costFor, readyStructure } from '../sim/state';
@@ -18,18 +21,26 @@ export default function QuickBar({
   dispatch,
   placing,
   setPlacing,
+  inRail = false,
 }: {
   state: GameState;
   dispatch: (a: GameAction) => boolean;
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
+  /** Stacked in the build rail rather than along the battlefield's upper left. */
+  inRail?: boolean;
 }) {
   const list = useStore(pins);
   if (!list.length) return null;
   const f = factionOf(state, 0);
   const p = state.players[0];
   return (
-    <div className="fl-quick" role="toolbar" aria-label="Quick bar" data-testid="quick-bar">
+    <div className="fl-quick" role="toolbar" aria-label="Quick bar" aria-orientation={inRail ? 'vertical' : 'horizontal'} data-rail={inRail ? '1' : '0'} data-testid="quick-bar">
+      {inRail && (
+        <span className="fl-rail-title" aria-hidden="true">
+          Pinned
+        </span>
+      )}
       {list.map((kind: Kind, i) => {
         const tab = categoryOf(kind);
         const here = menuFor(tab, state).includes(kind);

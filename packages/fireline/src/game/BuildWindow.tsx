@@ -13,7 +13,7 @@
  * drawing lines only for the chain of the item under the pointer or focus. Everything comes from
  * rules.ts: no kind is named here.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BUILDINGS, PRODUCER, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
 import { buildTicksFor, costFor, hasBuilding, hasProducer, powerOf, readyStructure, researchModeOf } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
@@ -56,6 +56,8 @@ export interface BuildRailProps {
   touch: boolean;
   /** A rail button: opens the window on that list, or closes it if that list is already showing. */
   onPick: (t: Tab) => void;
+  /** Under the lists: the pinned items (QuickBar in the rail). */
+  children?: ReactNode;
 }
 
 /**
@@ -64,7 +66,7 @@ export interface BuildRailProps {
  * puts the window away. The buttons carry the same ids and markers the window's tabs do on a sheet
  * (`fl-tab-<list>`, a dot for something new, the advisor's ring, the queue length).
  */
-export function BuildRail({ state, tab, open, touch, onPick }: BuildRailProps) {
+export function BuildRail({ state, tab, open, touch, onPick, children }: BuildRailProps) {
   const tabs = tabsFor(state);
   const shown: Tab = tabs.includes(tab) ? tab : tabs[0];
   const newTabs = useStore(fresh).tabs;
@@ -111,6 +113,7 @@ export function BuildRail({ state, tab, open, touch, onPick }: BuildRailProps) {
           );
         })}
       </div>
+      {children}
     </nav>
   );
 }
@@ -207,6 +210,16 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   const groups = structures && !sheet ? groupsFor(state) : [];
   const nowPlan = groups.length ? planList(state, menuFor('building', state)) : null;
   const freshKinds = useStore(fresh).kinds;
+  // Cascading-menu feel: resting the mouse on a group for a moment pops it out, as a click does.
+  // Only for a mouse (a finger or pen taps), and cancelled if the pointer moves on first.
+  const hoverTimer = useRef<number | null>(null);
+  const cancelHover = () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+  };
+  useEffect(() => cancelHover, []);
+  // Each list, view and group gets its own key, so a change crossfades in rather than snapping.
+  const swapKey = `${shown}|${view}|${groups.length ? group : ''}`;
 
   return (
     <div
@@ -305,7 +318,19 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
                 data-advice={advice && advice.tab === 'building' && groupOf(advice.kind) === g && !active ? '1' : '0'}
                 data-testid={`group-btn-${g}`}
                 title={active ? 'The hotkeys build from this group' : 'Show this group; the hotkeys build from it (or press Tab)'}
-                onClick={() => setGroup(g)}
+                onClick={() => {
+                  cancelHover();
+                  setGroup(g);
+                }}
+                onPointerEnter={e => {
+                  if (e.pointerType !== 'mouse' || active) return;
+                  cancelHover();
+                  hoverTimer.current = window.setTimeout(() => {
+                    hoverTimer.current = null;
+                    setGroup(g);
+                  }, 160);
+                }}
+                onPointerLeave={cancelHover}
               >
                 <span className="fl-bw-grp-name">{groupLabel(g)}</span>
                 <span className="fl-bw-grp-count">{count ? `${count} ready to build` : 'nothing yet'}</span>
@@ -316,6 +341,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
         </div>
       )}
       <div className="fl-bw-body fl-scroll" data-testid="build-window-body">
+        <div key={swapKey} className="fl-bw-swap">
         {shown === 'research' ? (
           <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
         ) : view === 'build' ? (
@@ -336,6 +362,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
         ) : (
           <BuildTab state={state} tab={shown} group={group} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} advice={advice} />
         )}
+        </div>
       </div>
       </div>
     </div>
