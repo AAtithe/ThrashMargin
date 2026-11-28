@@ -221,6 +221,10 @@ async function main() {
       // that thing and explain, not a disabled button, and come back once it is cancelled.
       if (!busyOnce && cs.title === 'Build a Refinery' && cs.target === 'fl-build-refinery') {
         busyOnce = true;
+        // On a desktop the Barracks is in Structures' Production group, popped out beside the rail;
+        // with the Barracks queued and Economy still showing, the card first rings that group.
+        await page.locator('#fl-group-production').click();
+        await sleep(300);
         await page.locator('#fl-build-barracks').click();
         await sleep(500);
         const busy = await cardState(page);
@@ -229,7 +233,8 @@ async function main() {
         await page.locator('#fl-build-barracks').click({ button: 'right' });
         await sleep(500);
         const back = await cardState(page);
-        if (!back || back.target !== 'fl-build-refinery') problems.push(`after cancelling the Barracks the Refinery step rings ${back?.target || 'nothing'}`);
+        // Cancelled, the Refinery is back in reach one click away: its group (Economy), then itself.
+        if (!back || back.target !== 'fl-group-economy') problems.push(`after cancelling the Barracks the Refinery step rings ${back?.target || 'nothing'}, not the Economy group`);
         cs = back;
         if (!cs) break;
         continue;
@@ -268,7 +273,9 @@ async function main() {
         if (cs.title.startsWith('Place') || cs.title.startsWith('Build')) {
           await place(page, cs);
         } else if (cs.title.startsWith('Select')) {
-          await page.mouse.move(b.x + 20, b.y + 20);
+          // Clear of the build rail down the battlefield's left edge: a box starts on the map.
+          const rail = await page.getByTestId('build-rail').boundingBox().catch(() => null);
+          await page.mouse.move(Math.max(b.x, rail ? rail.x + rail.width : b.x) + 20, b.y + 20);
           await page.mouse.down();
           await page.mouse.move(b.x + b.width - 20, b.y + b.height - 20, { steps: 8 });
           await page.mouse.up();
@@ -350,7 +357,7 @@ async function main() {
 
     // The build window on its own battle: open and close, hotkeys, placement, every menu item, a
     // kind it has never seen (fireline-build-window.cjs).
-    if (!GRAND) await checkBuildWindow(browser, BASE, problems, OUT);
+    if (!GRAND && !process.env.TOUR_SKIP_BW) await checkBuildWindow(browser, BASE, problems, OUT);
   } finally {
     await browser.close();
   }

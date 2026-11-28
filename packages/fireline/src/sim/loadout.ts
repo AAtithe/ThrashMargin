@@ -1,3 +1,4 @@
+import { dismountedWeapon, isDismounted } from './hightiers';
 import {
   FUEL_TANK_SPEED,
   HAULER_CAPACITY,
@@ -93,6 +94,8 @@ const longBarrels = new Map<Weapon, Weapon>();
  */
 export const weaponOf = (s: GameState, u: Unit): Weapon | undefined => {
   const w = unitSpecOf(s, u).weapon;
+  // High tiers: a Mechanised Infantry squad out of its carrier (hightiers.ts). Takes no modules.
+  if (w && isDismounted(u)) return dismountedWeapon(w);
   if (!w || !u.modules || !u.modules.includes('longbarrel')) return w;
   if (w === UNITS[u.kind].weapon) return LONG_BARREL_WEAPON[u.kind] ?? w;
   if (!MODULES.longbarrel.fits.includes(u.kind)) return w;

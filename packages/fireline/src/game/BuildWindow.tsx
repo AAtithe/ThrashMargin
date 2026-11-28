@@ -1,9 +1,11 @@
 /**
  * The build window: the tech tree, popped out of the sidebar (fireline-round5-design.md, section 3).
  *
- * Desktop: a panel over the battlefield (never over the sidebar), dragged by its title bar, its
- * place remembered per viewer. Phones and touch: a full-screen sheet. Either way it is not modal:
- * the battle keeps running, and on a desktop the map outside it stays clickable.
+ * Desktop (2026-11-28): a rail down the left edge of the battlefield (BuildRail) names every list,
+ * and the window slides out of it, docked against it from top to bottom. Structures pops out once
+ * more: a column of its groups, and beside it the chosen group's items. Phones and touch: a
+ * full-screen sheet with the lists as tabs. Either way it is not modal: the battle keeps running,
+ * and on a desktop the map outside it stays clickable.
  *
  * Round 8 (fireline-round8-build-window.md): two views. Build, the default, shows what can be built
  * now as full cards (Structures in four groups, one of them active for the hotkeys), then Coming next
@@ -11,42 +13,130 @@
  * drawing lines only for the chain of the item under the pointer or focus. Everything comes from
  * rules.ts: no kind is named here.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { BUILDINGS, PRODUCER, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
-import { buildTicksFor, costFor, hasBuilding, hasProducer, powerOf, readyStructure, researchModeOf } from '../sim/state';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BATTLE_LINES, BUILDINGS, PRODUCER, STRUCTURE_LEVELS, maxLevelOf, type BattleLineId, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, powerOf, readyStructure, researchModeOf, techAllowed } from '../sim/state';
+import { linesFor } from '../sim/fortify';
+import { doctrineOf, hasUpgrade, researchTicksOf } from '../sim/research';
+import { levelOf, nextLevelOf, upgradePrice, upgradeProblem } from '../sim/structures';
+import { buildingSpecFor } from '../sim/specs';
 import { airCount, airRoom } from '../sim/air';
 import type { GameAction, GameState } from '../sim/types';
-import { BUILD_KEYS, BuildButton, BuildTipFooter, LoadoutPanel, ResearchBlock, StatTip, menuFor, pressBuild, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
+import { BUILD_KEYS, BuildButton, BuildTipFooter, LineRow, LoadoutPanel, ResearchBlock, StatTip, isPanelTab, menuFor, pressBuild, researchOpen, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
 import { advise, groupLabel, groupOf, groupsFor, keyedList, planList, type Advice, type Group, type Kind } from './buildPlan';
 import { advisorOn, advisorPref, buildView, fresh, scouted, seenTab, setAdvisor, setBuildView, useStore } from './buildStores';
 import { rulesCatalogue, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
 import { factionOf } from '../sim/specs';
+import { iconFor } from './icons';
 
-const POS_KEY = 'fl_build_window';
+/** The rail's width, in pixels: the window docks against its right edge, and the map's own furniture moves over by it. */
+export const RAIL_W = 76;
 
-/** Where the viewer last left the window, as a fraction of the room it can move in. */
-interface Spot {
-  fx: number;
-  fy: number;
+/** The art on each list's rail button: the list's first item, or the Command Yard for Structures. */
+const RAIL_ICON: Record<Tab, BuildingKind | UnitKind> = {
+  building: 'hq',
+  infantry: 'rifleman',
+  vehicle: 'tank',
+  air: 'helipad',
+  naval: 'shipyard',
+  research: 'researchlab',
+  upgrades: 'turret',
+};
+
+/** Short names for the rail, which is narrow. */
+const RAIL_LABEL: Record<Tab, string> = {
+  building: 'Structures',
+  infantry: 'Infantry',
+  vehicle: 'Vehicles',
+  air: 'Air',
+  naval: 'Naval',
+  research: 'Research',
+  upgrades: 'Upgrades',
+};
+
+/** How much is under way on a panel tab or a build list: research running, upgrades in hand, or the queue. */
+function busyOf(state: GameState, t: Tab): number {
+  if (t === 'research') return state.players[0].research ? 1 : 0;
+  if (t === 'upgrades') return state.buildings.filter(b => b.owner === 0 && b.hp > 0 && b.upgrade).length;
+  return state.players[0].queues[t].length;
 }
 
-function loadSpot(): Spot | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(POS_KEY) ?? 'null');
-    if (v && typeof v.fx === 'number' && typeof v.fy === 'number' && Number.isFinite(v.fx) && Number.isFinite(v.fy))
-      return { fx: Math.max(0, Math.min(1, v.fx)), fy: Math.max(0, Math.min(1, v.fy)) };
-  } catch {
-    /* Blocked or spoiled storage: the default place. */
-  }
-  return null;
+/** Research on this battle's rail before the Lab stands: greyed, but there, so players know it exists. */
+const techComing = (state: GameState): boolean => !researchOpen(state) && techAllowed(state, 0, 'researchlab');
+
+export interface BuildRailProps {
+  state: GameState;
+  /** The list the hotkeys act on: marked on the rail whether or not the window is open. */
+  tab: Tab;
+  open: boolean;
+  touch: boolean;
+  /** A rail button: opens the window on that list, or closes it if that list is already showing. */
+  onPick: (t: Tab) => void;
+  /** Under the lists: the pinned items (QuickBar in the rail). */
+  children?: ReactNode;
 }
 
-function saveSpot(s: Spot): void {
-  try {
-    localStorage.setItem(POS_KEY, JSON.stringify(s));
-  } catch {
-    /* Blocked storage: the window opens in its default place next time. */
-  }
+/**
+ * The build rail (desktop): the menu bar down the left edge of the battlefield. Each button is a
+ * list; pressing one slides the build window out beside the rail on that list, pressing it again
+ * puts the window away. The buttons carry the same ids and markers the window's tabs do on a sheet
+ * (`fl-tab-<list>`, a dot for something new, the advisor's ring, the queue length).
+ */
+export function BuildRail({ state, tab, open, touch, onPick, children }: BuildRailProps) {
+  const offered = tabsFor(state);
+  // The build lists, then the panels (Tech, Upgrades) under a rule. Tech shows greyed before its Lab.
+  const tabs: Tab[] = [...offered.filter(t => !isPanelTab(t)), ...(offered.includes('research') || techComing(state) ? (['research'] as Tab[]) : []), ...offered.filter(t => t === 'upgrades')];
+  const shown: Tab = tabs.includes(tab) ? tab : tabs[0];
+  const newTabs = useStore(fresh).tabs;
+  const advisorChoice = useStore(advisorPref);
+  const advice = advisorOn(advisorChoice, state) ? advise(state, scouted(state)) : null;
+  return (
+    <nav className="fl-rail" aria-label="Build menu" data-testid="build-rail" style={{ width: RAIL_W }}>
+      <span className="fl-rail-title" aria-hidden="true">
+        Build
+      </span>
+      <div role="tablist" aria-orientation="vertical" aria-label="Build lists" className="fl-rail-list">
+        {tabs.map((t, i) => {
+          const producer = t === 'research' ? researchOpen(state) : t === 'upgrades' || hasProducer(state, 0, t);
+          const busy = busyOf(state, t);
+          const showing = open && shown === t;
+          const isNew = newTabs.has(t) && !showing;
+          const ruled = isPanelTab(t) && (i === 0 || !isPanelTab(tabs[i - 1]));
+          return (
+            <Fragment key={t}>
+            {ruled && <span className="fl-rail-rule" aria-hidden="true" />}
+            <button
+              id={`fl-tab-${t}`}
+              role="tab"
+              type="button"
+              className="fl-rail-btn"
+              aria-selected={shown === t}
+              aria-expanded={showing}
+              aria-controls={showing ? 'fl-build-window' : undefined}
+              data-open={showing ? '1' : '0'}
+              data-producer={producer ? '1' : '0'}
+              data-new={isNew ? '1' : '0'}
+              data-advice={advice && advice.tab === t && !showing ? '1' : '0'}
+              data-testid={`rail-${t}`}
+              onClick={() => onPick(t)}
+              title={`${tabLabel(t)}${t === 'research' && !researchOpen(state) ? ': build a Research Lab to research' : ''}${isNew ? ': something new unlocked' : ''} (${showing ? 'click again to close' : touch ? 'tap to open' : 'click to open; Tab cycles the lists'})`}
+            >
+              <img src={iconFor(RAIL_ICON[t])} alt="" width={48} height={32} draggable={false} />
+              <span className="fl-rail-label">{RAIL_LABEL[t]}</span>
+              {busy > 0 && (
+                <span className="fl-rail-busy" aria-label={`${busy} in production`}>
+                  {busy}
+                </span>
+              )}
+              {isNew && <span className="fl-rail-new" aria-label="new" />}
+            </button>
+            </Fragment>
+          );
+        })}
+      </div>
+      {children}
+    </nav>
+  );
 }
 
 /**
@@ -83,18 +173,19 @@ export interface BuildWindowProps {
   /** A full-screen sheet (phones and touch) rather than a panel over the battlefield. */
   sheet: boolean;
   onClose: () => void;
+  /** Centre the map on a tile (the Upgrades panel's Show). */
+  onLocate?: (x: number, y: number) => void;
 }
 
-export default function BuildWindow({ state, tab, setTab, group, setGroup, dispatch, placing, setPlacing, touch, sheet, onClose }: BuildWindowProps) {
+export default function BuildWindow({ state, tab, setTab, group, setGroup, dispatch, placing, setPlacing, touch, sheet, onClose, onLocate }: BuildWindowProps) {
   const ref = useRef<HTMLDivElement>(null);
   const tabs = tabsFor(state);
-  // A tab this battle does not offer (Research with its Lab sold) shows the first one instead.
-  const shown: Tab = tabs.includes(tab) ? tab : tabs[0];
+  // A tab this battle does not offer (Research with its Lab sold) shows the first one instead. Docked,
+  // Tech before its Lab opens on how to get one, as the rail offers it.
+  const shown: Tab = tabs.includes(tab) || (!sheet && tab === 'research' && techComing(state)) ? tab : tabs[0];
 
-  // ---- Place and drag (desktop) ---------------------------------------------------------------
+  // ---- Docked against the rail (desktop) ------------------------------------------------------
   const [room, setRoom] = useState<{ w: number; h: number } | null>(null);
-  const [spot, setSpot] = useState<Spot | null>(loadSpot);
-  const drag = useRef<{ id: number; dx: number; dy: number } | null>(null);
   useLayoutEffect(() => {
     if (sheet) return;
     const parent = ref.current?.parentElement;
@@ -105,38 +196,6 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
     ro.observe(parent);
     return () => ro.disconnect();
   }, [sheet]);
-  // About 64% of the battlefield wide (never narrower than six tiers of the tree need, if the field
-  // allows), at most 80% of it tall.
-  const width = room ? Math.round(Math.min(room.w - 16, Math.max(room.w * 0.64, Math.min(660, room.w - 16)))) : 0;
-  const maxHeight = room ? Math.round(room.h * 0.8) : 0;
-  const height = ref.current?.offsetHeight ?? maxHeight;
-  const freeX = room ? Math.max(0, room.w - width) : 0;
-  const freeY = room ? Math.max(0, room.h - height) : 0;
-  // First time: the centre of the battlefield, a little below the top banners. The top edge is a
-  // fraction of the field's height (round 8), so a tab with less in it does not move the window.
-  const at = spot ?? { fx: 0.5, fy: 0.06 };
-  const left = Math.round(freeX * at.fx);
-  const top = room ? Math.round(Math.min(freeY, room.h * at.fy)) : 0;
-
-  const onHeadDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (sheet || e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { id: e.pointerId, dx: e.clientX - left, dy: e.clientY - top };
-  };
-  const onHeadMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    const x = Math.max(0, Math.min(freeX, e.clientX - d.dx));
-    const y = Math.max(0, Math.min(freeY, e.clientY - d.dy));
-    setSpot({ fx: freeX ? x / freeX : 0, fy: room && room.h ? y / room.h : 0 });
-  };
-  const onHeadUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    drag.current = null;
-    if (spot) saveSpot(spot);
-  };
 
   // ---- Focus: into the window on open (GameScreen moves it back to the Build button on close) ----
   // Once it is visible: a desktop panel stays hidden until its room is measured, and a hidden
@@ -146,7 +205,9 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   useEffect(() => {
     if (!visible || focused.current) return;
     focused.current = true;
-    const el = document.getElementById(`fl-tab-${shown}`) ?? ref.current;
+    // On a sheet the list's tab; docked, the window's first control (the rail's buttons stay where
+    // they are, outside it).
+    const el = sheet ? (document.getElementById(`fl-tab-${shown}`) ?? ref.current) : (ref.current?.querySelector<HTMLElement>('[aria-pressed="true"].fl-bw-grp') ?? ref.current);
     el?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -161,11 +222,31 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   useEffect(() => {
     seenTab(shown);
   }, [shown, newTabs]);
-  const style = sheet
-    ? undefined
-    : room
-      ? { left, top, width, maxHeight }
-      : { visibility: 'hidden' as const };
+  // Docked: the full height of the battlefield, as wide as the view needs. The tech tree wants six
+  // tiers side by side; the Build view of Structures a group column and a grid of cards; any other
+  // list a grid alone. Never wider than the field leaves beside the rail.
+  const free = room ? room.w - RAIL_W - 12 : 0;
+  const structures = shown === 'building' && view === 'build';
+  const want = shown === 'research' ? 640 : shown === 'upgrades' ? 680 : view === 'tree' ? Math.max(660, Math.round(free * 0.72)) : structures ? 720 : 560;
+  const width = Math.max(0, Math.min(free, want));
+  const style = sheet ? undefined : room ? { left: RAIL_W, width } : { visibility: 'hidden' as const };
+  // Structures' groups, for the column that pops out beside the rail: what each can build now.
+  const groups = structures && !sheet ? groupsFor(state) : [];
+  const nowPlan = groups.length ? planList(state, menuFor('building', state)) : null;
+  const freshKinds = useStore(fresh).kinds;
+  // Cascading-menu feel: moving the mouse onto a group and resting a moment pops it out, as a click
+  // does. Only for a mouse (a finger or pen taps), and cancelled if the pointer leaves first.
+  const hoverTimer = useRef<number | null>(null);
+  const cancelHover = () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+  };
+  useEffect(() => cancelHover, []);
+  // The Tech and Upgrades pop-outs: the line, and the structure kind, chosen in their columns.
+  const [line, setLine] = useState<BattleLineId | null>(null);
+  const [upKind, setUpKind] = useState<BuildingKind | null>(null);
+  // Each list, view and group gets its own key, so a change crossfades in rather than snapping.
+  const swapKey = `${shown}|${view}|${groups.length ? group : ''}`;
 
   return (
     <div
@@ -176,13 +257,14 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
       aria-label="Build"
       data-testid="build-window"
       data-sheet={sheet ? '1' : '0'}
+      data-docked={sheet ? '0' : '1'}
       data-tip-host="1"
       tabIndex={-1}
       style={style}
     >
-      <div className="fl-bw-head" onPointerDown={onHeadDown} onPointerMove={onHeadMove} onPointerUp={onHeadUp} onPointerCancel={onHeadUp} data-testid="build-window-head">
-        <strong className="fl-bw-title">Build</strong>
-        <div className="fl-bw-views" role="group" aria-label="View">
+      <div className="fl-bw-head" data-testid="build-window-head">
+        <strong className="fl-bw-title">{sheet ? 'Build' : tabLabel(shown)}</strong>
+        <div className="fl-bw-views" role="group" aria-label="View" hidden={isPanelTab(shown)}>
           <button type="button" id="fl-view-build" data-testid="view-build" aria-pressed={view === 'build'} onClick={() => setBuildView('build')}>
             Build
           </button>
@@ -192,6 +274,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
         </div>
         <button
           type="button"
+          hidden={isPanelTab(shown)}
           className="fl-bw-advisor"
           data-testid="advisor-toggle"
           aria-pressed={advising}
@@ -202,7 +285,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           Advisor
         </button>
         <span className="fl-bw-hint">
-          {touch ? 'Long press an item for its numbers.' : 'Drag here to move. Point at an item for its numbers.'}
+          {touch ? 'Long press an item for its numbers.' : 'Point at an item for its numbers.'}
         </span>
         <button
           type="button"
@@ -216,10 +299,11 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           ×
         </button>
       </div>
+      {sheet && (
       <div role="tablist" className="fl-bw-tabs" aria-label="Build lists">
         {tabs.map(t => {
-          const producer = t === 'research' || hasProducer(state, 0, t);
-          const busy = t === 'research' ? (state.players[0].research ? 1 : 0) : state.players[0].queues[t].length;
+          const producer = isPanelTab(t) || hasProducer(state, 0, t);
+          const busy = busyOf(state, t);
           return (
             <button
               key={t}
@@ -241,13 +325,72 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           );
         })}
       </div>
+      )}
+      <div className="fl-bw-main" data-split={groups.length ? '1' : '0'}>
+      {groups.length > 0 && nowPlan && (
+        // The second pop-out: Structures' groups. The one pressed is the one the hotkeys build from,
+        // and its items fill the panel beside it.
+        <div className="fl-bw-groups" role="group" aria-label="Structure groups" data-testid="build-groups">
+          {groups.map(g => {
+            const count = nowPlan.now.filter(k => groupOf(k) === g).length;
+            const active = g === group;
+            const isNew = !active && [...freshKinds.keys()].some(k => groupOf(k) === g && menuFor('building', state).includes(k));
+            return (
+              <button
+                key={g}
+                type="button"
+                id={`fl-group-${g}`}
+                className="fl-bw-grp"
+                aria-pressed={active}
+                data-new={isNew ? '1' : '0'}
+                data-advice={advice && advice.tab === 'building' && groupOf(advice.kind) === g && !active ? '1' : '0'}
+                data-testid={`group-btn-${g}`}
+                title={active ? 'The hotkeys build from this group' : 'Show this group; the hotkeys build from it (or press Tab)'}
+                onClick={() => {
+                  cancelHover();
+                  setGroup(g);
+                }}
+                // On a real move only: a layout change that slides a group under a resting mouse
+                // (Research's way to its Lab opens Structures under the pointer) must not pick it.
+                onPointerMove={e => {
+                  if (e.pointerType !== 'mouse' || active || hoverTimer.current !== null) return;
+                  hoverTimer.current = window.setTimeout(() => {
+                    hoverTimer.current = null;
+                    setGroup(g);
+                  }, 160);
+                }}
+                onPointerLeave={cancelHover}
+              >
+                <span className="fl-bw-grp-name">{groupLabel(g)}</span>
+                <span className="fl-bw-grp-count">{count ? `${count} ready to build` : 'nothing yet'}</span>
+                {isNew && <span className="fl-rail-new" aria-label="new" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="fl-bw-body fl-scroll" data-testid="build-window-body">
+        <div key={swapKey} className="fl-bw-swap">
         {shown === 'research' ? (
-          <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
+          !researchOpen(state) ? (
+            <TechLocked
+              state={state}
+              onShow={() => {
+                setGroup(groupOf('researchlab'));
+                setTab('building');
+              }}
+            />
+          ) : sheet || researchModeOf(state) !== 'lines' ? (
+            <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
+          ) : (
+            <TechLines state={state} line={line} setLine={setLine} dispatch={dispatch} lowPower={pw.low} />
+          )
+        ) : shown === 'upgrades' ? (
+          <UpgradesPanel state={state} kind={upKind} setKind={setUpKind} dispatch={dispatch} onLocate={onLocate} docked={!sheet} />
         ) : view === 'build' ? (
           <BuildList
             state={state}
-            tab={shown}
+            tab={shown as Category}
             group={group}
             setGroup={setGroup}
             dispatch={dispatch}
@@ -256,11 +399,14 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
             touch={touch}
             lowPower={pw.low}
             advice={advice}
+            only={groups.length ? group : undefined}
             onTree={() => setBuildView('tree')}
           />
         ) : (
-          <BuildTab state={state} tab={shown} group={group} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} advice={advice} />
+          <BuildTab state={state} tab={shown as Category} group={group} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} advice={advice} />
         )}
+        </div>
+      </div>
       </div>
     </div>
   );
@@ -312,6 +458,7 @@ function BuildList({
   touch,
   lowPower,
   advice,
+  only,
   onTree,
 }: {
   state: GameState;
@@ -324,12 +471,23 @@ function BuildList({
   touch: boolean;
   lowPower: boolean;
   advice: Advice | null;
+  /** Docked Structures: the one group popped out. Every section keeps to its items. */
+  only?: Group;
   onTree: () => void;
 }) {
   const faction = factionOf(state, 0);
   const cat = rulesCatalogue(faction);
   const menu = menuFor(tab, state);
-  const plan = planList(state, menu);
+  const full = planList(state, menu);
+  const inGroup = (k: string) => !only || groupOf(k) === only;
+  const plan = only
+    ? {
+        ...full,
+        now: full.now.filter(inGroup),
+        next: full.next.map(r => ({ ...r, items: r.items.filter(inGroup) })).filter(r => r.items.length > 0),
+        later: full.later.filter(inGroup),
+      }
+    : full;
   const { tip, bind, clear, show } = useTip<BuildingKind | UnitKind>();
   useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (k: string) => cat.spec(k)?.name ?? k;
@@ -350,7 +508,7 @@ function BuildList({
       onLongPress={el => (el ? show(k, el) : clear())}
     />
   );
-  const groups = tab === 'building' ? groupsFor(state) : [];
+  const groups = tab === 'building' ? (only ? [only] : groupsFor(state)) : [];
   // Later: folded or open as the viewer last left it on this tab; null until they choose.
   const [laterOpen, setLaterOpen] = useState<boolean | null>(null);
   useEffect(() => setLaterOpen(null), [tab]);
@@ -385,6 +543,16 @@ function BuildList({
         groups.map(g => {
           const items = plan.now.filter(k => groupOf(k) === g);
           const active = g === group;
+          if (only)
+            return (
+              <section key={g} className="fl-bl-group" data-group={g} data-active="1" data-testid={`group-${g}`}>
+                <h4 className="fl-bl-group-title">
+                  {groupLabel(g)}
+                  {!touch && <span className="fl-bl-group-keys">Q W E R T Y</span>}
+                </h4>
+                {items.length > 0 ? <div className="fl-bl-grid">{items.map(k => button(k, 'card'))}</div> : <p className="fl-bl-empty">Nothing in this group can be built yet.</p>}
+              </section>
+            );
           return (
             <section key={g} className="fl-bl-group" data-group={g} data-active={active ? '1' : '0'} data-testid={`group-${g}`}>
               <button
@@ -581,6 +749,8 @@ function BuildTab({
         ref={treeRef}
         className="fl-tree"
         data-orient={orient}
+        // High tiers add two more structure columns: past six the gaps close up so the tree still fits a 1280 window.
+        data-cols={tree.columns.length + (tree.ghosts.length > 0 ? 1 : 0) > 6 ? 'many' : 'few'}
         data-testid="build-tree"
         data-focus={focus ?? ''}
         onPointerOver={e => {
@@ -687,6 +857,235 @@ function PreviewItem({ kind, cat, stands, dim }: { kind: string; cat: Catalogue;
         </button>
       </div>
       {missing.length > 0 && <span className="fl-tree-needs">Needs {missing.map(r => cat.spec(r)?.name ?? r).join(', ')}</span>}
+    </div>
+  );
+}
+
+// ---- Tech and Upgrades (2026-11-28): the rail's panels, each with a column that pops out ---------
+
+/** Tech before the Lab stands: what it needs, and the way to it. */
+function TechLocked({ state, onShow }: { state: GameState; onShow: () => void }) {
+  const name = buildingSpecFor(factionOf(state, 0), 'researchlab').name;
+  return (
+    <div className="fl-panel-locked" data-testid="tech-locked">
+      <h4 className="fl-bl-group-title">Research</h4>
+      <p>
+        Research needs a {name}. Once it stands, this panel lists every upgrade
+        {researchModeOf(state) === 'lines' ? ' line, each from Mk I to a doctrine,' : ''} and what each one does.
+      </p>
+      <button type="button" className="fl-next-go" data-testid="tech-locked-go" onClick={onShow}>
+        Find the {name} in Structures
+      </button>
+    </div>
+  );
+}
+
+/** Where a development line stands, in words for its column button. */
+function lineStatus(state: GameState, line: BattleLineId): { words: string; running: boolean; choose: boolean } {
+  const l = BATTLE_LINES[line];
+  const busy = state.players[0].research;
+  const nodes = [l.marks[0], l.marks[1], l.fork[0], l.fork[1]];
+  if (busy && nodes.includes(busy.id)) {
+    const pct = Math.floor((busy.progress / researchTicksOf(state, busy.id)) * 100);
+    return { words: `researching, ${pct}%`, running: true, choose: false };
+  }
+  if (doctrineOf(state, 0, line)) return { words: 'complete', running: false, choose: false };
+  if (hasUpgrade(state, 0, l.marks[1])) return { words: 'choose a doctrine', running: false, choose: true };
+  if (hasUpgrade(state, 0, l.marks[0])) return { words: 'Mk I done', running: false, choose: false };
+  return { words: 'not started', running: false, choose: false };
+}
+
+/** Development lines, docked: a column of lines, and the chosen line's nodes beside it. */
+function TechLines({
+  state,
+  line,
+  setLine,
+  dispatch,
+  lowPower,
+}: {
+  state: GameState;
+  line: BattleLineId | null;
+  setLine: (l: BattleLineId) => void;
+  dispatch: (a: GameAction) => boolean;
+  lowPower: boolean;
+}) {
+  const lines = linesFor(state);
+  // The line under way first, else one waiting on a doctrine, else the first.
+  const busy = lines.find(l => lineStatus(state, l).running) ?? lines.find(l => lineStatus(state, l).choose) ?? lines[0];
+  const shown = line && lines.includes(line) ? line : busy;
+  return (
+    <div className="fl-pop" data-testid="tech-lines">
+      <div className="fl-pop-col" role="group" aria-label="Development lines">
+        {lines.map(l => {
+          const st = lineStatus(state, l);
+          return (
+            <button
+              key={l}
+              type="button"
+              id={`fl-line-${l}`}
+              className="fl-bw-grp"
+              aria-pressed={l === shown}
+              data-running={st.running ? '1' : '0'}
+              data-choose={st.choose ? '1' : '0'}
+              onClick={() => setLine(l)}
+            >
+              <span className="fl-bw-grp-name">{BATTLE_LINES[l].name}</span>
+              <span className="fl-bw-grp-count">{st.words}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="fl-pop-main" key={shown}>
+        <h4 className="fl-bl-group-title">
+          {BATTLE_LINES[shown].name}
+          {state.players[0].research && lowPower && <span className="fl-research-slow">half speed: power low</span>}
+        </h4>
+        <section className="fl-research" data-mode="lines" aria-label="Research">
+          <LineRow state={state} line={shown} dispatch={dispatch} />
+        </section>
+        <p className="fl-bw-note">One line researches at a time. Mk I, then Mk II, then one of two doctrines for the rest of the battle.</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Structure upgrades: a column of the kinds you hold that can be raised a level, and beside it each
+ * structure of the chosen kind with its level, what the next does, the price and the button.
+ */
+function UpgradesPanel({
+  state,
+  kind,
+  setKind,
+  dispatch,
+  onLocate,
+  docked,
+}: {
+  state: GameState;
+  kind: BuildingKind | null;
+  setKind: (k: BuildingKind) => void;
+  dispatch: (a: GameAction) => boolean;
+  onLocate?: (x: number, y: number) => void;
+  docked: boolean;
+}) {
+  const f = factionOf(state, 0);
+  const mine = state.buildings.filter(b => b.owner === 0 && b.hp > 0 && STRUCTURE_LEVELS[b.kind]);
+  const kinds = (Object.keys(STRUCTURE_LEVELS) as BuildingKind[]).filter(k => mine.some(b => b.kind === k));
+  const name = (k: BuildingKind) => buildingSpecFor(f, k).name;
+  if (!kinds.length)
+    return (
+      <div className="fl-panel-locked" data-testid="upgrades-none">
+        <h4 className="fl-bl-group-title">Upgrades</h4>
+        <p>
+          None of your structures can be raised yet. These have levels:{' '}
+          {(Object.keys(STRUCTURE_LEVELS) as BuildingKind[])
+            .filter(k => k === 'hq' || menuFor('building', state).includes(k))
+            .map(name)
+            .join(', ')}
+          . Build one and it appears here.
+        </p>
+      </div>
+    );
+  const ready = (k: BuildingKind) => mine.filter(b => b.kind === k && !upgradeProblem(state, 0, b.id)).length;
+  const working = (k: BuildingKind) => mine.filter(b => b.kind === k && b.upgrade).length;
+  const shown = kind && kinds.includes(kind) ? kind : (kinds.find(k => working(k)) ?? kinds.find(k => ready(k)) ?? kinds[0]);
+  const rows = mine.filter(b => b.kind === shown);
+  const list = (
+    <div className="fl-up-list">
+      {rows.map((b, i) => {
+        const lv = levelOf(b);
+        const next = nextLevelOf(b);
+        const price = upgradePrice(state, b);
+        const problem = upgradeProblem(state, 0, b.id);
+        const pct = b.upgrade && next ? Math.floor((b.upgrade.progress / next.ticks) * 100) : 0;
+        return (
+          <div key={b.id} className="fl-up-row" data-testid={`upgrade-row-${b.id}`} data-state={b.upgrade ? 'running' : next ? (problem ? 'blocked' : 'ready') : 'done'}>
+            <div className="fl-up-top">
+              <strong>
+                {name(b.kind)} {rows.length > 1 ? i + 1 : ''}
+              </strong>
+              <span className="fl-up-level">
+                Level {lv} of {maxLevelOf(b.kind)}
+              </span>
+              {onLocate && (
+                <button type="button" className="fl-up-show" onClick={() => onLocate(b.x + 0.5, b.y + 0.5)} title="Centre the map on it">
+                  Show
+                </button>
+              )}
+            </div>
+            {next ? (
+              <>
+                <span className="fl-up-next">
+                  Next: <b>{next.name}</b>, {next.blurb}.
+                </span>
+                {b.upgrade ? (
+                  <div className="fl-up-act">
+                    <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                      <span style={{ width: `${pct}%` }} />
+                    </div>
+                    <button type="button" className="fl-research-btn" data-kind="cancel" data-testid={`upgrade-cancel-${b.id}`} onClick={() => dispatch({ type: 'cancelUpgrade', id: b.id })}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="fl-up-act">
+                    <button
+                      type="button"
+                      className="fl-research-btn"
+                      data-testid={`upgrade-go-${b.id}`}
+                      disabled={!!problem}
+                      onClick={() => dispatch({ type: 'upgradeStructure', id: b.id })}
+                    >
+                      Upgrade {price.credits}
+                      {price.alloys ? ` + ${price.alloys} alloys` : ''}
+                    </button>
+                    {problem && <span className="fl-up-why">{problem}</span>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className="fl-up-next">Fully upgraded.</span>
+            )}
+          </div>
+        );
+      })}
+      <p className="fl-bw-note">Paid now, refunded in full if you cancel. A structure keeps working while it is raised, but takes a quarter more damage until the work is done.</p>
+    </div>
+  );
+  if (!docked)
+    return (
+      <div className="fl-bl" data-testid="upgrades">
+        {kinds.map(k => (
+          <section key={k} className="fl-bl-group">
+            <h4 className="fl-bl-group-title">{name(k)}</h4>
+            {k === shown ? list : (
+              <button type="button" className="fl-next-go" onClick={() => setKind(k)}>
+                {ready(k)} ready to upgrade
+              </button>
+            )}
+          </section>
+        ))}
+      </div>
+    );
+  return (
+    <div className="fl-pop" data-testid="upgrades">
+      <div className="fl-pop-col" role="group" aria-label="Structures with upgrades">
+        {kinds.map(k => {
+          const n = mine.filter(b => b.kind === k).length;
+          const r = ready(k);
+          const w = working(k);
+          return (
+            <button key={k} type="button" id={`fl-upkind-${k}`} className="fl-bw-grp" aria-pressed={k === shown} data-running={w ? '1' : '0'} onClick={() => setKind(k)}>
+              <span className="fl-bw-grp-name">{name(k)}</span>
+              <span className="fl-bw-grp-count">{w ? `${w} upgrading` : r ? `${r} of ${n} can upgrade` : `${n} built`}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="fl-pop-main" key={shown}>
+        <h4 className="fl-bl-group-title">{name(shown)}</h4>
+        {list}
+      </div>
     </div>
   );
 }

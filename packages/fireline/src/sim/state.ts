@@ -6,6 +6,8 @@ import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
+import { characterSpec } from './characters';
+import { cloneEvents, migrateEvents, startEvents } from './events';
 import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
@@ -73,7 +75,7 @@ import { migrateSites, placeSites, relaysOf } from './sites';
 import { migrateGrand, startGrand } from './grand';
 import { migrateDiplomacy } from './grandDiplomacy';
 import { migrateTrade, startTrade } from './grandTrade';
-import { PROJECTS, RELAY_RADIUS } from './rules';
+import { HIGH_TIER_KINDS, PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
@@ -209,7 +211,15 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const seasons = upkeep && (typeof r.seasons === 'boolean' ? r.seasons : (base.seasons ?? false));
   // Grand War (fireline-grand-war-design.md): kept only with advanced tech, sites and advanced production.
   const grand = tech === 'advanced' && sites && production ? normaliseGrand(r.grand) : null;
-  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, ...(grand ? { grand } : {}) };
+  // Commander characters and battlefield events (2026-11-28; characters.ts, events.ts): on only when
+  // exactly true. Absent reads as off whatever the base, so every older setup and every partial one
+  // plays exactly as before; the lobby states them (DEFAULT_SETUP has them on).
+  const characters = r.characters === true;
+  const events = r.events === true;
+  // High tiers (2026-11-28; hightiers.ts): on only when exactly true, and only with advanced tech.
+  // Absent reads as off whatever the base, so every older setup plays exactly as before.
+  const highTiers = tech === 'advanced' && r.highTiers === true;
+  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, characters, events, highTiers, ...(grand ? { grand } : {}) };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -262,6 +272,8 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round7:structures end.
   // Advanced production (2026-11-22): the Farm, the Munitions Works and the Supply Truck only with setup.production.
   if (kind === 'farm' || kind === 'munitions' || kind === 'supplytruck' || kind === 'trainingcentre') return productionOn(s);
+  // High tiers (2026-11-28): tiers three's additions, four and five only with setup.highTiers (advanced tech).
+  if (HIGH_TIER_KINDS.includes(kind)) return highTiersOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -416,6 +428,14 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       const first = scaledFor(s, d).firstAttack;
       for (const mem of s.ai) mem.nextAttack = first;
     }
+    // Commander characters (2026-11-28, characters.ts): each computer side's first attack on its
+    // character's clock. Read from the seed text, so nothing is stored; without characters, unchanged.
+    if (setup.characters) {
+      const scaled = scaledFor(s, d);
+      s.ai.forEach((mem, o) => {
+        mem.nextAttack = characterSpec(s, o as Owner, scaled).firstAttack;
+      });
+    }
   }
 
   for (const owner of sidesOf(s)) {
@@ -433,6 +453,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     startTrade(s);
   }
   updateExplored(s);
+  // Battlefield events (2026-11-28, events.ts): the first one scheduled. Nothing without setup.events.
+  startEvents(s);
   // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
   s.history = newHistory(s.players.length);
   // round7:review end.
@@ -579,11 +601,15 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    // Iron Domes: tuples never edited in place.
+    ...(s.domes ? { domes: s.domes.slice() } : {}),
     // round7:fortification: counter-battery reveals, tuples never edited in place.
     ...(s.reveals ? { reveals: s.reveals.slice() } : {}),
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
     ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
+    // Battlefield events (events.ts): the live list copied, only when present.
+    ...(s.events ? { events: cloneEvents(s.events) } : {}),
     // Round 6: squads copied one level deep (their member lists too), only when present. Perks, side
     // 0's and the others' alike, are replaced whole and never edited in place, so they are shared.
     ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
@@ -634,8 +660,20 @@ export function countBuildings(s: GameState, owner: Owner, kind: BuildingKind): 
 
 /** True when every structure this needs is standing. */
 export function unlocked(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): boolean {
+  // High tiers: Battlefield Command and the Reactor Complex also need finished research.
+  if (kind in BUILDINGS && researchShort(s, owner, kind as BuildingKind) > 0) return false;
   return kindSpec(s, owner, kind).requires.every(r => hasBuilding(s, owner, r));
 }
+
+/** High tiers: upgrades this side still has to finish before it may build this structure (0: none). */
+export function researchShort(s: GameState, owner: Owner, kind: BuildingKind): number {
+  const need = BUILDINGS[kind].researchNeeded;
+  if (!need) return 0;
+  return Math.max(0, need - (s.players[owner]?.upgrades?.length ?? 0));
+}
+
+/** High tiers (2026-11-28): a skirmish on advanced tech with setup.highTiers. Never a mission or a planet battle. */
+export const highTiersOn = (s: GameState): boolean => !s.mission && !s.planet && s.setup?.tech === 'advanced' && s.setup.highTiers === true;
 
 export function categoryOf(kind: BuildingKind | UnitKind): Category {
   if (kind in BUILDINGS) return 'building';
@@ -891,6 +929,14 @@ export function migrateState(raw: unknown): GameState | null {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));
     } else delete out.powers;
   }
+  // Iron Domes: kept when well formed, for a side in this battle.
+  if (s.domes !== undefined) {
+    const ok = (d: unknown): d is [number, number, number, number, number, number] =>
+      Array.isArray(d) && d.length === 6 && d.every(v => Number.isFinite(v)) && Number.isInteger(d[4]) && d[4] >= 0 && d[4] < n;
+    const list = Array.isArray(s.domes) ? s.domes.filter(ok).map(d => d.slice() as [number, number, number, number, number, number]) : [];
+    if (list.length) out.domes = list;
+    else delete out.domes;
+  }
   if (s.blackoutUntil !== undefined) {
     if (Array.isArray(s.blackoutUntil)) out.blackoutUntil = sidesOf(out).map(o => (Number.isFinite(s.blackoutUntil![o]) ? s.blackoutUntil![o] : 0));
     else delete out.blackoutUntil;
@@ -904,6 +950,12 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.starts;
   }
   // round5:D begin. Neutral sites: s.sites repaired or dropped, never trusted blind.
+  // Battlefield events (2026-11-28): kept only with events on, every field checked (events.ts).
+  if (s.events !== undefined) {
+    const ev = migrateEvents(s.events, out);
+    if (ev) out.events = ev;
+    else delete out.events;
+  }
   if (s.sites !== undefined) {
     const sites = migrateSites(s.sites, out);
     if (sites) out.sites = sites;

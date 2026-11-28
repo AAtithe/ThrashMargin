@@ -37,7 +37,9 @@
  *   tsx scripts/ai-ladder.ts ... --territory --production   and advanced production (needs --territory)
  *   tsx scripts/ai-ladder.ts ... --production --upkeep       and army upkeep (2026-11-27; needs --production)
  *   tsx scripts/ai-ladder.ts ... --upkeep --seasons          and seasons and spoilage (needs --upkeep)
+ *   tsx scripts/ai-ladder.ts ... --characters --events       commander characters and battlefield events (2026-11-28)
  *   tsx scripts/ai-ladder.ts ... --sites --hold              neutral sites, and hold victory (needs --sites)
+ *   tsx scripts/ai-ladder.ts --map random --high-tiers       high tiers (2026-11-28): tier three's additions, tiers four and five
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -87,6 +89,7 @@ import { writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
+import { characterSpec } from '../src/sim/characters';
 import { setAutopilotAi } from '../src/sim/ai';
 // round7:adaptive
 import { setAdaptiveOverride, setAdaptiveParts } from '../src/sim/aiAdapt';
@@ -138,6 +141,7 @@ const SEEDS = Number(arg('--seeds', '150'));
 const FACTIONS_CARD = args.includes('--factions');
 /** Round 6's setup options: heroes in free play and field Generals. Off by default. */
 const HEROES = args.includes('--heroes');
+const HIGH_TIERS = args.includes('--high-tiers');
 const GENERALS = args.includes('--generals');
 const SIZE = arg('--size', 'standard') as MapSize;
 if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
@@ -189,6 +193,10 @@ const FORTIFICATION = args.includes('--fortification');
 const ADAPTIVE = arg('--adaptive', 'off');
 if (ADAPTIVE !== 'on' && ADAPTIVE !== 'off') throw new Error(`bad --adaptive "${ADAPTIVE}"`);
 // round7:adaptive end.
+// Commander characters and battlefield events (2026-11-28): off unless asked for.
+const CHARACTERS = args.includes('--characters');
+const EVENTS = args.includes('--events');
+if ((CHARACTERS || EVENTS) && LEGACY) throw new Error('--characters and --events need a skirmish setup: give --map');
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
@@ -225,6 +233,9 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(SEASONS ? { seasons: true } : {}),
     ...(SITES_ON ? { sites: true } : {}),
     ...(HOLD ? { victory: 'hold' as const } : {}),
+    ...(CHARACTERS ? { characters: true } : {}),
+    ...(EVENTS ? { events: true } : {}),
+    ...(HIGH_TIERS ? { highTiers: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -338,7 +349,8 @@ function play(m: Match, seed: number): Result & { match: number } {
   let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   s.autopilotDifficulty = m.sides[0].difficulty;
   // Side 0's first attack at its own difficulty and the pace, scaled for the map's size as side 1's already is.
-  s.ai[0].nextAttack = scaledFor(s, difficultyForPace(m.sides[0].difficulty, PACE)).firstAttack;
+  // With characters, on side 0's character's clock (characters.ts), as side 1's already is.
+  s.ai[0].nextAttack = characterSpec(s, 0, scaledFor(s, difficultyForPace(m.sides[0].difficulty, PACE))).firstAttack;
   const mk2: (number | null)[] = [null, null];
   const mk3: (number | null)[] = [null, null];
   // round7:fortification: the most emplacements each side had standing, and shots each brought down.
@@ -403,7 +415,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPKEEP ? ', army upkeep on' : ''}${SEASONS ? ', seasons on' : ''}${SITES_ON ? ', sites on' : ''}${HOLD ? ', hold victory' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}${INDUSTRY ? ', industry on' : ''}${SUPPLY ? ', supply lines on' : ''}${TERRITORY ? ', territory on' : ''}${PRODUCTION ? ', advanced production on' : ''}${UPKEEP ? ', army upkeep on' : ''}${SEASONS ? ', seasons on' : ''}${SITES_ON ? ', sites on' : ''}${HOLD ? ', hold victory' : ''}${UPGRADES7 ? ', structure upgrades on' : ''}${STRATEGIC7 ? ', strategic structures on' : ''}, adaptive ${ADAPTIVE}${CHARACTERS ? ', characters on' : ''}${EVENTS ? ', events on' : ''}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -435,6 +447,8 @@ if (workerAt >= 0) {
           ...(SEASONS ? ['--seasons'] : []),
           ...(SITES_ON ? ['--sites'] : []),
           ...(HOLD ? ['--hold'] : []),
+          ...(CHARACTERS ? ['--characters'] : []),
+          ...(EVENTS ? ['--events'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

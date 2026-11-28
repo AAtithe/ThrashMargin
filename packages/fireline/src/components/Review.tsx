@@ -14,7 +14,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import type { DecodedHistory, HistoryEvent } from '../sim/history';
 import { clockOf, kindName, plural, reviewOf, type Finding, type Review } from '../sim/review';
-import { TICKS_PER_SECOND } from '../sim/rules';
+import { TICKS_PER_SECOND, type Owner } from '../sim/rules';
+import { CHARACTERS, characterOf } from '../sim/characters';
 import type { GameState } from '../sim/types';
 import { TEAM, UI } from '../theme';
 
@@ -93,6 +94,17 @@ export function ReviewScreen({ s, onClose }: { s: GameState; onClose: () => void
             <p className="fl-rv-headline" data-testid="review-headline">
               {r.review.headline}
             </p>
+            {/* Commander characters (src/sim/characters.ts): who you faced and what beats it, once the battle is over. */}
+            {s.winner !== null &&
+              s.players.map((p, o) => {
+                const c = o === 0 ? null : characterOf(s, o as Owner);
+                if (!c) return null;
+                return (
+                  <p key={o} className="fl-rv-headline" data-testid={`review-character-${o}`}>
+                    {p.name}: a {CHARACTERS[c].name} commander. {CHARACTERS[c].answer}
+                  </p>
+                );
+              })}
             <Legend lines={lines(() => [])} />
             <div className="fl-rv-body">
               <section className="fl-rv-points" aria-labelledby="fl-rv-points">

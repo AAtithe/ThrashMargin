@@ -137,6 +137,10 @@ export interface Unit {
   truck?: { site: number; hub: number; credits: number; fuel: number; x: number; y: number };
   /** Grand War (grandTrade.ts): a Supply Truck running a trade route, and which way it is going (0 out, 1 home). */
   convoy?: { route: number; leg: 0 | 1 };
+  /** High tiers, Mechanised Infantry only: ticks it has stood still, to DISMOUNT_TICKS (hightiers.ts). */
+  settled?: number;
+  /** High tiers, Rotary Cannons only: shots in the current run, to SPIN_MAX (hightiers.ts). */
+  spin?: number;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -373,6 +377,12 @@ export interface Effect {
     | 'barrage'
     | 'reinforce'
     | 'missile'
+    /** A cruise missile called at (x, y); size is its blast radius. */
+    | 'cruise'
+    /** An Iron Dome raised over (x, y); size is its radius. */
+    | 'dome'
+    /** Paratroopers landing at (x, y); size is how many. */
+    | 'paradrop'
     | 'heal'
     | 'repair'
     /** A bomb's impact in a Bomber's line; size is the splash radius. */
@@ -492,6 +502,8 @@ export interface AiMemory {
   engineeringFund?: number;
   // round5:C end.
   // round5:D begin. Neutral sites and tier three: optional AiMemory fields (its capture parties).
+  /** Battlefield events (aiEvents.ts): the party sent for a crate or the relief beacon. Absent or null: none. */
+  eventParty?: { item: number; ids: number[] } | null;
   /** Infantry parties sent to take neutral sites (aiSites.ts): the site, the party, and when it set out. */
   siteParties?: { site: number; ids: number[]; since: number }[];
   /** Sites given up on, and the tick each may be tried again. */
@@ -671,6 +683,11 @@ export interface GameState {
   blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
+  /**
+   * Iron Domes standing: [centre x, centre y, radius, until, side, shots left]. Each brings down the
+   * enemy shells, missiles and bombs falling inside it (support.ts). Absent until one is raised.
+   */
+  domes?: [number, number, number, number, number, number][];
   // round7:fortification begin.
   /**
    * Counter-battery: firing positions revealed to a side's team until a tick: [x, y, radius, until,
@@ -695,6 +712,9 @@ export interface GameState {
   sidePerks?: Partial<Record<Owner, Perks>>;
   /** Squads moving in formation (workstream D). Absent: none. Read by nothing until workstream D. */
   squads?: Squad[];
+
+  // ---- Battlefield events (2026-11-28; events.ts). Absent unless setup.events is on. ----------
+  events?: import('./events').BattleEvents;
 
   // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
   /** A battle generated from the planet war (fireline-planet-design.md, section 14). */

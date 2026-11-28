@@ -46,6 +46,7 @@ import {
 } from '../sim/rules';
 import { ART, FONT, UI } from '../theme';
 import { scaledForSetup } from '../sim/aiScale';
+import { CHARACTER_IDS, characterAdjust } from '../sim/characters';
 
 /** The campaign's shape, counted from the mission lists so the lobby's copy cannot go stale again. */
 const CAMPAIGN_MISSIONS = MISSIONS.length;
@@ -479,7 +480,15 @@ export default function Lobby() {
                   return (
                     <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
                       <span className="fl-level-name">{spec.label}</span>
-                      <span className="fl-level-attack">First attack ~{minutes(spec.firstAttack)} min</span>
+                      <span className="fl-level-attack">
+                        {/* Commander characters (src/sim/characters.ts): the seed moves the first attack, so the card gives the range. */}
+                        {setup.characters
+                          ? (() => {
+                              const at = CHARACTER_IDS.map(c => characterAdjust(c, spec).firstAttack);
+                              return `First attack ~${minutes(Math.min(...at))} to ${minutes(Math.max(...at))} min`;
+                            })()
+                          : `First attack ~${minutes(spec.firstAttack)} min`}
+                      </span>
                       <span className="fl-level-threat" aria-hidden="true">
                         <span>Waves</span>
                         <span className="fl-level-bar">
@@ -509,6 +518,7 @@ export default function Lobby() {
                 {GAME_PACES[setup.pace].attackMul !== 1 &&
                   ` At ${GAME_PACES[setup.pace].name} size every attack comes ${attackText(GAME_PACES[setup.pace].attackMul).toLowerCase()}${(setup.size ?? 'standard') !== 'standard' ? ', and later still on a larger map' : ''}: the first at about ${minutes(scaledForSetup(setup, difficultyForPace(level, setup.pace)).firstAttack)} minutes.`}{' '}
                 At every level the computer sees the whole map, pays for everything it builds and fights with the same units you do.
+                {setup.characters && ' With varied commanders, its character (drawn from the seed) moves its timing, its defences and its army: the waves and base figures above are for a Steady commander.'}
               </p>
             </SetupStep>
             {setupStep === 'custom' && (
@@ -564,12 +574,15 @@ export default function Lobby() {
                 <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
                 <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
                 {setup.sites && <Order k="Victory">{setup.victory === 'hold' ? 'Hold ground' : 'Conquest'}</Order>}
+                <Order k="Events">{setup.events ? 'On' : 'Off'}</Order>
+                <Order k="Commanders">{setup.characters ? 'Varied' : 'Fixed'}</Order>
                 <Order k="Industry">{setup.industry ? 'On' : 'Off'}</Order>
                 {setup.industry && <Order k="Supply lines">{setup.supply ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && <Order k="Territory">{setup.territory ? 'On' : 'Off'}</Order>}
                 {/* round7:structures: the two structure options (advanced tech only). */}
                 {setup.tech === 'advanced' && <Order k="Upgrades">{setup.structureUpgrades ? 'On' : 'Off'}</Order>}
                 {setup.tech === 'advanced' && <Order k="Strategic">{setup.strategicBuildings ? 'On' : 'Off'}</Order>}
+                {setup.tech === 'advanced' && <Order k="High tiers">{setup.highTiers ? 'Tiers 3 to 5' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && <Order k="Production">{setup.production ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && setup.production && <Order k="Upkeep">{setup.upkeep ? 'On' : 'Off'}</Order>}
                 {setup.industry && setup.supply && setup.territory && setup.production && setup.upkeep && <Order k="Seasons">{setup.seasons ? 'On' : 'Off'}</Order>}

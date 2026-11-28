@@ -49,7 +49,7 @@ Freeplay on advanced tech (the default for a new freeplay game; the original set
 | Repair Bay | 2x2 | 800 | -30 | War Factory |
 | Rocket Turret | 1x1 | 900 | -40 | Comms Uplink |
 | Tech Centre | 2x2 | 2000 | -60 | War Factory, Comms Uplink; grants the artillery barrage |
-| Strike Command | 3x3 | 3500 | -150 | Tech Centre; grants the missile strike every eight minutes |
+| Strike Command | 3x3 | 3500 | -150 | Tech Centre; grants the missile strike every eight minutes, and the cruise missile every four |
 
 | Unit | Cost | Role |
 |---|---|---|
@@ -59,7 +59,7 @@ Freeplay on advanced tech (the default for a new freeplay game; the original set
 | Missile Carrier | 1300 | Range 8 anti-armour, minimum range 2.5 (Comms Uplink) |
 | Bastion | 1800 | Slow heavy siege tank, mends itself (Tech Centre) |
 
-The Comms Uplink also grants the recon sweep. A freeplay setup (lobby, saved in `state.setup`)
+The Comms Uplink also grants the recon sweep, a Flak Cannon the Iron Dome, and a Helipad the paratroopers. A freeplay setup (lobby, saved in `state.setup`)
 picks the map (classic, river, highlands, lakes, plains, canyon, or random: drawn from the seed),
 the tech level, starting credits (clamped to 20,000) and ore. Maps come from
 `generateSkirmishMap` in `src/sim/maps.ts`: point-symmetric, so neither seat is favoured by the
@@ -3544,3 +3544,272 @@ regenerated; `npm run check` all passed; `campaign-check` 7,713 of 7,713; `drive
 (its pins leave out the new `victory: 'conquest'`, as drive-size's do); `check:ui fireline` 32 of 32;
 the Fireline tour ok. In Chromium: the Victory, Seasons and Upkeep fields and the Continental note in
 the customise step, and a live battle showing the Hold ground gauge and the season chip, no page errors.
+
+### 2026-11-28: Commander characters and battlefield events
+
+The player said the game still felt linear and that every battle played the same. The diagnosis, from
+the code: two things made it so, and neither was content.
+
+- *One commander per difficulty.* The computer had a single plan at each difficulty: the same build
+  order, its first wave on the same minute (Normal at 6:00, every battle), waves on a fixed clock and one
+  unit mix. The adaptive commander (round 7) answers what it sees, but it starts from that same plan
+  every time, so the opening and the first twenty minutes repeated. Once a player had one answer to it,
+  every battle after it was the same battle.
+- *A static map.* Nothing on the battlefield changed between the first minute and the last. The only
+  decisions after the opening were how many units and when to send them, so every battle ran the same
+  arc: build, mass, attack a base.
+
+Two changes, each behind its own toggle, both on for a new skirmish and off for everything else.
+
+**Commander characters** (`setup.characters`, `src/sim/characters.ts`). Each computer seat fights in one
+of five ways, drawn from the seed text with its own salt (the same seed meets the same commander; the
+battle's stream is never touched; nothing is saved, since it is read from `seedText`):
+
+| Character | Plan | Normal's first attack | What the review says beats it |
+|---|---|---|---|
+| Steady | The commander as it was | 6:00 | Out-earn it and counter what it fields |
+| Striker | Early, frequent, smaller and lighter waves; one turret fewer, no walls | 3:36 | Early turrets and infantry, then counter-attack its thin defence |
+| Bulwark | Three more turrets, four walls, two more Rocket Turrets; late, large, heavy siege waves | 9:36 | Take the map early; crack it with artillery or air before its siege is ready |
+| Hunter | Raids from early on with two more fast units, almost twice as often; smaller main waves | 5:24 | Guard the ore line; a Hunter that cannot raid has a weak main army |
+| Builder | One more Refinery and hauler, then late waves that grow by one more each time | 8:06 | Pressure it before its economy pays, or match it and out-fight it later |
+
+Each is an adjustment to the difficulty's own numbers (`characterAdjust`, `characterTactics`), applied after
+the map's scaling and the patience cap, so it holds on every map size and pace; and a taste on the unit
+mix (`characterMix`), applied before the adaptive commander's answer, so an adaptive Bulwark still answers
+a tank column, from a heavier starting mix. The difficulty still sets the commander's quality (decision
+speed, income, focus, retreat). A Striker never attacks before `STRIKER_FIRST_FLOOR` (3:30): a Hard Striker
+would otherwise have come at 2:24, inside the three-minute guided first battle. Side 0 has a character
+only under the harness's autopilot. The player is told what they face the first time a commander sends a
+wave or a raid ("Intelligence: the Ashen Combine commander is a Bulwark, ..."), and the after-action
+review names each enemy's character and its counter once the battle is over.
+
+Normal's first attack now falls anywhere from 3:36 to 9:36 depending on the seed, where it was 6:00 in
+every battle; and the build order, the defence, the raids and the army's make-up move with it.
+
+**Battlefield events** (`setup.events`, `src/sim/events.ts`, the commander's side in `src/sim/aiEvents.ts`).
+The first event comes between minute 5 and 7, then one every 6 to 8 minutes, all drawn from the seed text
+with its own stream (`s.events.seed`):
+
+- *Supply drop* (two in five): a crate per side near the middle of the map (no further from the middle than a
+  quarter of the way to a yard, so the crates land close together and are raced for), 1,000 credits rising by 250 an event
+  to 2,500, to the first ground unit within 1.2 tiles. Three minutes to claim, longer on a larger map.
+- *Ore strike* (three in ten): a fresh field in each side's forward ground (0.4 to 0.8 of the way from its
+  yard to the middle), 4,000 to 6,700 ore each over ten seeds (less where it meets an existing field, which it only tops up): worth an expansion, and worth denying.
+- *Relief column* (three in ten, never the first): a beacon at the middle of the map when the middle is
+  open, reachable ground (its four centre tiles are their own image under every symmetry, so it is exactly
+  fair), else one per side near it. A team whose armed ground units hold it alone for 30 seconds gets six
+  units there (two tanks, two rocketeers, two riflemen, or what its army fields in their place); contested,
+  the hold stands still; left alone, it slips back at half the rate.
+
+Every spot goes through the map's own symmetry, as the neutral sites do (two sides the point mirror, four
+the quarter turn, three the third of a turn, nudged), and the test checks each yard is as far from its
+nearest copy as every other. Each event is announced with a compass bearing, drawn above the fog on the
+battlefield (`src/game/fx/events.ts`: a crate with a lamp, the beacon with its hold ring in the holder's
+colour, a fading ring round an ore strike; still with motion reduced) and marked on the minimap.
+
+The computer contests them: for a crate it sends its fastest one to three units (by difficulty), for the
+beacon three to six by attack-move, only when it still keeps three at home, never while its base is under
+threat, and only for what it reaches about as soon as its nearest enemy. A Striker or Hunter goes further
+and with one more; a Bulwark only for what lies on its own side. The party is left out of the reserve so
+no wave recruits it on the way, and comes home when its crate or beacon is gone. An ore strike needs
+nothing new: the economy already expands toward unclaimed ore.
+
+**Off is the earlier battle.** Both keys read as on only when exactly true: absent, junk or a partial
+setup reads off whatever the base, as the round 7 structure toggles do, so every older save, every partial
+setup in the harness, every mission and every War for the Planet battle plays exactly as before. The
+pinned hashes leave both keys out when off; the field-order checks name them after `adaptive`.
+
+**Measured** (`ladder:fire -- --map random --characters --events`, flags added; advanced tech, development
+lines, Quick, standard maps, adaptive off, 150 seeds a pairing; the same card without the flags beside it):
+
+| Pairing | Both off | Both on |
+|---|---|---|
+| Hard beats Normal, both ways round | 65.3% (60 to 71) | 67.3% (62 to 73) |
+| Normal beats Easy, both ways round | 99.3% (98 to 100) | 91.3% (88 to 95) |
+| Normal mirror, seat 0 | 45% | 51% |
+| Normal mirror, median minutes | 25.3 | 22.4 |
+| Unfinished, of 750 | 5 | 1 |
+
+Difficulty order holds and Hard's edge is unchanged within noise. The one real movement is Easy against
+Normal: Easy now wins about one battle in eleven, where it won one in 150. That is the change working, not a
+fault: an Easy Striker against a Normal Builder, or an Easy Bulwark against a Normal Striker, is a match
+whose outcome is no longer settled before it starts. Against a person Easy stays gentle (its decision speed,
+income and waves are unchanged; its earliest attack is 6:00 as a Striker, against 10:00 before). Battles are
+about three minutes shorter at the median, and stalls fell from five to one. The lobby's enemy cards show
+the first attack as the range the seed can produce (Normal 3.6 to 9.6 minutes) when characters are on.
+
+**Checks.** `scripts/drive-variety.ts`, twelve sections inside `npm run drive` (the heavier battle section
+in the deep tier): the setup and older saves; the draw (all five within 50 to 115 of 400 seeds, seats
+independent); every adjustment's direction at every difficulty, the Striker floor, the first attack on the
+character's clock at standard and large size; off and absent playing the same battle tick for tick; the
+schedule; fair placement for two, three and four sides over six seeds each; crates (reach, nearest unit,
+no aircraft, rising values, the cap, expiry); ore strikes (whole numbers, equal ore per side); the beacon
+(unarmed units hold nothing, the hold builds, stands still contested, slips back alone, the column joins);
+saves (exact round trip, junk and bad entries dropped, events dropped with the setup off, a junk party
+memory harmless); whole computer battles that finish, replay byte-identically and through a save at ten
+minutes, and claim events; purity (no dice, no clock; an illegal action returns the same state).
+Fireline deep tier 424,092 assertions, 0 failed; `npm run check` all passed (Fireline fast tier 349,496 assertions, campaign 7,713, War for the Planet
+33,564, every other game's suite); `npm run tours fireline` ok; `check:ui fireline` 32 of 32. In Chromium:
+the Commander character and Battlefield events fields in light and dark, and a live battle drawing crates,
+ore-strike rings and the beacon with a hold under way, no page errors.
+
+### 2026-11-28: High tiers (tier three's additions, tiers four and five)
+
+The player asked for more troop types (mechanised infantry, motorbikes, nuclear-powered tanks,
+rapid-fire guns), a drone section in the aircraft, longer-range recon planes and ultra-high planes
+that cannot be shot down, placed on tiers three, four and five so that reaching them takes many
+structures and much research, with a Battlefield Command, and the units made richer.
+
+Behind a new setup field, `highTiers` (the customise step's High tiers toggle, beside the structure
+options; advanced tech only; on for a new skirmish; absent reads as off, so every older save, mission,
+planet battle and pinned replay plays exactly as before). Rules in `src/sim/hightiers.ts`, numbers in
+`rules.ts` beside `TIER3_AI_TICKS`, the computer in `src/sim/aiTiers.ts`.
+
+| Tier | Opened by | Needs | Units |
+|---|---|---|---|
+| 3 | Prototype Works (as before) | Research Lab, Tech Centre | Outrider, Mechanised Infantry, Scout Drone (added) |
+| 4 | Battlefield Command (4000, 3x3, -120 power) | Prototype Works, Strike Command, Helipad, Research Lab, **3 upgrades researched** | Rotary Cannon, Strike Drone, Pathfinder |
+| 5 | Reactor Complex (6000, 3x3, **+250 power**) | Battlefield Command, Tech Centre, Comms Uplink, **5 upgrades researched** | Atomic Tank, Stratos |
+
+| Unit | Cost | What makes it different |
+|---|---|---|
+| Outrider | 450 | Motorcycle and sidecar gunner, 0.22 tiles a tick (the fastest ground unit), sight 8, and a detector: finds Stealth Tanks and Spies 7 tiles off |
+| Mechanised Infantry | 900 | A squad in a tracked carrier. Halted for `DISMOUNT_TICKS` (2 s) the squad climbs out (drawn kneeling behind it): 1.5x damage, +1 range, takes 0.75x. Any step puts it back aboard (`Unit.settled`) |
+| Scout Drone | 400 | Cheap unarmed quadcopter, 20 fuel loads (100 s aloft), sight 9 |
+| Rotary Cannon | 1500 | Rapid fire that spins up: each shot in a run cuts the next reload by 6%, to 10 shots (2.5x the first rate); spins down out of the fight (`Unit.spin`). Bullets, so it reaches aircraft too |
+| Strike Drone | 550 | Loitering munition: hunts like a gunship, then dives in with a 260 warhead (splash 1.2); the shot destroys the drone (`expendable`) |
+| Pathfinder | 1400 | Long-range recon jet: 36 fuel loads (3 minutes), sight 13, detector, 0.27 tiles a tick |
+| Atomic Tank | 4200 | 1700 health, twin guns (130, splash), mends itself, burns **no fuel upkeep** (`nuclear`); destroyed, its reactor breaches: 320 over 2.5 tiles to every enemy, chaining to other Atomic Tanks |
+| Stratos | 3800 | Ultra-high altitude: **never targeted, hit or splashed** by anything (`untouchable`: `acquire`, `canHit`, splash and `hurt` all refuse it), sight 15, detector, and everything within 7 tiles of it takes 1.2x from its side (`designateMul`). One per side, aloft or queued |
+
+Battlefield Command also gives **field promotion**: every unit a side's producers turn out while it
+stands arrives a Veteran. The Reactor Complex **melts down** when destroyed (600 over 3.5 tiles to
+every enemy). Breach and meltdown spare the owner's team, and an Atomic Tank abandoned for want of
+upkeep is cold and does not breach. The research gate is `researchNeeded` on the structure, read by
+`unlocked` (`researchShort` gives what is missing); the build panel says "Needs 2 more upgrades
+researched".
+
+All new items close their lists (Structures, Vehicles, Air), so no older item moves or loses its key.
+`airKindFor` (aiAir.ts) skips tiered aircraft, so the role staples (Gunship, Recon Plane and so on)
+are unchanged for both armies, Ashen included. The computer's anti-air no longer counts a Stratos,
+which it cannot fight.
+
+**The computer** (`aiTiers.ts`, called after `sitesPlan`). Battles mostly end by minute 25, when the
+earlier tier three only began, so with high tiers on the commander climbs sooner: Normal and Hard
+raise a Research Lab, Tech Centre and Prototype Works from minute 15 (`TIER3_HIGH_AI_TICKS`), then a
+Strike Command, Helipad and Battlefield Command from minute 21 once three upgrades are done, and the
+Reactor Complex from minute 27 once five are. Structures wait, as tier three's always did, for the
+army at home to be up to the next wave and to the opponent's. Units, one a decision, heaviest first
+(Normal / Hard): Atomic Tanks 1 / 2, Rotary Cannons 2 / 3, Mechanised Infantry 2 / 3, Outriders 2 / 2;
+a Stratos, Strike Drones 2 / 3 (its gunship strikes fly them), a Pathfinder on Hard and a Scout Drone.
+The Stratos and scouts go up every 30 seconds over the middle of the enemy's army, so the mark helps
+its waves. Easy fields only tier three's additions once its own Prototype Works stands. In probe
+battles (large map, long pace) Battlefield Command went up between minutes 21 and 37 and the tier four
+units followed within a minute; tier five needs a battle that lasts, and the harness proves it by
+holding side 0's base up.
+
+Art: the eight units and two structures in any side's colours (`art.ts`, end of file): a dismounting
+squad, a gatling turret that blurs and flashes, a reactor that glows green and flickers when the tank
+is badly hurt, a drone with spinning rotors, a red-nosed diving munition, a long-winged recon jet with
+a fuel strip, and the Stratos drawn faint with long contrails and a turning designation ring; a
+command post with a lit plotting table and turning dish, and a reactor with venting cooling towers and
+a glowing core. How to play has a Tiers four and five block.
+
+**Checks.** `scripts/drive-hightiers.ts`, twelve sections in `npm run drive:fire` (the whole-battle
+section in the deep tier): the setup (on, off, absent, junk, standard tech, missions, planet battles,
+older saves, menu order), requirements and the research gate, the Reactor's power, the Stratos cap and
+the illegal queue returning the same state; dismounting measured (0.75 of the damage taken); the spin
+measured shot by shot; a Strike Drone spent on a tank; a Stratos over a Flak Cannon, a Skyhunter and an
+Interceptor for 200 ticks untouched and unaimed at, the mark measured on a Barracks (1.2x); the breach
+and meltdown (enemies inside hurt, outside and own side untouched, an abandoned tank cold); field
+promotion; the Hard commander raising tiers four and five and fielding them; a whole computer battle
+replaying byte-identically, off and absent playing the same battle; purity. The existing setup-shape
+assertions (drive, lines, size, factions, variety, planet battle) now include the new key.
+`ai-ladder` takes `--high-tiers`.
+
+**Later the same day: elite warriors, sea commandos and a stealth bomber.** The player asked how
+Spies and Commandos are built (they are heroes: Heroes on in the customise step, a Command Academy,
+one of each; How to play and the high-tiers block now say so) and for stealth bombers, Navy-SEAL-style
+special forces and elite warriors. Three more high-tier units, original names:
+
+| Unit | Tier | Cost | What makes it different |
+|---|---|---|---|
+| Vanguard | 3 (Barracks, Prototype Works) | 600 | Elite warriors: trained at Elite rank (`startVet`), 200 health, heavier rifle (18, range 4.5) |
+| Sea Commando | 4 (Barracks, Battlefield Command) | 800 | Special forces with the Stealth Tank's stealth (unseen beyond 2.5 tiles, seen 3 s after a charge), charges (110, splash 0.6) that wreck structures, armour and ships. They do not swim: amphibious movement would need a third movement layer in the path search |
+| Shadow Bomber | 5 (Helipad, Reactor Complex) | 3600 | Stealth bomber: the same stealth, so flak and Interceptors see it only close up or for 3 s after each bomb; six bombs (140, splash 1.5) in one run |
+
+Stealth was already generic (`stealthSeen`, the bomb's projectile carries its shooter), so no rule
+changed for the two stealthy units. The computer trains Vanguards (Easy 2, Normal 3, Hard 4) and Sea
+Commandos (Normal 1, Hard 2), taking back a line soldier not yet started when its Barracks' queue is
+full, and flies a Shadow Bomber on Hard with its bomber strikes. Harness: the Vanguard arrives Elite;
+a Sea Commando and a Shadow Bomber sit beside a Flak Cannon and a rifleman for sixty ticks unseen and
+unhurt; the commander fields Vanguards.
+
+### 2026-11-28: Cruise missiles, the Iron Dome and paratroopers
+
+Three support powers join the four, granted in an advanced skirmish by structures the way the others are
+(`SKIRMISH_POWERS`), to both sides, charging when the first structure stands and lost with the last:
+
+| Power | From | Cooldown | What it does |
+|---|---|---|---|
+| Cruise missile | Strike Command | 4:00 | One fast, low missile from the base: 2.5 s of flight, no marker on the target, 650 at the centre of a 1.5-tile blast, hard on structures (`DAMAGE_VS.cruise`). The precision partner of the eight-minute missile strike. |
+| Iron Dome | Flak Cannon | 3:00 | A shield of radius 6 for 20 seconds that fires once at each of the next 12 enemy shells, missiles and bombs about to land inside it (whatever Point Defence would shoot at, and the cruise missile) and brings down three in four. Direct fire passes. |
+| Paratroopers | Helipad | 5:00 | Five riflemen and two Rocketeers drop at once onto open ground side 0 has scouted, never within five tiles of an enemy structure (walls do not count). |
+
+**Simulation.** The cruise missile is a new weapon kind, `cruise`, with its own damage row and flight; it
+counts for Reactive armour, Hardened shelters, counter-battery and Point Defence as the missile strike does.
+Standing domes are `state.domes` tuples `[x, y, radius, until, side, shots left]`, never edited in place,
+checked once a tick by `domeStep` (`src/sim/support.ts`) between Point Defence and the landing of projectiles:
+a dome fires once at a projectile, three ticks before impact, in the order things would land, and the roll
+(`IRON_DOME_CHANCE`, 0.75) is drawn from the battle's seed; a hit or a miss is the same `intercept` effect
+Point Defence draws. The first version brought down everything it fired at, and that was a hard counter:
+a dome every three minutes against a barrage every three minutes meant no barrage ever landed, and the
+harness's Hard air-war battle, which had ended at 38 minutes, ran past 50 into a stall with both sides' ore
+gone. At three in four, two shells of a barrage land on average and the same battle ends at 35 minutes. A battle where nobody raises a dome has no `domes` key and plays
+exactly as before. Saves keep a well-formed dome and drop the rest.
+
+**Missions are unchanged.** A mission with `structurePowers` reads `MISSION_STRUCTURE_POWERS` (the original
+three), so no campaign mission's enemy gains a dome or paratroopers its sweep never saw; a mission can still
+list a new power in its own `powers`.
+
+**The computer.** It aims the cruise missile like the missile strike, with a tighter blast and a lower bar
+(Normal and Hard; Easy fires at the nearest structure); drops paratroopers onto the middle of its attacking
+wave, or a little short of it when that is too close to the opponent's structures; and raises a dome over
+the heaviest fire about to land on its own ground (`domeSpot`: a missile strike counts as six shells, a
+cruise missile three, and it waits for three shells' worth). Its units step out of a cruise missile's blast as
+they do the missile strike's. It never drops paratroopers under a scripted opening (`aiOpening.ts`, test only),
+whose fixed army the ladder's opening card compares. In three Hard-against-Hard advanced battles it dropped
+paratroopers 4 to 13 times and its domes fired at 8 to 16 shells a battle.
+
+**Ladder** (`ladder:fire -- --map random`, 150 seeds per match, advanced tech, before and after):
+
+| Measure | Before | After |
+|---|---|---|
+| Hard beats Normal, both ways round | 65.3% | 65.3% |
+| Normal beats Easy, both ways round | 99.3% | 99.0% |
+| Normal mirror, seat 0 | 45% | 41% |
+| Unfinished, of 1,650 | 5 | 4 |
+
+No measurable change at the quick pace: most battles end before both sides hold a Helipad, a Flak Cannon
+and a Strike Command. The powers matter more in longer games, which the harness's Hard air-war battle shows.
+
+**Client.** Both power bars list the new powers (short names Cruise, Dome, Paras on a phone). On a phone's
+one-line strip the three new ones appear only once held, and the buttons narrow to 46px when more than four
+show: six locked buttons pushed the iPhone 13's bar row off the battlefield (the touch tour caught it in CI),
+and all six held now fit in 296px of a 390px screen; a cruise missile
+flies low with a long trail and leaves a small crater; a standing dome is drawn over the fog for every side,
+blue for side 0 and its allies and amber for the enemy; paratroopers drift down under canopies. The structure
+card lists everything a structure grants.
+
+**Checks.** `scripts/drive-support.ts`, four sections inside `npm run drive`: the rules (every new power held
+by a structure, none of them by a mission's structures); the cruise missile (flight, damage, recharge, the
+refusal returning the same state, the enemy launch announced, an exact replay); the Iron Dome (one shot each at
+a shell, the missile strike, the cruise missile and a bomb, none at a tank shell, fire outside it or its own
+side's fire, about three in four brought down over 200 seeds, the same ones on a replay, its twelve shots and
+its twenty seconds, saves and junk, the computer's choice of spot); the
+paratroopers (unscouted ground, water and enemy structures refused, the computer free of the scouting rule,
+seven landing round the point, and fighting). `npm run check` all passed (Fireline fast tier 352,021 assertions,
+campaign 7,713, War for the Planet 33,564, every other game's suite); `check:ui fireline` 32 of 32. In
+Chromium: the three powers called from the support bar in a live battle, the dome, the canopies, the cruise
+missile in flight and its blast drawn, no page errors.
+

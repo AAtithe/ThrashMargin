@@ -12,6 +12,7 @@ import { SURPLUS_BARRACKS, SURPLUS_FACTORIES, extraLine, reserveRadius, scaledFo
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
+  CRUISE_DAMAGE,
   DAMAGE_VS,
   MISSILE_DAMAGE,
   PACED_HOLD_ARMY,
@@ -27,13 +28,14 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, lineCount, oreLeft, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, log, oreLeft, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
+import { tiersPlan } from './aiTiers';
 import { MAX_QUARTERS, farmUrgent, depotSpot, depotToward, economyPlan, expansionTarget, industryPlanFor, unclaimedOre, wellFocus } from './aiEconomy';
 import { crewNeed, crewWanted, housed, territoryOn } from './territory';
 import { CREW } from './rules';
@@ -45,16 +47,21 @@ import { generalLeads, generalPlan } from './aiGenerals';
 // round7:fortification. The Fortification line: structures' full health and Point Defence's place.
 import { structureMaxHp } from './fortify';
 import { pointDefenceFocus } from './aiFortification';
+import { interceptable } from './fortification';
 // round7:structures begin.
 import { strategicExtra, strategicFocus, strategicPlanFor, structuresPlan } from './aiStructures';
 import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
-import { openingGuard } from './aiOpening';
+import { openingGuard, openingOf } from './aiOpening';
 import { WAVE_PATIENCE, armourThreat, bracing, counterPunch, holdWave, outmatched, sampleFoe } from './aiStrength';
 import { upkeepAllows } from './upkeep';
 import { holdOn } from './victory';
 import { siteCentre } from './sites';
+// Commander characters (2026-11-28; characters.ts): every hook returns its input unchanged when off.
+import { characterMix, characterNews, characterSpec, characterTactics } from './characters';
+// Battlefield events (2026-11-28; events.ts): the commander's party for a crate or the beacon.
+import { eventsPlan } from './aiEvents';
 /** Hold victory: how much nearer, in tiles, an enemy-held site counts as a wave's target. */
 const HOLD_SITE_BONUS = 12;
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
@@ -269,9 +276,10 @@ function commander(s: GameState, owner: Owner): void {
   // The game pace (round 6) scales the attack timing; a mission always reads 'quick'.
   // round5:B begin. Larger maps (fireline-round5-design.md): the numbers scaled for the map's size
   // (aiScale.ts); 'standard' maps unchanged.
-  const d = scaledFor(s, tuned(difficultyFor(s, diff), mode));
+  // Commander characters (characters.ts): the side's character adjusts the scaled numbers and its tactics.
+  const d = characterSpec(s, owner, scaledFor(s, tuned(difficultyFor(s, diff), mode)));
   // round5:B end.
-  const t = TACTICS[diff];
+  const t = characterTactics(s, owner, TACTICS[diff]);
   const mem = s.ai[owner];
   normalise(mem);
   // round7:adaptive begin. A look round and the plan reconsidered, every few seconds (aiAdapt.ts).
@@ -478,6 +486,12 @@ function commander(s: GameState, owner: Owner): void {
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
       // round7:adaptive begin. The share answers what it has seen (aiAdapt.ts).
       riflemen = adaptShare(s, owner, 'rifleman', 'rocketeer', riflemen, 'infantry');
+      // Commander characters: the side's taste (characters.ts); unchanged without one.
+      {
+        const plain: [UnitKind, number][] = [['rifleman', riflemen], ['rocketeer', 1 - riflemen]];
+        const m = characterMix(s, owner, plain);
+        if (m !== plain) riflemen = m[0][1] / (m[0][1] + m[1][1]);
+      }
       // round7:adaptive end.
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
       if (upkeepAllows(s, owner, kind) && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
@@ -498,6 +512,15 @@ function commander(s: GameState, owner: Owner): void {
         const sum = m.reduce((a, [, w]) => a + w, 0);
         return [m[0][1] / sum, m[1][1] / sum];
       })(adaptMix(s, owner, [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]], 'vehicle').slice(0, 3));
+      // Commander characters: the side's taste (characters.ts); unchanged without one.
+      {
+        const plain: [UnitKind, number][] = [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]];
+        const m = characterMix(s, owner, plain);
+        if (m !== plain) {
+          const sum = m.reduce((a, [, w]) => a + w, 0);
+          [tank, buggy] = [m[0][1] / sum, m[1][1] / sum];
+        }
+      }
       // round7:adaptive end.
       let kind: UnitKind = roll < tank ? 'tank' : roll < tank + buggy ? 'buggy' : 'artillery';
       // Keep the raiding party up to strength once raids are due.
@@ -524,6 +547,8 @@ function commander(s: GameState, owner: Owner): void {
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
   sitesPlan(s, owner, home, enemyHome, units, foes);
   // round5:D end.
+  // High tiers (2026-11-28; aiTiers.ts): tier three's additions, tiers four and five. A no-op without them.
+  tiersPlan(s, owner, home, enemyHome, units, foes);
   // round6:B begin. Heroes in free play (fireline-round6-design.md): one call into aiHeroes.ts goes
   // on the line below this comment (recruiting and errands), and nothing else in this function changes.
   heroPlan(s, owner, home, enemy, units, foes);
@@ -599,7 +624,10 @@ function commander(s: GameState, owner: Owner): void {
   // Advanced tech: get out from under an enemy missile while it is in the air.
   if (adv && t.dodge) dodgeMissiles(s, owner, units);
 
-  const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !retreating(u));
+  // Battlefield events (aiEvents.ts): a party racing for a crate or holding a beacon is out of the
+  // reserve, so no wave recruits it on its way. Nothing without events.
+  const inEvent = new Set(eventsPlan(s, owner, army.filter(u => !retreating(u)), new Set([...inWave, ...inRaid]), home, foes, diff));
+  const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !inEvent.has(u.id) && !retreating(u));
   const free = (u: Unit) => u.order.type === 'idle' || (u.order.type === 'move' && dist(u.order.x, u.order.y, stage.x, stage.y) < 4);
 
   // Defend the base: a structure hit lately, or armed enemies close to the yard.
@@ -668,6 +696,7 @@ function commander(s: GameState, owner: Owner): void {
         if (target) {
           raidIds = buggies.slice(0, t.raidSize).map(u => u.id);
           mem.raidTarget = target.id;
+          tellCharacter(s, owner);
           mem.nextRaid = s.tick; // While a raid is out, nextRaid holds the tick it set out.
           doAttack(s, owner, raidIds, target.id);
         }
@@ -745,6 +774,7 @@ function commander(s: GameState, owner: Owner): void {
         // round7:adaptive: at waveStage (the staging point itself unless the plan is a flank).
         doMove(s, owner, waveIds, waveStage.x, waveStage.y, true);
         // round6:D end.
+        tellCharacter(s, owner);
         mem.wave++;
         mem.nextAttack = s.tick + d.attackInterval;
       }
@@ -890,6 +920,20 @@ function keptBack(s: GameState, u: Unit): boolean {
   if (u.kind === 'general') return true;
   // round6:C end.
   return false;
+}
+
+/**
+ * Commander characters (characters.ts): the first time a computer side sends a wave or a raid, side 0
+ * is told what kind of commander it faces, once a battle. Nothing without characters.
+ */
+function tellCharacter(s: GameState, owner: Owner): void {
+  if (owner === 0) return;
+  const key = `character-${owner}`;
+  if (s.alarms[key] !== undefined) return;
+  const news = characterNews(s, owner);
+  if (!news) return;
+  s.alarms[key] = s.tick;
+  log(s, news, 'info');
 }
 
 /** Memory from a save made before these fields existed. */
@@ -1409,7 +1453,7 @@ function advancedUnits(
     // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
     if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
     // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
-    let kind = weighted(s, owner, adaptMix(s, owner, vehicles, 'vehicle'), roll) ?? 'tank';
+    let kind = weighted(s, owner, adaptMix(s, owner, characterMix(s, owner, vehicles), 'vehicle'), roll) ?? 'tank';
     // round7:adaptive end.
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
@@ -1448,7 +1492,7 @@ function advancedUnits(
       // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.
       if (army === 'meridian' && twoArmies) infantry.push(['sapper', fortified ? 1.5 : armourHeavy ? 1 : 0.6]);
       // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
-      kind = weighted(s, owner, adaptMix(s, owner, infantry, 'infantry'));
+      kind = weighted(s, owner, adaptMix(s, owner, characterMix(s, owner, infantry), 'infantry'));
       // round7:adaptive end.
     }
     kind = kind ?? 'rifleman';
@@ -1472,7 +1516,7 @@ function bayStands(s: GameState, bay: Building): number[] {
 /** Units within reach of an enemy missile's blast walk out of it while it is in the air. */
 function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   for (const m of s.projectiles) {
-    if (m.weapon !== 'missile' || isAlly(s, m.owner, owner)) continue;
+    if ((m.weapon !== 'missile' && m.weapon !== 'cruise') || isAlly(s, m.owner, owner)) continue;
     const r = m.splash + 1;
     for (const u of units) {
       if (u.kind === 'hauler' || u.order.type === 'harvest') continue;
@@ -1583,6 +1627,61 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
       if (at && at.worth >= 1500) fire('missile', at);
     }
   }
+  if (pw.cruise === 0) {
+    if (!t.aimPowers) fire('cruise', crude());
+    else {
+      // A tight blast: worth most on a valuable structure, and on armour that has stopped moving.
+      const r = POWERS.cruise.radius;
+      const at = bestBlast(s, enemy, foes, r, (d, armor) => CRUISE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.cruise[armor], 0.3, () => 1, owner);
+      if (at && at.worth >= 700) fire('cruise', at);
+    }
+  }
+  // Not under a scripted opening (aiOpening.ts, test only): it fields a fixed army, and the drop is not in it.
+  if (pw.paradrop === 0 && wave.length >= 3 && openingOf(owner) === null) {
+    // Paratroopers join the attacking wave: at its middle, or a little short of it when the middle
+    // is too close to the opponent's structures for a drop.
+    const c = middle(wave);
+    for (const at of [c, toward(c, home, 4), toward(c, home, 8)]) {
+      if (powerProblem(s, owner, 'paradrop', at.x, at.y) !== null) continue;
+      doPower(s, owner, 'paradrop', at.x, at.y);
+      break;
+    }
+  }
+  if (pw.irondome === 0) {
+    const at = domeSpot(s, owner);
+    if (at) fire('irondome', at);
+  }
+}
+
+/**
+ * Where an Iron Dome would save most right now: the centre of the heaviest enemy fire about to land
+ * on this side's structures or units (a missile strike counts as six shells, a cruise missile as
+ * three), if it is worth at least three shells. Null when nothing much is coming.
+ */
+export function domeSpot(s: GameState, owner: Owner): Pt | null {
+  if (!s.projectiles.length) return null;
+  const units = new Map(s.units.map(u => [u.id, u]));
+  const own = s.buildings.filter(b => b.owner === owner && b.hp > 0);
+  const mine = s.units.filter(u => u.owner === owner && u.hp > 0 && UNITS[u.kind].category !== 'air');
+  const incoming = s.projectiles.filter(p => {
+    if (!isEnemy(s, owner, p.owner) || p.hitAt - s.tick < 4 || !interceptable(units, p)) return false;
+    const reach = p.splash + 0.5;
+    return own.some(b => distToBuilding(p.toX, p.toY, b) <= reach) || mine.some(u => dist(p.toX, p.toY, u.x, u.y) <= reach);
+  });
+  if (!incoming.length) return null;
+  const weight = (p: { weapon: string }) => (p.weapon === 'missile' ? 6 : p.weapon === 'cruise' ? 3 : 1);
+  const r = POWERS.irondome.radius;
+  let best: Pt | null = null;
+  let bestW = 2;
+  for (const c of incoming) {
+    let w = 0;
+    for (const p of incoming) if (dist(c.toX, c.toY, p.toX, p.toY) <= r - 0.5) w += weight(p);
+    if (w > bestW) {
+      bestW = w;
+      best = { x: c.toX, y: c.toY };
+    }
+  }
+  return best;
 }
 
 /**

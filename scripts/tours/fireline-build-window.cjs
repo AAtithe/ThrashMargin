@@ -15,6 +15,9 @@
  * - Tech tree view: every kind in the tier column the rules give, no lines until an item is pointed
  *   at, then exactly the lines of its chain; a kind the rules have never heard of
  *   (`window.__flExtraMenuItem`, development only) laid out at its tier with its lines;
+ * - the build rail down the battlefield's left edge: one button per list, each opening the window
+ *   docked against it on that list and closing it when pressed again; Structures pops out a column of
+ *   its groups and only the chosen group's items beside it;
  * - the window opens and closes by the Build button, the backquote key and Esc, focus moving in and back;
  * - a hotkey queues with the window closed (Q, Generator) and open (W, Refinery);
  * - picking up a ready structure closes the window; placing it reopens it on the same tab, and so does
@@ -23,6 +26,9 @@
  *   leaves; the stat card never covers the sidebar;
  * - the advisor rings an item, with its reason on the card; unit roles and counters read the rules;
  * - pinning puts an item on the quick bar, F1 queues it, unpinning removes it;
+ * - the window is docked against the rail at the battlefield's top, inside it, never over the sidebar;
+ * - pinned items sit in the rail, under the lists, where the window never covers them;
+ * - Research is on the rail before its Lab, greyed, and opens on the way to one (Structures, Intel and Tech);
  * - no sideways scroll in the window at 1280 by 720, in either view.
  * No page or console errors.
  */
@@ -45,6 +51,10 @@ async function checkBuildWindow(browser, base, problems, out) {
   };
   const isOpen = () => page.locator('#fl-build-window').count().then(n => n > 0);
   const label = () => page.locator('#fl-build-open').textContent();
+  // A list on the build rail, without closing it: pressing the list already showing puts the window away.
+  const showTab = async t => {
+    if ((await page.locator(`#fl-tab-${t}`).getAttribute('aria-expanded')) !== 'true') await page.locator(`#fl-tab-${t}`).click();
+  };
   const until = async (fn, ms = 5000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) {
@@ -104,7 +114,10 @@ async function checkBuildWindow(browser, base, problems, out) {
       }
       const needsOf = {};
       for (const k of [...Object.keys(r.BUILDINGS), ...Object.keys(r.UNITS)]) needsOf[k] = req(k);
-      return { menus, absent, needsOf, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
+      // Docked, Structures shows one group at a time: each structure's group, to pop it out first.
+      const bp = await import('/src/game/buildPlan.ts');
+      const groupOf = Object.fromEntries(r.MENUS.building.map(k => [k, bp.groupOf(k)]));
+      return { menus, absent, needsOf, groupOf, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
     });
     const owned = await page.evaluate(() => {
       const k = Object.keys(localStorage).find(x => x.startsWith('fireline_save_'));
@@ -120,6 +133,50 @@ async function checkBuildWindow(browser, base, problems, out) {
     const focusIn = await page.evaluate(() => !!document.getElementById('fl-build-window')?.contains(document.activeElement));
     if (!focusIn) console.log('active:', await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
     if (!focusIn) await fail('focus did not move into the window on open');
+    // ---- The rail: docked, a button per list, pressing the open list closes it -------------------
+    const rail = await page.getByTestId('build-rail').boundingBox();
+    const field0 = await page.locator('#fl-battlefield').boundingBox();
+    if (!rail) await fail('no build rail on a desktop battle');
+    else {
+      if (Math.abs(rail.x - field0.x) > 2) await fail(`the build rail is not on the battlefield's left edge (${rail.x} against ${field0.x})`);
+      const win = await page.locator('#fl-build-window').boundingBox();
+      if (Math.abs(win.x - (rail.x + rail.width)) > 2) await fail(`the window is not docked against the rail (${win.x} against ${rail.x + rail.width})`);
+      if (win.y < field0.y || win.y - field0.y > 12 || win.y + win.height > field0.y + field0.height) await fail('the docked window is not at the top of the battlefield, inside it');
+      await page.locator('#fl-tab-building').click();
+      if (!(await until(async () => !(await isOpen()), 2000))) await fail('pressing the open list on the rail did not close the window');
+      await page.locator('#fl-tab-infantry').click();
+      if (!(await until(isOpen, 2000))) await fail('a rail button did not open the window');
+      else if ((await page.locator('#fl-tab-infantry').getAttribute('aria-expanded')) !== 'true') await fail('the rail button does not say its list is open');
+      await page.locator('#fl-tab-building').click();
+      await sleep(200);
+      if (!(await isOpen())) await fail('moving to another list on the rail closed the window');
+      if ((await page.getByTestId('build-groups').count()) !== 1) await fail('Structures did not pop out its group column');
+      // Moving the mouse onto a group and resting pops it out, as a cascading menu does.
+      const pg = await page.locator('#fl-group-production').boundingBox();
+      await page.mouse.move(pg.x + 10, pg.y + pg.height / 2, { steps: 4 });
+      await page.mouse.move(pg.x + 20, pg.y + pg.height / 2, { steps: 2 });
+      await sleep(450);
+      if ((await page.locator('#fl-group-production').getAttribute('aria-pressed')) !== 'true') await fail('resting the mouse on a group did not pop it out');
+      await page.locator('#fl-group-economy').click();
+      await page.mouse.move(5, 300);
+      await sleep(120);
+      // Research is on the rail before its Lab, greyed, and opens on the way to one.
+      if (!(await page.locator('#fl-tab-research').count())) await fail('no Research on the rail before the Research Lab stands');
+      else {
+        if ((await page.locator('#fl-tab-research').getAttribute('data-producer')) !== '0') await fail('Research is not greyed before its Lab');
+        await page.locator('#fl-tab-research').click();
+        if (!(await until(async () => (await page.getByTestId('tech-locked').count()) > 0, 2000))) await fail('Research before its Lab does not say what it needs');
+        else {
+          await page.getByTestId('tech-locked-go').click();
+          await sleep(200);
+          if ((await page.locator('#fl-tab-building').getAttribute('aria-expanded')) !== 'true' || (await page.locator('#fl-group-tech').getAttribute('aria-pressed')) !== 'true')
+            await fail('the way to the Research Lab did not open Structures on Intel and Tech');
+          if (!(await page.locator('#fl-build-researchlab').count())) await fail('the way to the Research Lab does not show it');
+        }
+        await page.locator(`#fl-group-economy`).click();
+        await sleep(120);
+      }
+    }
     const missingOf = item => item.needs.filter(n => !has.has(n));
     let seen = 0;
     for (const [tab, list] of Object.entries(rules.menus)) {
@@ -127,9 +184,19 @@ async function checkBuildWindow(browser, base, problems, out) {
         await fail(`the window has no ${tab} tab on an advanced-tech Coast battle`);
         continue;
       }
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(250);
       for (const item of list) {
+        if (tab === 'building') {
+          const g = rules.groupOf[item.kind];
+          if ((await page.locator(`#fl-group-${g}`).getAttribute('aria-pressed')) !== 'true') {
+            await page.locator(`#fl-group-${g}`).click();
+            await sleep(150);
+          }
+          const others = await page.locator('#fl-build-window button.fl-build[id^=fl-build-]').evaluateAll(els => els.map(e => e.id.replace('fl-build-', '')));
+          const strays = others.filter(k => rules.groupOf[k] && rules.groupOf[k] !== g);
+          if (strays.length) await fail(`the ${g} group also shows ${strays.join(', ')}`);
+        }
         const el = page.locator(`#fl-build-${item.kind}`);
         if (!(await el.count())) {
           await fail(`${item.kind} is not on the ${tab} tab`);
@@ -158,16 +225,16 @@ async function checkBuildWindow(browser, base, problems, out) {
     }
     for (const [tab, list] of Object.entries(rules.absent)) {
       if (!list.length || !(await page.locator(`#fl-tab-${tab}`).count())) continue;
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(150);
       for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes, Generals and the economy toggles off`);
     }
     console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes, Generals and the economy toggles off`);
 
     // ---- Every structure has a key within its group -------------------------------------------------
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(150);
-    const groups = await page.locator('.fl-bl-group-head').evaluateAll(els => els.map(e => e.id.replace('fl-group-', '')));
+    const groups = await page.locator('#fl-build-window .fl-bw-grp').evaluateAll(els => els.map(e => e.id.replace('fl-group-', '')));
     if (groups.length < 3) await fail(`Structures shows ${groups.length} groups`);
     const keyed = new Set();
     for (const g of groups) {
@@ -215,6 +282,11 @@ async function checkBuildWindow(browser, base, problems, out) {
     const advisorWas = (await page.getByTestId('advisor-toggle').getAttribute('aria-pressed')) === 'true';
     if (!advisorWas) await page.getByTestId('advisor-toggle').click();
     await sleep(200);
+    // An item in another group rings that group's button: pop it out to see the item's ring.
+    if (await page.locator('.fl-bw-grp[data-advice="1"]').count()) {
+      await page.locator('.fl-bw-grp[data-advice="1"]').first().click();
+      await sleep(150);
+    }
     const advised = await page.locator('#fl-build-window .fl-tree-cell[data-advice="1"]').evaluateAll(els => els.map(e => e.getAttribute('data-node')));
     if (advised.length !== 1) await fail(`the advisor rings ${advised.length} items`);
     else {
@@ -226,6 +298,8 @@ async function checkBuildWindow(browser, base, problems, out) {
     await sleep(150);
     if (await page.locator('#fl-build-window .fl-tree-cell[data-advice="1"]').count()) await fail('switching the advisor off left a ring');
     await page.mouse.move(5, 300);
+    await page.locator(`#fl-group-${groups[0]}`).click();
+    await sleep(120);
 
     // ---- Roles and counters, from the rules -----------------------------------------------------------
     const roles = await page.evaluate(async () => {
@@ -252,7 +326,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await page.locator('#fl-view-tree').click();
     await sleep(250);
     for (const [tab, list] of Object.entries(rules.menus)) {
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(200);
       for (const item of list) {
         const col = await page.locator(`#fl-build-${item.kind}`).evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier')).catch(() => null);
@@ -260,7 +334,7 @@ async function checkBuildWindow(browser, base, problems, out) {
       }
       if (await page.locator('#fl-build-window path.fl-tree-line').count()) await fail(`the ${tab} tree draws lines with nothing pointed at`);
     }
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(200);
     const chainItem = rules.menus.building.find(i => i.kind === 'techcentre') || rules.menus.building[rules.menus.building.length - 1];
     await page.locator(`#fl-build-${chainItem.kind}`).hover();
@@ -286,7 +360,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await page.evaluate(x => {
       window.__flExtraMenuItem = x;
     }, extra);
-    await page.locator('#fl-tab-vehicle').click();
+    await showTab('vehicle');
     const ok = await until(async () => (await page.locator('#fl-build-testwalker').count()) > 0);
     if (!ok) await fail('the extra item was not laid out');
     else {
@@ -305,7 +379,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     });
     await page.mouse.move(5, 300);
     await page.locator('#fl-view-build').click();
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(150);
 
     // ---- Open and close: button, key, Esc ---------------------------------------------------------
@@ -376,15 +450,22 @@ async function checkBuildWindow(browser, base, problems, out) {
     if ((await page.locator('#fl-battlefield').getAttribute('data-placing')) !== '') await fail('Esc did not cancel placement');
 
     // ---- The quick bar: pin, F1, unpin -----------------------------------------------------------------
+    await page.locator('#fl-group-production').click();
+    await sleep(150);
     await page.locator('#fl-build-barracks').hover();
     await sleep(150);
     await page.getByTestId('pin-barracks').click();
     if (!(await until(async () => (await page.getByTestId('quick-barracks').count()) > 0, 2000))) await fail('pinning the Barracks put nothing on the quick bar');
     else {
       const qbox = await page.getByTestId('quick-bar').boundingBox();
+      const railBox = await page.getByTestId('build-rail').boundingBox();
+      if (qbox.x < railBox.x || qbox.x + qbox.width > railBox.x + railBox.width + 1) await fail('the pins are not in the build rail');
       const field = await page.locator('#fl-battlefield').boundingBox();
       if (qbox.x < field.x || qbox.x + qbox.width > field.x + field.width) await fail('the quick bar is not on the battlefield');
       // The ready Refinery holds the structure line: cancel it (a full refund), then F1.
+      // Its cancel button is on its card, in the Economy group.
+      await page.locator('#fl-group-economy').click();
+      await sleep(150);
       if (await page.getByTestId('cancel-refinery').count()) await page.getByTestId('cancel-refinery').click();
       await until(async () => (await page.locator('[data-testid=strip-building]').count()) === 0, 5000);
       await page.keyboard.press('F1');
@@ -393,19 +474,14 @@ async function checkBuildWindow(browser, base, problems, out) {
       if (!(await until(async () => (await page.getByTestId('quick-barracks').count()) === 0, 2000))) await fail('unpinning left the Barracks on the quick bar');
     }
 
-    // ---- Dragging moves the window and the place is remembered ------------------------------------
-    const head = await page.locator('[data-testid=build-window-head]').boundingBox();
-    const before = await page.locator('#fl-build-window').boundingBox();
-    await page.mouse.move(head.x + 60, head.y + head.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(head.x - 40, head.y + head.height / 2 + 50, { steps: 6 });
-    await page.mouse.up();
-    const after = await page.locator('#fl-build-window').boundingBox();
-    if (Math.abs(after.x - before.x) < 20 && Math.abs(after.y - before.y) < 20) await fail('dragging the title bar did not move the window');
-    const stored = await page.evaluate(() => localStorage.getItem('fl_build_window'));
-    if (!stored) await fail('the window place was not remembered');
-    const aside = await page.locator('aside').boundingBox();
-    if (after.x + after.width > aside.x + 1) await fail('the window reaches over the sidebar');
+    // ---- Docked: never over the sidebar ------------------------------------------------------------
+    {
+      if (!(await isOpen())) await page.locator('#fl-build-open').click();
+      await until(isOpen);
+      const after = await page.locator('#fl-build-window').boundingBox();
+      const aside = await page.locator('aside').boundingBox();
+      if (after.x + after.width > aside.x + 1) await fail('the window reaches over the sidebar');
+    }
 
     // ---- No sideways scroll at 1280 by 720, in either view ---------------------------------------------
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -414,7 +490,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await until(isOpen);
     for (const v of ['build', 'tree']) {
       await page.locator(`#fl-view-${v}`).click();
-      await page.locator('#fl-tab-building').click();
+      await showTab('building');
       await sleep(300);
       const [sw, cw] = await page.getByTestId('build-window-body').evaluate(e => [e.scrollWidth, e.clientWidth]);
       if (sw > cw + 1) await fail(`the ${v} view scrolls sideways at 1280 by 720 (${sw} in ${cw})`);

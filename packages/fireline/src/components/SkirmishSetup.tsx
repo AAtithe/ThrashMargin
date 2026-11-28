@@ -119,6 +119,18 @@ function adaptiveNote(setup: SkirmishSetup): string {
 }
 // round7:adaptive end
 
+/** What the Commander character field does (2026-11-28; src/sim/characters.ts). */
+function charactersNote(setup: SkirmishSetup): string {
+  if (setup.characters === false) return 'Off: every computer commander at a difficulty fights the same way, every battle.';
+  return 'Each computer commander fights in one of five ways, drawn from the seed: Steady, Striker (early, light waves), Bulwark (dug in, late heavy sieges), Hunter (raids your haulers) or Builder (economy first, then large waves). Scout to find out which; you are told once it first attacks.';
+}
+
+/** What the Battlefield events field does (2026-11-28; src/sim/events.ts). */
+function eventsNote(setup: SkirmishSetup): string {
+  if (setup.events === false) return 'Off: nothing on the map changes during the battle.';
+  return 'Every six to eight minutes from about the fifth: a supply drop near the middle (credits to the first unit there), an ore strike in each side\'s forward ground, or a relief column for whoever holds the central beacon for thirty seconds. Times and places come from the seed, and the computer races for them too.';
+}
+
 function heroesNote(setup: SkirmishSetup): string {
   if (setup.tech !== 'advanced') return 'Advanced tech only.';
   if (!setup.heroes) return 'The Spy, Commando, Engineer and Ace stay in the campaign.';
@@ -204,6 +216,11 @@ export function readStoredSetup(): SkirmishSetup {
       // round7:adaptive begin. On unless the player turned it off.
       adaptive: r.adaptive !== false,
       // round7:adaptive end.
+      // Commander characters and battlefield events (2026-11-28): on unless the player turned them off.
+      characters: r.characters !== false,
+      events: r.events !== false,
+      // High tiers (2026-11-28): on unless the player turned them off.
+      highTiers: r.highTiers !== false,
       production: r.industry === true && r.supply === true && r.territory === true && r.production === true,
       upkeep: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true,
       seasons: r.industry === true && r.supply === true && r.territory === true && r.production === true && r.upkeep === true && r.seasons === true,
@@ -489,6 +506,25 @@ export default function SkirmishSetupPanel({
           <p className="fl-setup-note">{adaptiveNote(value)}</p>
         </div>
         {/* round7:adaptive end. */}
+        {/* Commander character (2026-11-28; src/sim/characters.ts): Fixed, Varied. */}
+        <div className="fl-setup-field" data-testid="characters-field">
+          <Label>Commander character</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Commander character">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={(value.characters !== false) === on}
+                data-testid={`characters-${on ? 'on' : 'off'}`}
+                onClick={() => set({ characters: on })}
+              >
+                {on ? 'Varied' : 'Fixed'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{charactersNote(value)}</p>
+        </div>
       </SetupStep>
 
       <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">
@@ -575,6 +611,25 @@ export default function SkirmishSetupPanel({
                   ? `Hold ground: every site you hold scores a point a minute; the first side to ${HOLD_POINTS_PER_SITE} points for every site on the map wins. Destroying every enemy structure still wins outright.`
                   : 'Conquest: destroy every enemy structure.'}
             </p>
+          </div>
+          {/* Battlefield events (2026-11-28; src/sim/events.ts): Off, On. */}
+          <div className="fl-setup-field" data-testid="events-field">
+            <Label>Battlefield events</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Battlefield events">
+              {[false, true].map(on => (
+                <button
+                  key={on ? 'on' : 'off'}
+                  type="button"
+                  role="radio"
+                  aria-checked={(value.events !== false) === on}
+                  data-testid={`events-${on ? 'on' : 'off'}`}
+                  onClick={() => set({ events: on })}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{eventsNote(value)}</p>
           </div>
           {/* Industry (2026-11-21): fuel and alloys beside credits (src/sim/industry.ts). */}
           <div className="fl-setup-field" data-testid="industry-field">

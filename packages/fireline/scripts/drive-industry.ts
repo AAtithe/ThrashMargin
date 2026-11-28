@@ -83,8 +83,8 @@ function setup(ok: Ok): void {
   ok(normaliseSetup({ industry: 'yes' as unknown as boolean }).industry === false, 'anything but a boolean reads as off');
   // round7:structures: round 7's four strategic structures and the Fortification line's Point Defence follow them.
   // The economy's five, then round 7's Point Defence and strategic four, then advanced production's three.
-  ok(BUILD_MENU.slice(-13, -8).join() === 'fuelwell,foundry,depot,quarters,watchtower', "the economy's five structures come after everything before them, so nothing already listed moves");
-  ok(BUILD_MENU.slice(-3).join() === 'farm,munitions,trainingcentre', "advanced production's three structures close the build menu, so nothing already listed moves");
+  ok(BUILD_MENU.slice(-15, -10).join() === 'fuelwell,foundry,depot,quarters,watchtower', "the economy's five structures come after everything before them, so nothing already listed moves");
+  ok(BUILD_MENU.slice(-5, -2).join() === 'farm,munitions,trainingcentre', "advanced production's three structures close the build menu, so nothing already listed moves");
   const off = fresh({ map: 'plains', tech: 'advanced' });
   ok(!industryOn(off) && !techAllowed(off, 0, 'fuelwell') && !techAllowed(off, 0, 'foundry'), 'off: neither structure may be built');
   ok(off.players.every(p => !('fuel' in p) && !('alloys' in p)), 'off: no side holds fuel or alloys');
