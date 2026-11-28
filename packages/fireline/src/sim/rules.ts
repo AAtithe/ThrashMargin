@@ -1834,7 +1834,7 @@ export const GRAND_OPTION_KEYS: (keyof GrandOptions)[] = ['preset', 'townsPerSid
 
 export const GRAND_PRESET_NAMES: Record<GrandPreset, string> = { frontier: 'Frontier', grand: 'Grand War', epic: 'Epic' };
 export const GRAND_PRESET_BLURBS: Record<GrandPreset, string> = {
-  frontier: 'Three powers on a huge map. Found cities, take the towns between you. About an hour.',
+  frontier: 'Three powers on a huge map. Found cities, take the towns between you. An hour, decided on cities held at ninety minutes.',
   grand: 'Four powers on a vast map, with treaties and trade. Two to four hours.',
   epic: 'Four powers on a Continental map. Four hours or more, decided on cities held at eight.',
 };
@@ -1946,7 +1946,7 @@ const grandSetup = (sides: 2 | 3 | 4, size: MapSize, pace: GamePace, grand: Gran
   grand,
 });
 export const GRAND_PRESETS: Record<GrandPreset, SkirmishSetup> = {
-  frontier: grandSetup(3, 'huge', 'long', { preset: 'frontier', townsPerSide: 1, townStrength: 1, diplomacy: true, trade: true, dominionShare: 60, dominionMinutes: 8, timeLimit: 0 }),
+  frontier: grandSetup(3, 'huge', 'long', { preset: 'frontier', townsPerSide: 1, townStrength: 1, diplomacy: true, trade: true, dominionShare: 60, dominionMinutes: 8, timeLimit: 90 }),
   grand: grandSetup(4, 'vast', 'long', { preset: 'grand', townsPerSide: 2, townStrength: 1.2, diplomacy: true, trade: true, dominionShare: 65, dominionMinutes: 12, timeLimit: 240 }),
   epic: grandSetup(4, 'continental', 'epic', { preset: 'epic', townsPerSide: 3, townStrength: 1.4, diplomacy: true, trade: true, dominionShare: 70, dominionMinutes: 15, timeLimit: 480 }),
 };
@@ -3125,3 +3125,70 @@ export const TOWN_CLAIM = 8;
 /** Closest a town stands to a Command Yard, and to another town or site. */
 export const TOWN_YARD_GAP = 30;
 export const TOWN_GAP = 18;
+
+// ---- Grand War: diplomacy (fireline-grand-war-design.md, G2; grandDiplomacy.ts) -----------------
+
+/** The diplomatic beat: trust drifts, treaties run out, the computer weighs war and peace. */
+export const DIPLO_BEAT = 600;
+/** Minutes each kind of treaty runs before it must be renewed; a ceasefire that runs out is war again. */
+export const TREATY_MINUTES: Record<'c' | 'p' | 'a', number> = { c: 10, p: 15, a: 20 };
+export const TREATY_NAME: Record<'c' | 'p' | 'a', string> = { c: 'ceasefire', p: 'trade pact', a: 'alliance' };
+/** Score a computer side needs to accept each kind (the planet war's thresholds). */
+export const TREATY_ACCEPT: Record<'c' | 'p' | 'a', number> = { c: 0, p: 5, a: 25 };
+/** Trust: where it starts, how far a breach costs its victim and everyone else, what a treaty kept to its end gives. */
+export const TRUST_START = 50;
+export const BREACH_VICTIM = 40;
+export const BREACH_OTHERS = 15;
+export const TREATY_KEPT = 5;
+/** Beat-by-beat drift wears trust toward these bounds, never past them. */
+export const TRUST_FLOOR = 10;
+export const TRUST_CEILING = 90;
+/** Least time between two proposals from one side to another, and how long an offer to the player stands. */
+export const PROPOSAL_COOL = 1800;
+export const OFFER_TICKS = 1200;
+
+/**
+ * A computer side's character (numbers from the planet war's TEMPERAMENTS). attackRatio: the strength
+ * it wants over a target before war appeals; the biases push each kind of treaty; allianceTrust: the
+ * least trust it allies with; breakAt: war interest at which it breaks a dated treaty (null: never).
+ */
+export interface GrandTemperSpec {
+  name: string;
+  attackRatio: number;
+  ceasefireBias: number;
+  tradeBias: number;
+  allianceBias: number;
+  allianceTrust: number;
+  warBias: number;
+  breakAt: number | null;
+}
+export const GRAND_TEMPERS: Record<'expansionist' | 'mercantile' | 'defensive', GrandTemperSpec> = {
+  expansionist: { name: 'Expansionist', attackRatio: 1.2, ceasefireBias: -15, tradeBias: 0, allianceBias: 5, allianceTrust: 65, warBias: 10, breakAt: 30 },
+  mercantile: { name: 'Mercantile', attackRatio: 1.6, ceasefireBias: 15, tradeBias: 25, allianceBias: 5, allianceTrust: 60, warBias: -10, breakAt: null },
+  defensive: { name: 'Defensive', attackRatio: 2.0, ceasefireBias: 20, tradeBias: 10, allianceBias: 15, allianceTrust: 55, warBias: -5, breakAt: null },
+};
+
+// ---- Grand War: trade convoys (fireline-grand-war-design.md, G3; grandTrade.ts) -----------------
+
+/** Opening a route, and each new convoy after one is lost (paid when it sets out). */
+export const ROUTE_COST = 600;
+export const CONVOY_COST = 300;
+/**
+ * Credits a convoy brings for each tile between its two cities, on a home route and on a foreign one;
+ * the partner earns its share. A trip also earns TRADE_LENGTH_BONUS more for every 100 tiles of its
+ * length: paid by the tile alone, a route's income a minute would not depend on its length (the trip
+ * takes as long as it pays), so a long route, which a raider has more ground to catch, must pay more.
+ */
+export const TRADE_HOME_RATE = 6;
+export const TRADE_FOREIGN_RATE = 8;
+export const TRADE_PARTNER_RATE = 3;
+export const TRADE_LENGTH_BONUS = 1;
+/** Food a home route brings, one for every this many tiles. */
+export const TRADE_FOOD_TILES = 15;
+/** Shortest and longest route, in tiles between the cities' centres. */
+export const TRADE_MIN = 20;
+export const TRADE_MAX = 220;
+/** A convoy is at a city within this many tiles of its centre. */
+export const TRADE_REACH = 5;
+/** A lost convoy is replaced after this long, if its side can pay. */
+export const CONVOY_RESPAWN = 600;

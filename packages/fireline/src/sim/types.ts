@@ -135,6 +135,8 @@ export interface Unit {
    * `x`, `y` where it was sent (an order to anywhere else means the player took over).
    */
   truck?: { site: number; hub: number; credits: number; fuel: number; x: number; y: number };
+  /** Grand War (grandTrade.ts): a Supply Truck running a trade route, and which way it is going (0 out, 1 home). */
+  convoy?: { route: number; leg: 0 | 1 };
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -156,6 +158,47 @@ export interface HeroState {
 export interface GrandState {
   /** The team holding the dominion share (its lowest side) and since when; null while none does. */
   dominion: { team: Owner; since: number } | null;
+  // ---- Diplomacy (G2, grandDiplomacy.ts): absent without setup.grand.diplomacy ----------------
+  /** Stance by pair, index a * MAX_SIDES + b, symmetric: 'w' war, 'c' ceasefire, 'p' trade pact, 'a' alliance. */
+  stance?: string;
+  /** The tick each pair's treaty runs out, by the same index; 0 at war. */
+  ends?: number[];
+  /** Trust of side a in side b, 0 to 100, by the same index. */
+  trust?: number[];
+  /** No proposal from side a to side b before this tick, by the same index. */
+  cool?: number[];
+  /** Each side's temperament; null for the player. */
+  temper?: (GrandTemper | null)[];
+  /** Proposals from the computer waiting on the player's answer. */
+  offers?: GrandOffer[];
+  // ---- Trade (G3, grandTrade.ts): absent without setup.grand.trade ----------------------------
+  routes?: TradeRoute[];
+}
+
+/** A trade route between two of a side's cities (or towns), or to a trading partner's city. */
+export interface TradeRoute {
+  id: number;
+  owner: Owner;
+  /** Ends: a city's structure id, or a town's site id. */
+  from: number;
+  to: number;
+  /** The convoy on it (a unit id), or 0 while none runs. */
+  convoy: number;
+  /** No new convoy before this tick. */
+  wait: number;
+  /** Arrivals so far, and credits they paid the owner. */
+  trips: number;
+  paid: number;
+}
+
+export type GrandTemper = 'expansionist' | 'mercantile' | 'defensive';
+export type TreatyKind = 'c' | 'p' | 'a';
+export interface GrandOffer {
+  id: number;
+  from: Owner;
+  kind: TreatyKind;
+  /** The offer lapses at this tick. */
+  expires: number;
 }
 
 export interface Building {
@@ -953,6 +996,13 @@ export type GameAction =
   | { type: 'attack'; ids: number[]; target: number; queue?: boolean }
   | { type: 'stance'; ids: number[]; stance: 'aggressive' | 'guard' | 'hold' }
   | { type: 'stop'; ids: number[] }
+  /** Grand War diplomacy (grandDiplomacy.ts): propose a treaty to another power, or declare war on it. */
+  | { type: 'diplomacy'; to: Owner; act: 'ceasefire' | 'pact' | 'alliance' | 'war' }
+  /** Grand War trade (grandTrade.ts): open a route between two cities, or close one. */
+  | { type: 'route'; from: number; to: number }
+  | { type: 'unroute'; id: number }
+  /** Grand War diplomacy: answer a computer power's offer. */
+  | { type: 'answer'; offer: number; accept: boolean }
   /** Return to base: aircraft to their Helipad (rearm, repair, stay parked), ships to their Naval Yard. */
   | { type: 'home'; ids: number[] }
   /** Dismisses units for good, nothing paid back (heroes, Generals and loaded carriers refused). */

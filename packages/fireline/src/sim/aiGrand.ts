@@ -11,6 +11,9 @@
  */
 import { citiesOf, grandOn, townCentre, townsOf } from './cities';
 import { canSpareSettlers } from './grand';
+import { doRoute, endOf, routeCap, routeProblem, routesOf, tripValue } from './grandTrade';
+import { ROUTE_COST } from './rules';
+import { sidesOf, stanceOf } from './sides';
 import { dist } from './grid';
 import { isAlly } from './sides';
 import type { Owner } from './rules';
@@ -19,7 +22,7 @@ import type { GameState, Site } from './types';
 type Pt = { x: number; y: number };
 
 /** A wave setting off: the town it should take instead of `aim`, remembered in the memory; null to keep `aim`. */
-export function grandWaveTarget(s: GameState, owner: Owner, from: Pt, aim: Pt, wave: number): Pt | null {
+export function grandWaveTarget(s: GameState, owner: Owner, from: Pt, aim: Pt | null, wave: number): Pt | null {
   const mem = s.ai[owner];
   if (mem.grandTown !== undefined) delete mem.grandTown;
   if (!grandOn(s)) return null;
@@ -35,7 +38,7 @@ export function grandWaveTarget(s: GameState, owner: Owner, from: Pt, aim: Pt, w
     }
   }
   if (!best) return null;
-  if (wave % 2 === 0 && bestD >= dist(from.x, from.y, aim.x, aim.y)) return null;
+  if (aim && wave % 2 === 0 && bestD >= dist(from.x, from.y, aim.x, aim.y)) return null;
   mem.grandTown = best.id;
   return townCentre(best);
 }
@@ -62,4 +65,33 @@ export function grandWantsCity(s: GameState, owner: Owner): boolean {
   if (!grandOn(s) || s.tick < GRAND_FOUND_FROM) return false;
   const want = Math.min(GRAND_CITIES, 1 + Math.floor((s.tick - GRAND_FOUND_FROM) / GRAND_FOUND_EVERY) + 1);
   return citiesOf(s, owner).length < want && canSpareSettlers(s, owner);
+}
+
+/** Credits the commander keeps beyond a route's price before it opens one. */
+const ROUTE_SPARE = 1500;
+
+/**
+ * Trade: once a minute, while it has a route to spare and the credits, the commander opens the route
+ * that pays most a trip: a foreign one to a partner's city first (it pays both), else between its own
+ * cities and towns.
+ */
+export function grandTradePlan(s: GameState, owner: Owner): void {
+  if (!grandOn(s) || !s.setup!.grand!.trade || s.tick % 600 >= 30) return;
+  if (routesOf(s, owner).length >= routeCap(s, owner) || s.players[owner].credits < ROUTE_COST + ROUTE_SPARE) return;
+  const mine = [...citiesOf(s, owner).map(b => b.id), ...townsOf(s).filter(t => t.owner === owner).map(t => t.id)];
+  const ends: number[] = [...mine];
+  for (const o of sidesOf(s)) if (o !== owner && (stanceOf(s, owner, o) === 'p' || stanceOf(s, owner, o) === 'a')) ends.push(...citiesOf(s, o).map(b => b.id));
+  let best: [number, number] | null = null;
+  let bestV = 0;
+  for (const from of mine)
+    for (const to of ends) {
+      if (routeProblem(s, owner, from, to) !== null) continue;
+      const v = tripValue(s, { owner, from, to });
+      const worth = v.credits + v.food * 10;
+      if (worth > bestV) {
+        bestV = worth;
+        best = [from, to];
+      }
+    }
+  if (best && endOf(s, best[0])) doRoute(s, owner, best[0], best[1]);
 }

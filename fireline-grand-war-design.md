@@ -175,10 +175,10 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 - [x] G1e Dominion victory and score at the time limit
 - [x] G1f The computer founds cities and takes towns
 - [x] G1g G1 harness sections, `npm run check`, build log, push
-- [ ] G2a Diplomacy: stances, treaties in minutes, trust, the 60-second beat, actions and refusals
-- [ ] G2b Diplomacy in battle (no fire between non-war pairs, allied vision) and computer temperaments
-- [ ] G2c G2 harness sections, check, log, push
-- [ ] G3 Trade routes and convoys: pay on arrival, raidable, blockade, computer escorts and raids, conservation tests
+- [x] G2a Diplomacy: stances, treaties in minutes, trust, the 60-second beat, actions and refusals
+- [x] G2b Diplomacy in battle (no fire between non-war pairs, allied vision) and computer temperaments
+- [x] G2c G2 harness sections, check, log, push
+- [x] G3 Trade routes and convoys: pay on arrival, raidable, blockade, computer escorts and raids, conservation tests
 - [ ] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
 - [ ] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
 - [ ] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
@@ -313,3 +313,59 @@ while garrisoned), dominion (clock, a break, victory at the time), the time limi
 cities wins), saves (exact, junk repaired, fields dropped outside a Grand War) and, deep only, three
 whole computer Frontier battles checked every minute plus an exact replay: 125 assertions.
 `npm run check`: all passed, Fireline 348,890 assertions.
+
+### 2026-11-28: G2, diplomacy in real time
+
+`src/sim/grandDiplomacy.ts`. The planet war's rules and numbers, read in minutes: stance per pair (war,
+ceasefire, trade pact, alliance), trust 0 to 100 drifting each 60-second beat, temperaments
+(expansionist, mercantile, defensive) drawn per computer power from the seed, proposals judged on
+strength, fronts, temperament, interest in war and trust, and accepted at the planet's thresholds.
+Treaties run 10, 15 and 20 minutes and must be renewed; one that runs out steps down (an alliance or a
+pact to a ceasefire, a ceasefire to war) with trust up for a treaty kept. War through a running treaty
+is a breach: the victim's trust falls 40, everyone else's 15.
+
+**In battle.** The stance is a 16-character string on `s.grand`, read by `isEnemy` and `isAlly`
+(`sides.ts`), so every system that asks "is that an enemy?" obeys it with no change of its own: target
+finding, splash, the computer's choice of enemy, allied sight, sites and towns. Target finding and splash
+used to compare teams directly; they now ask `isEnemy`, which is identical without diplomacy. Victory
+counts every power not allied with the player as standing in the way (peace is not victory). Signing peace
+drops any attack the two sides had under way. A site held by a power at peace is not captured from it.
+
+**The player** proposes, renews or declares war (`diplomacy` action) and answers offers (`answer`). A
+proposal is judged at once and a refusal names only the reasons against (a first version also listed
+reasons for peace, such as "they are fighting on several fronts", in a refusal). **The computer** makes at
+most one move a beat: a breach if its temperament breaks treaties and its war interest is high, a renewal,
+or a step up toward peace. Under the harness's autopilot side 0 answers as a defensive power would, so
+computer-only runs measure the same diplomacy a player meets.
+
+**What the whole-battle runs show.** Treaties are made (23 steps toward peace across three Frontier battles),
+but once everyone is at peace nobody returns to war, and all three battles were unfinished at 40 minutes.
+Frontier now has a 90-minute time limit so a peaceful war still ends; making war worth declaring again is G5.
+A crash found the same way: peace signed while a wave was gathering left it nothing to aim at; such a wave
+now goes for a town, or stands down.
+
+### 2026-11-28: G3, trade convoys
+
+`src/sim/grandTrade.ts`. A route joins two of a side's cities or held towns, or one of its cities to a
+partner's (trade pact or alliance). Opening one costs 600 and sends a convoy, a Supply Truck that drives to
+the far end, is paid on arrival and drives home to go again; a lost convoy is replaced after a minute for 300;
+a route whose end falls, or whose partner is no longer at peace, closes. One route per city or town held.
+A home trip pays 6 credits a tile and a food every 15 tiles, a foreign one 8 a tile and the partner 3, each
+with a bonus of 1% a tile for length. The first rates (2 and 3 a tile, no bonus) paid 50 credits a trip on a
+25-tile route, too little to matter, and paying by the tile alone made income a minute independent of length
+(the trip takes as long as it pays), so the long route a raider has more ground to catch paid no more. Now a
+25-tile home route pays 188 a trip and a foreign route of the same length 733, with 275 to the partner.
+
+The computer opens the best-paying route it can afford once a minute (foreign first), and its raiders hunt
+enemy convoys as they hunt haulers. A convoy given another order goes there and takes its route up again
+once idle; Supply Truck errands leave convoys alone.
+
+**Checks** (`drive-grand.ts`): G2, the start on every preset (all at war, trust 50, temperaments, the same
+each time; no table with diplomacy off), peace and war in battle (no fire at a ceasefire, fire at war, peace
+dropping attacks under way), every refused action returning the same state, an accepted and a declined
+proposal, the cool-down, a breach and its trust, expiry and step-down, an offer accepted and declined, saves
+(exact; a lopsided table or trust out of bounds rebuilt), and deep whole battles (table symmetric and trust
+in bounds every minute, exact replay). G3, every refusal, opening, the convoy shuttling, conservation (paid
+equals trips times the trip's value), a lost convoy replaced at a price, a lost city closing its route, closing
+by hand, a foreign route paying both and closing at war, saves, and deep whole battles in which the computer
+opened 19 routes. `npm run check`: all passed.

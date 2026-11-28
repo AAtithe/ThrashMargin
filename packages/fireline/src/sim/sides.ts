@@ -26,11 +26,22 @@ export const computerSides = (s: GameState): Owner[] => LISTS[s.players.length].
 /** A side's team. Without a teams list every side is its own team. */
 export const teamOf = (s: GameState, owner: Owner): number => s.teams?.[owner] ?? owner;
 
-/** True for a side and itself, and for two sides on the same team. */
-export const isAlly = (s: GameState, a: Owner, b: Owner): boolean => a === b || teamOf(s, a) === teamOf(s, b);
+/**
+ * Grand War diplomacy (grandDiplomacy.ts): the stance between two sides, one character of
+ * `s.grand.stance` at a * MAX_SIDES + b: 'w' war, 'c' ceasefire, 'p' trade pact, 'a' alliance.
+ * Undefined in every battle without diplomacy, where teams alone decide.
+ */
+export const stanceOf = (s: GameState, a: Owner, b: Owner): string | undefined => s.grand?.stance?.[a * MAX_SIDES + b];
 
-/** True for two sides on different teams: they fight. */
-export const isEnemy = (s: GameState, a: Owner, b: Owner): boolean => a !== b && teamOf(s, a) !== teamOf(s, b);
+/** True for a side and itself, for two sides on the same team, and (Grand War) for two sides in alliance. */
+export const isAlly = (s: GameState, a: Owner, b: Owner): boolean => a === b || teamOf(s, a) === teamOf(s, b) || stanceOf(s, a, b) === 'a';
+
+/** True for two sides on different teams: they fight. In a Grand War with diplomacy, only while at war. */
+export const isEnemy = (s: GameState, a: Owner, b: Owner): boolean => {
+  if (a === b || teamOf(s, a) === teamOf(s, b)) return false;
+  const st = stanceOf(s, a, b);
+  return st === undefined || st === 'w';
+};
 
 /** Every side `owner` fights, in order. */
 export const enemiesOf = (s: GameState, owner: Owner): Owner[] => sidesOf(s).filter(o => isEnemy(s, owner, o));

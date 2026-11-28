@@ -71,6 +71,8 @@ import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kind
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
 import { migrateGrand, startGrand } from './grand';
+import { migrateDiplomacy } from './grandDiplomacy';
+import { migrateTrade, startTrade } from './grandTrade';
 import { PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
@@ -426,7 +428,10 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     }
   }
   // Grand War (grand.ts): the Command Yards become cities, the towns are placed. A no-op without setup.grand.
-  if (s.setup?.grand) startGrand(s);
+  if (s.setup?.grand) {
+    startGrand(s);
+    startTrade(s);
+  }
   updateExplored(s);
   // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
   s.history = newHistory(s.players.length);
@@ -908,8 +913,11 @@ export function migrateState(raw: unknown): GameState | null {
   // Grand War: the dominion clock and each city's population, kept only in a Grand War battle.
   if ('grand' in out) {
     const g = migrateGrand(out.grand, out);
-    if (g) out.grand = g;
-    else delete out.grand;
+    if (g) {
+      out.grand = g;
+      migrateDiplomacy(out);
+      migrateTrade(out);
+    } else delete out.grand;
   }
   for (const b of out.buildings) {
     if (b.pop === undefined) continue;

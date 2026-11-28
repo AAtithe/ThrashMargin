@@ -1,3 +1,5 @@
+import { doRoute, doUnroute, routeProblem, unrouteProblem } from './grandTrade';
+import { answerProblem, diplomacyProblem, doAnswer, doDiplomacy } from './grandDiplomacy';
 import { boardProblem, doBoard, doUnload, unloadProblem } from './transport';
 import { cancelProject, doProject, projectProblem } from './production';
 import {
@@ -32,7 +34,7 @@ import { deployProblem, doDeploy, doUndeploy, undeployProblem } from './engineer
 import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
 import { canCancelResearch, canResearch, doCancelResearch, doDoctrine, doResearch, doctrineProblem } from './research';
 import { doLoadout, loadoutProblem } from './loadout';
-import { cloneState } from './state';
+import { cloneState, log } from './state';
 // round7:structures begin.
 import {
   cancelUpgradeProblem,
@@ -210,6 +212,32 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (typeof a.kind !== 'string' || !Array.isArray(a.modules) || loadoutProblem(s, 0, a.kind, a.modules) !== null) return s;
       const c = cloneState(s);
       doLoadout(c, 0, a.kind, a.modules);
+      return c;
+    }
+    // Grand War diplomacy (grandDiplomacy.ts): a proposal or a declaration, and an answer to an offer.
+    case 'diplomacy': {
+      if (diplomacyProblem(s, 0, a.to, a.act) !== null) return s;
+      const c = cloneState(s);
+      doDiplomacy(c, 0, a.to, a.act, log);
+      return c;
+    }
+    case 'answer': {
+      if (typeof a.accept !== 'boolean' || answerProblem(s, a.offer) !== null) return s;
+      const c = cloneState(s);
+      doAnswer(c, a.offer, a.accept, log);
+      return c;
+    }
+    // Grand War trade (grandTrade.ts): open or close a route.
+    case 'route': {
+      if (routeProblem(s, 0, a.from, a.to) !== null) return s;
+      const c = cloneState(s);
+      doRoute(c, 0, a.from, a.to);
+      return c;
+    }
+    case 'unroute': {
+      if (unrouteProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doUnroute(c, a.id);
       return c;
     }
     // round5:C begin. Engineering vehicles: the 'deploy' and 'undeploy' cases (until then both are

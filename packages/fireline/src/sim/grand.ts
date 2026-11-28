@@ -51,11 +51,12 @@ import {
 } from './rules';
 import { isWalkable } from './map';
 import { next, seedFromString } from './rng';
-import { allCities, centreOf, cityLevel, citiesOf, grandOn, isCity, nearestCity, townCentre, townsOf } from './cities';
+import { allCities, centreOf, cityCounts, cityLevel, citiesOf, grandOn, nearestCity, townCentre, townsOf } from './cities';
 import { isAlly, isEnemy, sidesOf } from './sides';
+import { startDiplomacy } from './grandDiplomacy';
 import type { Building, GameState, Site, Unit } from './types';
 
-export { grandOn } from './cities';
+export { cityCounts, grandOn } from './cities';
 
 /** A distance from its two legs: a square root, never Math.hypot, whose last digit may differ by engine. */
 const len = (dx: number, dy: number): number => Math.sqrt(dx * dx + dy * dy);
@@ -74,6 +75,7 @@ export function startGrand(s: GameState): void {
   for (const b of s.buildings) if (b.kind === 'hq') b.pop = CITY_START_POP;
   placeTowns(s);
   s.grand = { dominion: null };
+  startDiplomacy(s);
 }
 
 const TOWN_SALT = 'grand-towns';
@@ -327,27 +329,6 @@ function townIncome(s: GameState): void {
   for (const t of townsOf(s)) if (t.owner !== null && s.players[t.owner]) s.players[t.owner].credits += TOWN_INCOME;
 }
 
-/** Cities each team holds (its lowest side as the key), and the total on the map, towns included. */
-export function cityCounts(s: GameState): { total: number; byTeam: Map<Owner, number> } {
-  const byTeam = new Map<Owner, number>();
-  const sides = sidesOf(s);
-  const teamKey = (o: Owner): Owner => sides.find(a => isAlly(s, a, o)) ?? o;
-  let total = 0;
-  for (const b of s.buildings) {
-    if (!isCity(s, b)) continue;
-    total++;
-    const k = teamKey(b.owner);
-    byTeam.set(k, (byTeam.get(k) ?? 0) + 1);
-  }
-  for (const t of townsOf(s)) {
-    total++;
-    if (t.owner === null) continue;
-    const k = teamKey(t.owner);
-    byTeam.set(k, (byTeam.get(k) ?? 0) + 1);
-  }
-  return { total, byTeam };
-}
-
 /** The team holding the dominion share now (its lowest side), or null. */
 export function dominantTeam(s: GameState): Owner | null {
   const g = s.setup?.grand;
@@ -397,9 +378,14 @@ function dominionStep(s: GameState, say: Say): void {
 /** A Grand War's state, repaired for a save; null drops it. */
 export function migrateGrand(raw: unknown, s: GameState): GameState['grand'] | null {
   if (!s.setup?.grand || !raw || typeof raw !== 'object') return null;
-  const d = (raw as { dominion?: unknown }).dominion as { team?: unknown; since?: unknown } | null | undefined;
-  if (d && typeof d === 'object' && sidesOf(s).includes(d.team as Owner) && Number.isInteger(d.since) && (d.since as number) >= 0 && (d.since as number) <= s.tick) {
-    return { dominion: { team: d.team as Owner, since: d.since as number } };
-  }
-  return { dominion: null };
+  const r = raw as NonNullable<GameState['grand']>;
+  const d = r.dominion as { team?: unknown; since?: unknown } | null | undefined;
+  const dominion =
+    d && typeof d === 'object' && sidesOf(s).includes(d.team as Owner) && Number.isInteger(d.since) && (d.since as number) >= 0 && (d.since as number) <= s.tick
+      ? { team: d.team as Owner, since: d.since as number }
+      : null;
+  // The diplomacy fields are copied as they are and checked by migrateDiplomacy (grandDiplomacy.ts).
+  const out: NonNullable<GameState['grand']> = { dominion };
+  for (const k of ['stance', 'ends', 'trust', 'cool', 'temper', 'offers', 'routes'] as const) if (r[k] !== undefined) (out as unknown as Record<string, unknown>)[k] = JSON.parse(JSON.stringify(r[k]));
+  return out;
 }

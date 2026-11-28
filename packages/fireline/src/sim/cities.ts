@@ -19,6 +19,7 @@ import {
   type BuildingKind,
   type Owner,
 } from './rules';
+import { isAlly, sidesOf } from './sides';
 import type { Building, GameState, Site } from './types';
 
 /** True in a Grand War battle (a skirmish with the grand block and the economy it needs). */
@@ -103,3 +104,25 @@ export function cityWithRoom(s: GameState, owner: Owner): Building | null {
   for (const c of citiesOf(s, owner)) if (districtsOf(s, c).length < districtCap(cityLevel(c.pop!))) return c;
   return null;
 }
+
+/** Cities each team holds (its lowest side as the key), and the total on the map, towns included. */
+export function cityCounts(s: GameState): { total: number; byTeam: Map<Owner, number> } {
+  const byTeam = new Map<Owner, number>();
+  const sides = sidesOf(s);
+  const teamKey = (o: Owner): Owner => sides.find(a => isAlly(s, a, o)) ?? o;
+  let total = 0;
+  for (const b of s.buildings) {
+    if (!isCity(s, b)) continue;
+    total++;
+    const k = teamKey(b.owner);
+    byTeam.set(k, (byTeam.get(k) ?? 0) + 1);
+  }
+  for (const t of townsOf(s)) {
+    total++;
+    if (t.owner === null) continue;
+    const k = teamKey(t.owner);
+    byTeam.set(k, (byTeam.get(k) ?? 0) + 1);
+  }
+  return { total, byTeam };
+}
+

@@ -461,7 +461,8 @@ function captureStep(s: GameState): void {
     const defended = present.has(holder);
     // Grand War: a town's militia must be broken before anyone can take it.
     const garrisoned = site.kind === 'town' && (site.garrison ?? 0) > 0;
-    const capturers = garrisoned ? [] : [...present.entries()].filter(([team]) => team !== holder);
+    // Grand War diplomacy: a site held by a power at peace with the capturer is not taken from it.
+    const capturers = garrisoned ? [] : [...present.entries()].filter(([team, side]) => team !== holder && (owner === null || isEnemy(s, owner, side)));
     const steps = cap ? Math.round(cap.progress * T) : 0;
     const wind = () => (steps > 1 ? { by: cap!.by, progress: (steps - 1) / T } : null);
     if (capturers.length === 1 && !defended) {

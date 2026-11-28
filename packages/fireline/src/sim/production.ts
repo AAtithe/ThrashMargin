@@ -153,7 +153,8 @@ export function truckStep(s: GameState): void {
   let occ: Int32Array | null = null;
   const byId = new Map(s.buildings.map(b => [b.id, b]));
   for (const u of s.units) {
-    if (u.kind !== 'supplytruck' || u.hp <= 0) continue;
+    // Grand War: a convoy runs its trade route (grandTrade.ts), not a Supply Truck's errand.
+    if (u.kind !== 'supplytruck' || u.hp <= 0 || u.convoy) continue;
     const t = u.truck;
     // Another order than its own: the player has it. Its load stays aboard.
     if (t && u.order.type !== 'idle' && !(u.order.type === 'move' && Math.abs(u.order.x - t.x) < 1 && Math.abs(u.order.y - t.y) < 1)) {

@@ -11,11 +11,24 @@ import { allCities, cityLevel, citiesOf, districtCap, districtsOf, grandOn, isDi
 import { placementProblem } from '../src/sim/commands';
 import { deployProblem } from '../src/sim/engineering';
 import { cityCounts, cityHousing, foundingProblem, townGarrisonMax } from '../src/sim/grand';
+import { answerProblem, diplomacyOn, diplomacyProblem, endsOf, idx, proposalScore, strengthOf, trustOf } from '../src/sim/grandDiplomacy';
+import { isAlly, isEnemy, stanceOf } from '../src/sim/sides';
+import { endOf, routeCap, routeProblem, routesOf, tradeOn, tripValue } from '../src/sim/grandTrade';
 import { isWalkable } from '../src/sim/map';
 import { packRows, packState, TABLES_V1, unpackRows } from '../src/sim/pack';
 import {
+  CONVOY_COST,
+  ROUTE_COST,
+  TRADE_MIN,
+  BREACH_OTHERS,
+  BREACH_VICTIM,
   BUILDINGS,
   CITY_BEAT,
+  DIPLO_BEAT,
+  PROPOSAL_COOL,
+  TREATY_KEPT,
+  TREATY_MINUTES,
+  TRUST_START,
   CITY_FOUNDED_POP,
   CITY_FOUNDING_COST,
   CITY_GAP,
@@ -414,6 +427,330 @@ function wholeGames(ok: Ok): void {
   ok(json(play()) === json(play()), 'a Grand War battle replays byte-identically');
 }
 
+// ---------------------------------------------------------------------------------------------
+// G2: diplomacy
+
+/** Sets a pair's stance directly (for staging), symmetric, with a treaty end. */
+function setStance(s: GameState, a: Owner, b: Owner, st: 'w' | 'c' | 'p' | 'a', ends: number): void {
+  const chars = s.grand!.stance!.split('');
+  chars[idx(a, b)] = st;
+  chars[idx(b, a)] = st;
+  const e = s.grand!.ends!.slice();
+  e[idx(a, b)] = ends;
+  e[idx(b, a)] = ends;
+  s.grand = { ...s.grand!, stance: chars.join(''), ends: e };
+}
+
+/** Gives side `o` a column of tanks at home: strength for the scoring. */
+function army(s: GameState, o: Owner, n: number): void {
+  const hq = s.buildings.find(b => b.owner === o && b.kind === 'hq')!;
+  for (let i = 0; i < n; i++) addUnit(s, o, 'tank', hq.x + 4.5 + (i % 6), hq.y + 4.5 + Math.floor(i / 6));
+}
+
+function diploStartTests(ok: Ok): void {
+  for (const p of GRAND_PRESET_ORDER) {
+    const s = presetBattle(p, 'dip-start');
+    const n = s.players.length;
+    ok(diplomacyOn(s), `${p}: diplomacy on`);
+    let war = true;
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b && (stanceOf(s, a as Owner, b as Owner) !== 'w' || trustOf(s, a as Owner, b as Owner) !== TRUST_START)) war = false;
+    ok(war, `${p}: every pair starts at war, trust ${TRUST_START}`);
+    ok(s.grand!.temper!.length === n && s.grand!.temper![0] === null && s.grand!.temper!.slice(1).every(t => t !== null), `${p}: each computer power has a temperament (${s.grand!.temper!.slice(1).join(', ')})`);
+    ok(json(presetBattle(p, 'dip-start').grand) === json(s.grand), `${p}: the same temperaments every time`);
+  }
+  const off = createInitialState('o', 'o', { seed: 'o', difficulty: 'normal', createdAt: 0, setup: { ...GRAND_PRESETS.frontier, grand: { ...GRAND_PRESETS.frontier.grand!, diplomacy: false } } });
+  ok(!diplomacyOn(off) && off.grand!.stance === undefined, 'with diplomacy off, no table: teams alone decide');
+  ok(isEnemy(off, 0, 1) && !isAlly(off, 0, 1), 'and every other power is an enemy');
+}
+
+function diploRulesTests(ok: Ok): void {
+  const s = staged('dip-rules');
+  setStance(s, 0, 1, 'c', 6000);
+  setStance(s, 0, 2, 'a', 6000);
+  ok(!isEnemy(s, 0, 1) && !isAlly(s, 0, 1), 'at a ceasefire: neither enemy nor ally');
+  ok(isAlly(s, 0, 2) && !isEnemy(s, 0, 2), 'in alliance: an ally');
+  ok(isEnemy(s, 1, 2), 'two powers still at war fight');
+  // Units at peace never fire on each other.
+  const hq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+  const mine = addUnit(s, 0, 'tank', hq.x + 6.5, hq.y + 6.5);
+  const theirs = addUnit(s, 1, 'tank', hq.x + 8.5, hq.y + 6.5);
+  const a = tick(s, 60);
+  ok(a.units.find(u => u.id === mine.id)!.hp === mine.hp && a.units.find(u => u.id === theirs.id)!.hp === theirs.hp, 'two tanks at a ceasefire side by side: neither fires');
+  // At war, they do.
+  const w = copy(s);
+  setStance(w, 0, 1, 'w', 0);
+  const b = tick(w, 60);
+  const hurt = (b.units.find(u => u.id === mine.id)?.hp ?? 0) < mine.hp || (b.units.find(u => u.id === theirs.id)?.hp ?? 0) < theirs.hp;
+  ok(hurt, 'at war, they fight');
+  // Peace drops attacks under way.
+  const c = copy(w);
+  c.units.find(u => u.id === mine.id)!.order = { type: 'attack', target: theirs.id };
+  c.units.find(u => u.id === mine.id)!.engage = theirs.id;
+  c.units.find(u => u.id === theirs.id)!.engage = mine.id;
+  army(c, 0, 18);
+  const peace = processAction(c, { type: 'diplomacy', to: 1, act: 'ceasefire' });
+  if (stanceOf(peace, 0, 1) === 'c') {
+    const m = peace.units.find(u => u.id === mine.id)!;
+    ok(m.order.type === 'idle' && m.engage === 0 && peace.units.find(u => u.id === theirs.id)!.engage === 0, 'a ceasefire signed drops the attacks under way');
+  } else ok(false, 'staged ceasefire was declined');
+}
+
+function diploActionTests(ok: Ok): void {
+  const s = staged('dip-act');
+  const refused = (a: Parameters<typeof processAction>[1], why: string) => ok(processAction(s, a) === s, `refused, the same state: ${why}`);
+  refused({ type: 'diplomacy', to: 0, act: 'ceasefire' }, 'a proposal to ourselves');
+  refused({ type: 'diplomacy', to: 7 as Owner, act: 'ceasefire' }, 'to no power');
+  refused({ type: 'diplomacy', to: 1, act: 'war' }, 'war on a power already at war');
+  refused({ type: 'diplomacy', to: 1, act: 'pact' }, 'a pact straight from war');
+  refused({ type: 'diplomacy', to: 1, act: 'alliance' }, 'an alliance straight from war');
+  refused({ type: 'diplomacy', to: 1, act: 'nonsense' as never }, 'not a step');
+  refused({ type: 'answer', offer: 12345, accept: true }, 'an answer to no offer');
+  const off = createInitialState('o', 'o', { seed: 'o', difficulty: 'normal', createdAt: 0, setup: DEFAULT_SETUP });
+  ok(processAction(off, { type: 'diplomacy', to: 1, act: 'ceasefire' }) === off, 'refused in a skirmish: the same state');
+  // A strong player: the weak computer power takes the ceasefire.
+  const strong = copy(s);
+  army(strong, 0, 30);
+  const frozen = json(strong);
+  const signed = processAction(strong, { type: 'diplomacy', to: 1, act: 'ceasefire' });
+  ok(json(strong) === frozen, 'a legal step leaves its input untouched');
+  const score = proposalScore(strong, 1, 0, 'c').score;
+  ok(stanceOf(signed, 0, 1) === 'c' && stanceOf(signed, 1, 0) === 'c', `facing a far stronger army, the computer takes a ceasefire (score ${score})`);
+  ok(endsOf(signed, 0, 1) === signed.tick + TREATY_MINUTES.c * 600, `for ${TREATY_MINUTES.c} minutes`);
+  ok(signed.grand!.cool![idx(0, 1)] === signed.tick + PROPOSAL_COOL, 'and the next proposal waits');
+  ok(processAction(signed, { type: 'diplomacy', to: 1, act: 'ceasefire' }) === signed, 'renewing at once is refused (too early), the same state');
+  // A weak player: the strong power declines, the step is still taken (and logged).
+  const weak = copy(s);
+  army(weak, 1, 30);
+  const declined = processAction(weak, { type: 'diplomacy', to: 1, act: 'ceasefire' });
+  ok(declined !== weak && stanceOf(declined, 0, 1) === 'w' && /declines/.test(declined.log[declined.log.length - 1].text), `the stronger power declines: "${declined.log[declined.log.length - 1].text}"`);
+  ok(processAction(declined, { type: 'diplomacy', to: 1, act: 'ceasefire' }) === declined, 'and asking again at once is refused');
+  // A breach: war through a running treaty.
+  const t0 = copy(signed);
+  const trust2 = trustOf(t0, 2, 0);
+  const broke = processAction(t0, { type: 'diplomacy', to: 1, act: 'war' });
+  ok(stanceOf(broke, 0, 1) === 'w', 'war declared through the ceasefire');
+  ok(trustOf(broke, 1, 0) === trustOf(t0, 1, 0) - BREACH_VICTIM && trustOf(broke, 2, 0) === trust2 - BREACH_OTHERS, `a breach: the victim's trust falls ${BREACH_VICTIM}, everyone else's ${BREACH_OTHERS}`);
+}
+
+function diploBeatTests(ok: Ok): void {
+  // A ceasefire runs out: war again, trust up for a treaty kept.
+  const s = staged('dip-beat');
+  const at = (Math.floor(s.tick / DIPLO_BEAT) + 1) * DIPLO_BEAT;
+  setStance(s, 0, 1, 'c', at);
+  setStance(s, 0, 2, 'p', at);
+  const t1 = trustOf(s, 0, 1);
+  const a = tick(s, at - s.tick);
+  ok(stanceOf(a, 0, 1) === 'w' && endsOf(a, 0, 1) === 0, 'a ceasefire that runs out is war again');
+  ok(stanceOf(a, 0, 2) === 'c', 'a pact that runs out falls back to a ceasefire');
+  ok(trustOf(a, 0, 1) >= t1 + TREATY_KEPT - 1, 'trust rises for a treaty kept');
+  // Offers: a strong player, a computer power that would rather have peace, an offer arrives and can be answered.
+  let o = staged('dip-offer');
+  army(o, 0, 36);
+  let offer = null as null | { id: number; from: Owner };
+  for (let i = 0; i < 12 && !offer; i++) {
+    o = tick(o, DIPLO_BEAT);
+    offer = o.grand!.offers![0] ?? null;
+  }
+  ok(offer !== null, `facing a strong player, a computer power offers a treaty (${offer ? `side ${offer.from}` : 'none'})`);
+  if (!offer) return;
+  ok(answerProblem(o, offer.id) === null, 'the offer can be answered');
+  const yes = processAction(o, { type: 'answer', offer: offer.id, accept: true });
+  ok(stanceOf(yes, 0, offer.from) !== 'w' && !yes.grand!.offers!.some(x => x.id === offer!.id), 'accepted: the treaty stands and the offer is gone');
+  const no = processAction(o, { type: 'answer', offer: offer.id, accept: false });
+  ok(stanceOf(no, 0, offer.from) === 'w' && trustOf(no, offer.from, 0) === trustOf(o, offer.from, 0) - 2, 'declined: still at war, a little trust lost');
+  ok(processAction(o, { type: 'answer', offer: offer.id, accept: 'yes' as never }) === o, 'an answer that is not yes or no is refused');
+}
+
+function diploSaveTests(ok: Ok): void {
+  let s = presetBattle('frontier', 'dip-save', true);
+  s = tick(s, 600 * 6);
+  const back = migrateState(copy(packState(s)));
+  ok(back !== null && json(back) === json(migrateState(copy(s))), 'a battle with diplomacy saves and loads exactly');
+  const junk = copy(s);
+  const chars = junk.grand!.stance!.split('');
+  chars[idx(0, 1)] = 'a';
+  junk.grand!.stance = chars.join('');
+  const fixed = migrateState(junk)!;
+  ok(stanceOf(fixed, 0, 1) === 'w' && stanceOf(fixed, 1, 0) === 'w' && trustOf(fixed, 0, 1) === TRUST_START, 'a lopsided table is not trusted: everyone back at war');
+  const bad = copy(s);
+  bad.grand!.trust![3] = 400;
+  ok(migrateState(bad)!.grand!.trust!.every(v => v >= 0 && v <= 100), 'trust out of bounds is not trusted');
+}
+
+/** Deep: computer-only battles with diplomacy, checked every minute. */
+function diploWholeGames(ok: Ok): void {
+  let treaties = 0;
+  let wars = 0;
+  for (const seed of ['dip-1', 'dip-2', 'dip-3']) {
+    let s = presetBattle('frontier', seed, true);
+    let sane = true;
+    let lastStance = s.grand!.stance!;
+    while (s.winner === null && s.tick < 600 * 40) {
+      s = tick(s, 600);
+      const g = s.grand!;
+      const n = s.players.length;
+      for (let a = 0; a < n; a++)
+        for (let b = 0; b < n; b++) {
+          if (g.stance![idx(a as Owner, b as Owner)] !== g.stance![idx(b as Owner, a as Owner)]) sane = false;
+          const t = g.trust![idx(a as Owner, b as Owner)];
+          if (!Number.isInteger(t) || t < 0 || t > 100) sane = false;
+        }
+      for (let k = 0; k < g.stance!.length; k++) {
+        if (g.stance![k] !== lastStance[k] && g.stance![k] !== 'w') treaties++;
+        if (g.stance![k] === 'w' && lastStance[k] !== 'w') wars++;
+      }
+      lastStance = g.stance!;
+    }
+    ok(sane, `${seed}: the table symmetric and trust in bounds every minute; ${s.winner === null ? 'unfinished' : `side ${s.winner} won`} at minute ${(s.tick / 600).toFixed(0)}`);
+  }
+  ok(treaties > 0, `treaties are made (${treaties / 2} changes of stance toward peace)`);
+  console.log(`  ${wars / 2} returns to war`);
+  const play = (): GameState => tick(presetBattle('frontier', 'dip-replay', true), 600 * 12);
+  ok(json(play()) === json(play()), 'a battle with diplomacy replays byte-identically');
+  ok(strengthOf(presetBattle('frontier', 'x'), 0) > 0, 'strength counts the opening army and the city');
+}
+
+// ---------------------------------------------------------------------------------------------
+// G3: trade convoys
+
+/** Side 0 with a second city founded far from its first (for a home route). */
+function twoCities(seed: string): { s: GameState; a: Building; b: Building } | null {
+  const s = staged(seed);
+  const hq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+  hq.pop = HOUSING.hq + CITY_FOUNDING_COST + 4;
+  const c = { x: hq.x + 1.5, y: hq.y + 1.5 };
+  for (let r = 26; r < 60; r += 2)
+    for (let k = 0; k < 16; k++) {
+      const x = Math.round(c.x + r * [1, 1, 0, -1, -1, -1, 0, 1][k % 8] * (k < 8 ? 1 : 0.7));
+      const y = Math.round(c.y + r * [0, 1, 1, 1, 0, -1, -1, -1][k % 8] * (k < 8 ? 1 : 0.7));
+      if (x < 3 || y < 3 || x > s.mapW - 4 || y > s.mapH - 4 || foundingProblem(s, 0, x + 0.5, y + 0.5) !== null) continue;
+      const u = addUnit(s, 0, 'basetruck', x + 0.5, y + 0.5);
+      if (deployProblem(s, 0, u.id) !== null) {
+        s.units = s.units.filter(v => v.id !== u.id);
+        continue;
+      }
+      const after = processAction(s, { type: 'deploy', id: u.id });
+      const yard = after.buildings.find(b => b.kind === 'fieldyard' && b.owner === 0)!;
+      after.players[0].credits = 20000;
+      return { s: after, a: after.buildings.find(b => b.id === hq.id)!, b: yard };
+    }
+  return null;
+}
+
+function tradeTests(ok: Ok): void {
+  const two = twoCities('trade-a');
+  ok(two !== null, 'staged: side 0 has two cities far apart');
+  if (!two) return;
+  const { s, a, b } = two;
+  ok(tradeOn(s) && routeCap(s, 0) === 2, 'trade on; two cities run two routes');
+  const refused = (act: Parameters<typeof processAction>[1], why: string) => ok(processAction(s, act) === s, `refused, the same state: ${why}`);
+  refused({ type: 'route', from: a.id, to: a.id }, 'a route to the same city');
+  refused({ type: 'route', from: 999999, to: b.id }, 'from no city');
+  const theirs = s.buildings.find(x => x.owner === 1 && x.kind === 'hq')!;
+  ok(routeProblem(s, 0, a.id, theirs.id) === 'Foreign trade needs a trade pact or an alliance', 'to a power at war: refused');
+  refused({ type: 'route', from: theirs.id, to: a.id }, 'from a city not ours');
+  const poor = copy(s);
+  poor.players[0].credits = ROUTE_COST - 1;
+  ok(processAction(poor, { type: 'route', from: a.id, to: b.id }) === poor, `without ${ROUTE_COST} credits: refused`);
+  const before = json(s);
+  const open = processAction(s, { type: 'route', from: a.id, to: b.id });
+  ok(json(s) === before, 'opening a route leaves its input untouched');
+  const r = routesOf(open, 0)[0];
+  ok(!!r && open.players[0].credits === s.players[0].credits - ROUTE_COST, `a route opens for ${ROUTE_COST}`);
+  const convoy = open.units.find(u => u.id === r.convoy);
+  ok(!!convoy && convoy.kind === 'supplytruck' && convoy.convoy?.route === r.id && convoy.order.type === 'move', 'its convoy sets out at once');
+  ok(processAction(open, { type: 'route', from: b.id, to: a.id }) === open, 'the same route the other way: refused');
+  // Drive it: paid on arrival, exactly the trip's value, again and again.
+  const value = tripValue(open, r);
+  ok(value.credits > 0 && value.food > 0, `a trip pays ${value.credits} credits and ${value.food} food`);
+  let run = open;
+  run.players[0].food = 0;
+  let paidSeen = 0;
+  for (let i = 0; i < 120 && paidSeen < 3; i++) {
+    const credits = run.players[0].credits;
+    run = tick(run, 50);
+    const rr = routesOf(run, 0)[0];
+    paidSeen = rr.trips;
+    void credits;
+  }
+  const rr = routesOf(run, 0)[0];
+  ok(rr.trips >= 2, `the convoy shuttles: ${rr.trips} trips in ${((run.tick - open.tick) / 600).toFixed(1)} minutes`);
+  ok(rr.paid === rr.trips * value.credits, `conservation: ${rr.paid} paid for ${rr.trips} trips of ${value.credits}`);
+  // Raided: the convoy is lost, replaced after a while at a price.
+  const raid = copy(run);
+  const cv = raid.units.find(u => u.id === rr.convoy)!;
+  cv.hp = 0;
+  const lost = tick(raid, 10);
+  const r2 = routesOf(lost, 0)[0];
+  ok(r2.convoy === 0 && r2.wait > lost.tick - 10, 'a convoy lost: the route waits for a new one');
+  const credits = lost.players[0].credits;
+  const back = tick(lost, 650);
+  const r3 = routesOf(back, 0)[0];
+  ok(r3.convoy > 0 && back.players[0].credits <= credits - CONVOY_COST + 2000, `a new convoy sets out within a minute, for ${CONVOY_COST}`);
+  // An end lost: the route closes and its truck is an ordinary truck again.
+  const fall = copy(back);
+  fall.buildings = fall.buildings.filter(x => x.id !== b.id);
+  const closed = tick(fall, 10);
+  ok(routesOf(closed, 0).length === 0 && !closed.units.some(u => u.convoy), 'a city lost: its route closes, the convoy an ordinary truck');
+  ok(processAction(back, { type: 'unroute', id: r3.id }) !== back && routesOf(processAction(back, { type: 'unroute', id: r3.id }), 0).length === 0, 'a route can be closed by hand');
+  ok(processAction(back, { type: 'unroute', id: 4242 }) === back, 'closing no route: refused');
+  // Foreign: with a trade pact, a route to the partner's city pays both.
+  const pact = copy(back);
+  const chars = pact.grand!.stance!.split('');
+  chars[idx(0, 1)] = 'p';
+  chars[idx(1, 0)] = 'p';
+  const ends = pact.grand!.ends!.slice();
+  ends[idx(0, 1)] = ends[idx(1, 0)] = pact.tick + 60000;
+  pact.grand = { ...pact.grand!, stance: chars.join(''), ends };
+  const far = endOf(pact, theirs.id)!;
+  const near = [a, b].sort((x, y) => Math.hypot(x.x - far.at.x, x.y - far.at.y) - Math.hypot(y.x - far.at.x, y.y - far.at.y))[0];
+  const why = routeProblem(pact, 0, near.id, theirs.id);
+  ok(why === null || why === 'Too far for a convoy' || /routes/.test(why), `with a trade pact, a foreign route may open (${why ?? 'ok'})`);
+  if (why === null) {
+    const fr = processAction(pact, { type: 'route', from: near.id, to: theirs.id });
+    const v = tripValue(fr, routesOf(fr, 0).find(x => x.to === theirs.id)!);
+    ok(v.partner > 0 && v.credits > v.partner, `a foreign trip pays ${v.credits}, and the partner ${v.partner}`);
+    const war = copy(fr);
+    const c2 = war.grand!.stance!.split('');
+    c2[idx(0, 1)] = 'w';
+    c2[idx(1, 0)] = 'w';
+    war.grand = { ...war.grand!, stance: c2.join('') };
+    const shut = tick(war, 10);
+    ok(!routesOf(shut, 0).some(x => x.to === theirs.id), 'at war again, the foreign route closes');
+  }
+  ok(TRADE_MIN > 0, 'a route has a least length');
+}
+
+function tradeSaveTests(ok: Ok): void {
+  const two = twoCities('trade-save');
+  if (!two) return ok(false, 'staged two cities');
+  const open = tick(processAction(two.s, { type: 'route', from: two.a.id, to: two.b.id }), 300);
+  const back = migrateState(copy(packState(open)));
+  ok(back !== null && json(back) === json(migrateState(copy(open))), 'a battle with a route and its convoy saves and loads exactly');
+  const junk = copy(open);
+  junk.grand!.routes![0] = { ...junk.grand!.routes![0], trips: -4 };
+  const fixed = migrateState(junk)!;
+  ok(fixed.grand!.routes!.length === 0 && !fixed.units.some(u => u.convoy), 'a bad route is dropped, and its convoy freed');
+}
+
+/** Deep: computer battles open routes, and convoys pay. */
+function tradeWholeGames(ok: Ok): void {
+  let routes = 0;
+  let trips = 0;
+  for (const seed of ['trade-1', 'trade-2']) {
+    let s = presetBattle('grand', seed, true);
+    let conserved = true;
+    while (s.winner === null && s.tick < 600 * 40) {
+      s = tick(s, 600);
+      for (const r of s.grand!.routes!) if (r.paid !== r.paid || r.paid < 0) conserved = false;
+    }
+    routes += s.grand!.routes!.length;
+    trips += s.grand!.routes!.reduce((n, r) => n + r.trips, 0);
+    ok(conserved, `${seed}: routes sound every minute`);
+  }
+  ok(routes > 0 && trips > 0, `the computer trades: ${routes} routes open at the ends, ${trips} trips made`);
+}
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Grand War G0: tables', rowsTests],
   ['Grand War G0: saves as tables', saveTests],
@@ -426,4 +763,13 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Grand War G1: dominion and the time limit', dominionTests],
   ['Grand War G1: saves', grandSaveTests],
   ['Grand War G1: whole computer battles', wholeGames],
+  ['Grand War G2: the start', diploStartTests],
+  ['Grand War G2: peace and war in battle', diploRulesTests],
+  ['Grand War G2: actions', diploActionTests],
+  ['Grand War G2: the beat and offers', diploBeatTests],
+  ['Grand War G2: saves', diploSaveTests],
+  ['Grand War G2: whole computer battles', diploWholeGames],
+  ['Grand War G3: routes and convoys', tradeTests],
+  ['Grand War G3: saves', tradeSaveTests],
+  ['Grand War G3: whole computer battles', tradeWholeGames],
 ];

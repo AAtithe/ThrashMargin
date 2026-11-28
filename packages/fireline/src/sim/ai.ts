@@ -1,4 +1,4 @@
-import { grandWaveHeld, grandWaveTarget } from './aiGrand';
+import { grandTradePlan, grandWaveHeld, grandWaveTarget } from './aiGrand';
 import { cityWithRoom, grandOn, isDistrict } from './cities';
 import { creepFocus, navalPlan, navalSpot } from './aiNaval';
 import { isShip } from './naval';
@@ -517,6 +517,8 @@ function commander(s: GameState, owner: Owner): void {
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
   // goes on the line below this comment, and nothing else in this function changes.
   engineeringPlan(s, owner, home, enemyHome, units, foes);
+  // Grand War: trade routes (aiGrand.ts). A no-op otherwise.
+  grandTradePlan(s, owner);
   // round5:C end.
   // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): one call into
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
@@ -640,7 +642,8 @@ function commander(s: GameState, owner: Owner): void {
   // Raids: a few buggies hunt the opponent's haulers away from its turrets, and leave when they
   // run into a turret or have taken too much.
   if (t.raidSize > 0 && enemy.length) {
-    const foeHaulers = foes.filter(u => u.kind === 'hauler');
+    // Grand War: an enemy trade convoy is as good a prey as a hauler.
+    const foeHaulers = foes.filter(u => u.kind === 'hauler' || !!u.convoy);
     const turrets = enemy.filter(b => b.kind === 'turret');
     const turretNear = (x: number, y: number, r: number) => turrets.some(b => distToBuilding(x, y, b) < r);
     const safest = (from: Pt): Unit | null => {
@@ -756,10 +759,18 @@ function commander(s: GameState, owner: Owner): void {
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
       // round7:adaptive begin. From waveStage; a raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
-      const aim = adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home, s, owner), waveStage);
-      // Grand War: every other wave, or whenever a town is nearer than the enemy, the wave takes a town.
+      // Grand War: with diplomacy, peace can leave a gathered wave no enemy to aim at.
+      const aim = enemy.length ? adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home, s, owner), waveStage) : null;
+      // Grand War: every other wave, any wave for which a town is nearer than the enemy, and a wave with
+      // no enemy left, takes a town.
       const target = grandWaveTarget(s, owner, waveStage, aim, mem.wave) ?? aim;
       // round7:adaptive end.
+      if (!target) {
+        // Nobody left to fight and no town to take: the wave stands down at the staging point.
+        doMove(s, owner, waveIds, stage.x, stage.y, false);
+        waveIds = [];
+        mem.wavePhase = 0;
+      } else {
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
       // Integration: a field General near the wave leads it (generalLeads; none with Generals off).
@@ -770,6 +781,7 @@ function commander(s: GameState, owner: Owner): void {
       // round6:D end.
       // A recon sweep over where the wave is going, as it sets off.
       if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
+      }
     } else if (!threat) {
       // round7:adaptive: waveStage (the staging point itself unless the plan is a flank).
       const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, waveStage.x, waveStage.y) >= 6).map(u => u.id);

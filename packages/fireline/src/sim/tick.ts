@@ -5,6 +5,8 @@ import { SHORT_RELOAD, shortOfUpkeep, upkeepStep } from './upkeep';
 import { seasonsStep } from './seasons';
 import { holdStep } from './victory';
 import { grandStep } from './grand';
+import { diplomacyStep } from './grandDiplomacy';
+import { tradeStep } from './grandTrade';
 import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
@@ -399,6 +401,10 @@ export function step(s: GameState): void {
   else {
     // Grand War (grand.ts): cities eat and grow, towns fight and pay, dominion and the time limit. A no-op otherwise.
     grandStep(s, log);
+    // Grand War diplomacy (grandDiplomacy.ts): the beat. A no-op without it.
+    diplomacyStep(s, log);
+    // Grand War trade (grandTrade.ts): convoys paid on arrival, lost ones replaced. A no-op without it.
+    tradeStep(s);
     // Hold victory (2026-11-27): the sites score on the minute, and a team at the target wins.
     if (s.winner === null) holdStep(s, log);
     if (s.winner === null) checkVictory(s);
@@ -796,7 +802,6 @@ function sparedKinds(s: GameState): BuildingKind[] | null {
  * the weapon can reach: aircraft when it hits the air (hitsAir), the ground when it hits the ground.
  */
 function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly: boolean, w: Weapon, ctx?: Ctx): number {
-  const team = teamOf(s, owner);
   const air = hitsAir(w);
   const ground = hitsGround(w);
   const naval = hitsNaval(w);
@@ -808,7 +813,8 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
     const ex = e.x - x;
     const ey = e.y - y;
     if (ex > range || ex < -range || ey > range || ey < -range) return;
-    if (e.hp <= 0 || teamOf(s, e.owner) === team) return;
+    // Grand War: anyone not at war with the side is left alone (with no diplomacy, its own team).
+    if (e.hp <= 0 || !isEnemy(s, owner, e.owner)) return;
     const cat = UNITS[e.kind].category;
     if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) return;
     const d = dist(x, y, e.x, e.y);
@@ -834,7 +840,7 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
   if (unitsOnly || !ground) return best;
   const spare = owner === 0 ? sparedKinds(s) : null;
   for (const b of s.buildings) {
-    if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
+    if (b.hp <= 0 || !isEnemy(s, owner, b.owner)) continue;
     if (spare && spare.includes(b.kind)) continue;
     const d = distToTarget(x, y, { building: b });
     if (d > range) continue;
@@ -901,10 +907,9 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
   if (p.splash > 0) {
     // Splash spares the firing side and its allies. Anti-air splash reaches only aircraft; every
     // other splash (bombs included) only the ground.
-    const team = teamOf(s, p.owner);
     const antiAir = p.weapon === 'flak' || p.weapon === 'aamissile';
     for (const u of s.units) {
-      if (u.hp <= 0 || teamOf(s, u.owner) === team) continue;
+      if (u.hp <= 0 || !isEnemy(s, p.owner, u.owner)) continue;
       if ((UNITS[u.kind].category === 'air') !== antiAir) continue;
       const d = dist(p.toX, p.toY, u.x, u.y);
       if (d > p.splash) continue;
@@ -912,7 +917,7 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
     }
     for (const b of s.buildings) {
       if (antiAir) break;
-      if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
+      if (b.hp <= 0 || !isEnemy(s, p.owner, b.owner)) continue;
       const d = distToTarget(p.toX, p.toY, { building: b });
       if (d > p.splash) continue;
       // round7:fortification: Hardened shelters (1 without them, and the product is not taken).
@@ -1618,7 +1623,9 @@ function checkVictory(s: GameState): void {
   const sides = sidesOf(s);
   const alive = (o: Owner) => has[o] || sides.some(a => has[a] && isAlly(s, a, o));
   const ours = alive(0);
-  const foes = enemiesOf(s, 0);
+  // Every side not allied with ours: with Grand War diplomacy a side at peace still stands in the way of
+  // a conquest (enemiesOf would leave it out); otherwise exactly enemiesOf.
+  const foes = sides.filter(o => !isAlly(s, 0, o));
   if (ours && foes.some(alive)) return;
   s.winner = ours ? 0 : (foes.find(o => has[o]) ?? foes.find(alive) ?? foes[0]);
   const won = s.winner === 0;
