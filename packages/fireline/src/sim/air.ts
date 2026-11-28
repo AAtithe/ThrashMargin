@@ -189,6 +189,8 @@ export function sendHome(s: GameState, u: Unit): void {
 
 /** True when this weapon can fire at this target, by whether it is in the air. */
 export function canHit(w: Weapon, t: Target): boolean {
+  // High tiers: the Stratos flies above every weapon.
+  if (t.unit && UNITS[t.unit.kind].untouchable) return false;
   if (t.unit && isAir(t.unit)) return hitsAir(w);
   // The naval war: ships by hitsNaval (the torpedo reaches them; flak never does).
   if (t.unit && UNITS[t.unit.kind].category === 'naval') return hitsNaval(w);
@@ -332,6 +334,11 @@ function gunshipFight(s: GameState, u: Unit, h: AirHooks, w: Weapon, t: Target, 
     h.fire(u.owner, u.x + u.tx * 0.3, u.y + u.ty * 0.3, w, t, u.id, vetMul(u) * airDamageMulOf(s, u.owner));
     u.cooldown = w.cooldown;
     u.ammo = (u.ammo ?? 0) - 1;
+    // High tiers: a Strike Drone's shot is the drone itself, diving in.
+    if (UNITS[u.kind].expendable) {
+      u.hp = 0;
+      return;
+    }
     if (u.ammo <= 0) goRearm(s, u);
   }
 }

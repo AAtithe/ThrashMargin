@@ -184,14 +184,14 @@ function rulesAndPresets(ok: Ok): void {
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace.
   ok(keys.indexOf('pace') === keys.indexOf('research') + 1, 'research comes just before pace');
   // round7:adaptive begin. Round 7's adaptive comes after round 6's four.
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace') + 1)) === JSON.stringify([...ROUND6_ARMY_FIELDS, 'adaptive', 'characters', 'events']), "after the pace come round 6's armies, heroes and Generals fields, then round 7's adaptive, then characters and events");
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace') + 1)) === JSON.stringify([...ROUND6_ARMY_FIELDS, 'adaptive', 'characters', 'events', 'highTiers']), "after the pace come round 6's armies, heroes and Generals fields, then round 7's adaptive, then characters and events");
   // round7:adaptive end.
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every setup field, research included`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
   }
   // round7:structures: the two structure toggles read absent as off, whatever the base.
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false }), 'an empty setup normalises to the default, bar the structure toggles, characters and events');
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false, highTiers: false }), 'an empty setup normalises to the default, bar the structure toggles, characters and events');
   ok(normaliseSetup({ research: 'junk' as never }).research === DEFAULT_SETUP.research, 'junk research takes the default\'s value');
   ok(normaliseSetup({ research: 'junk' as never }, LEGACY_SETUP).research === LEGACY_SETUP.research, 'junk research takes the legacy base\'s value');
   ok(normaliseSetup({ tech: 'standard', research: 'lines' }).research === 'classic', 'standard tech is always classic');

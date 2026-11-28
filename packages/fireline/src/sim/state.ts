@@ -68,7 +68,7 @@ import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, 
 import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
-import { PROJECTS, RELAY_RADIUS } from './rules';
+import { HIGH_TIER_KINDS, PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
 import { territoryOn } from './territory';
@@ -187,7 +187,10 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // plays exactly as before; the lobby states them (DEFAULT_SETUP has them on).
   const characters = r.characters === true;
   const events = r.events === true;
-  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, characters, events };
+  // High tiers (2026-11-28; hightiers.ts): on only when exactly true, and only with advanced tech.
+  // Absent reads as off whatever the base, so every older setup plays exactly as before.
+  const highTiers = tech === 'advanced' && r.highTiers === true;
+  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, characters, events, highTiers };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -240,6 +243,8 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round7:structures end.
   // Advanced production (2026-11-22): the Farm, the Munitions Works and the Supply Truck only with setup.production.
   if (kind === 'farm' || kind === 'munitions' || kind === 'supplytruck' || kind === 'trainingcentre') return productionOn(s);
+  // High tiers (2026-11-28): tiers three's additions, four and five only with setup.highTiers (advanced tech).
+  if (HIGH_TIER_KINDS.includes(kind)) return highTiersOn(s);
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
@@ -619,8 +624,20 @@ export function countBuildings(s: GameState, owner: Owner, kind: BuildingKind): 
 
 /** True when every structure this needs is standing. */
 export function unlocked(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): boolean {
+  // High tiers: Battlefield Command and the Reactor Complex also need finished research.
+  if (kind in BUILDINGS && researchShort(s, owner, kind as BuildingKind) > 0) return false;
   return kindSpec(s, owner, kind).requires.every(r => hasBuilding(s, owner, r));
 }
+
+/** High tiers: upgrades this side still has to finish before it may build this structure (0: none). */
+export function researchShort(s: GameState, owner: Owner, kind: BuildingKind): number {
+  const need = BUILDINGS[kind].researchNeeded;
+  if (!need) return 0;
+  return Math.max(0, need - (s.players[owner]?.upgrades?.length ?? 0));
+}
+
+/** High tiers (2026-11-28): a skirmish on advanced tech with setup.highTiers. Never a mission or a planet battle. */
+export const highTiersOn = (s: GameState): boolean => !s.mission && !s.planet && s.setup?.tech === 'advanced' && s.setup.highTiers === true;
 
 export function categoryOf(kind: BuildingKind | UnitKind): Category {
   if (kind in BUILDINGS) return 'building';

@@ -195,7 +195,8 @@ const AIR_FACTION_TACTICS: Record<Faction, Partial<Record<Difficulty, Partial<Ai
  * on the list. Read by its spec, never by a kind's name.
  */
 function airKindFor(s: GameState, owner: Owner, role: AirRole, heavy = false): UnitKind | null {
-  const k = menuOf(factionOf(s, owner), 'air').find(k => UNITS[k as UnitKind]?.airRole === role && airSlotsOf(k as UnitKind) >= HELIPAD_SLOTS === heavy);
+  // High tiers' aircraft (drones, Pathfinder, Stratos) are bought by aiTiers.ts, never as the role's staple.
+  const k = menuOf(factionOf(s, owner), 'air').find(k => UNITS[k as UnitKind]?.airRole === role && !UNITS[k as UnitKind].tier && airSlotsOf(k as UnitKind) >= HELIPAD_SLOTS === heavy);
   return (k as UnitKind | undefined) ?? null;
 }
 
@@ -253,7 +254,8 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9) && !(paced0 && outmatched(s, owner));
 
   // 1. Anti-air, in proportion to what the opponent flies.
-  const foeAir = foes.filter(isAir).length;
+  // High tiers: a Stratos cannot be fought, so it buys no anti-air.
+  const foeAir = foes.filter(u => isAir(u) && !UNITS[u.kind].untouchable).length;
   if (foeAir > 0 && !crisis) {
     if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < queueCap(s, owner, 'infantry') && fund(s, owner, unitSpec(s, owner, 'skyhunter').cost))
       if (canQueue(s, owner, 'infantry', 'skyhunter')) doQueue(s, owner, 'infantry', 'skyhunter');
@@ -717,7 +719,7 @@ function strikes(
     const near = (f: Unit) => guarded.some(g => dist(g.x, g.y, f.x, f.y) <= DEFEND_RANGE) || mineB.some(b => distToBuilding(f.x, f.y, b) <= DEFEND_RANGE);
     const chased = new Set(fighters.map(u => (u.order.type === 'attack' ? u.order.target : 0)));
     for (const f of foes) {
-      if (!isAir(f) || !isEnemy(s, owner, f.owner) || chased.has(f.id) || !near(f)) continue;
+      if (!isAir(f) || UNITS[f.kind].untouchable || !isEnemy(s, owner, f.owner) || chased.has(f.id) || !near(f)) continue;
       let best: Unit | null = null;
       let bestD = Infinity;
       for (const u of fighters) {

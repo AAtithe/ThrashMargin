@@ -85,7 +85,7 @@ function setups(ok: Ok): void {
     ok(JSON.stringify(base.generalPicks) === '[null,null]', `${name} states every seat's doctrine General: none`);
   }
   // round7:structures: the two structure toggles read absent as off, whatever the base (the lobby states them on).
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false }), 'an empty setup is still exactly the default, bar the structure toggles (off when absent)');
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false, highTiers: false }), 'an empty setup is still exactly the default, bar the structure toggles (off when absent)');
   const n4 = normaliseSetup({ sides: 4 });
   ok(n4.factions!.length === 4 && n4.factions!.every(f => f === 'meridian'), 'four sides: four armies, all Meridian by default');
   ok(n4.generalPicks!.length === 4 && n4.generalPicks!.every(g => g === null), 'four sides: four doctrine picks, all none by default');
@@ -306,7 +306,7 @@ function overlayAndMenus(ok: Ok): void {
   ok(UNITS.sapper.requires.includes('barracks') && UNITS.sapper.category === 'infantry', 'the Sapper: infantry, from the Barracks');
   // Menus per army.
   // Merged with the air war: its four aircraft on both armies' lists, then Ashen's own two.
-  ok(menuOf('ashen', 'air').join() === 'reconplane,interceptor,carrier,heavybomber,kestrel,firebrand', "Ashen's Air list: the air war's four, then Kestrel, Firebrand");
+  ok(menuOf('ashen', 'air').filter(k => !UNITS[k as keyof typeof UNITS]?.tier).join() === 'reconplane,interceptor,carrier,heavybomber,kestrel,firebrand', "Ashen's Air list: the air war's four, then Kestrel, Firebrand");
   const today = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => !RECRUITS.includes(k));
   const recruits = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => RECRUITS.includes(k)).sort((a, b) => (a === 'general' ? 0 : 1) - (b === 'general' ? 0 : 1));
   ok(menuOf('ashen', 'vehicle').join() === [...today(VEHICLE_MENU), 'raider', ...recruits(VEHICLE_MENU)].join(), "Ashen's Vehicles: today's, then the Raider Bike, then the Ace");
@@ -797,7 +797,7 @@ function navalWarBothArmies(ok: Ok): void {
     // round7:fortification: the Point Defence emplacement closes the list, after the economy's five.
     const list = menuOf(f, 'building').filter(k => k !== 'pointdefence');
     // Industry's Fuel Well and Foundry (2026-11-21) come after the Academy, so nothing before them moved.
-    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && menuOf(f, 'building').indexOf('pointdefence') === menuOf(f, 'building').indexOf('watchtower') + 1 && list.slice(-13).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,bunker,supplycache,decoy,intelcentre,farm,munitions,trainingcentre',
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && menuOf(f, 'building').indexOf('pointdefence') === menuOf(f, 'building').indexOf('watchtower') + 1 && list.slice(-15, -2).join() === 'academy,fuelwell,foundry,depot,quarters,watchtower,bunker,supplycache,decoy,intelcentre,farm,munitions,trainingcentre',
       `${f}: the Structures list ends Fortress, Naval Yard, Academy, the economy's five, then round 7's strategic four (${list.slice(-10).join(', ')})`);
   }
   ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');

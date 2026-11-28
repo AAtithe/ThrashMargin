@@ -43,6 +43,7 @@ import { goodsPart, hasGoods, oreInReach, payGoods, refundGoods, type Goods } fr
 import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
+import { highTierQueueable } from './hightiers';
 // round6:B. Heroes in free play: recruit limits (fireline-round6-design.md).
 import { heroesInPlay, heroRecruitProblem } from './heroes';
 import type { HeroKind } from './rules';
@@ -96,6 +97,8 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;
   // Forward Base Trucks: no more than MAX_FIELD_YARDS, counting yards, trucks and trucks queued.
   if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
+  // High tiers: one Stratos at a time, aloft or queued.
+  if (kind in UNITS && !highTierQueueable(s, owner, kind as UnitKind)) return false;
   // Industry: the alloys and fuel part of the price must be in store too.
   if (!hasGoods(p, goodsFor(s, owner, kind))) return false;
   // round7:structures begin. Supply Caches: at most CACHE_MAX held and queued.

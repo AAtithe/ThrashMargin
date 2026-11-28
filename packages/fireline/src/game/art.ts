@@ -365,6 +365,36 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       drawGeneral(ctx, team, pose);
       break;
     // round6:C end.
+    // High tiers (2026-11-28).
+    case 'mechinf':
+    case 'rotarygun':
+    case 'atomictank':
+      drawHighTierCached(ctx, kind, owner, team, pose);
+      break;
+    case 'outrider':
+      drawOutrider(ctx, team, pose);
+      break;
+    case 'scoutdrone':
+      drawScoutDrone(ctx, team, pose);
+      break;
+    case 'strikedrone':
+      drawStrikeDrone(ctx, team, pose);
+      break;
+    case 'pathfinder':
+      drawPathfinder(ctx, team, pose);
+      break;
+    case 'stratos':
+      drawStratos(ctx, team, pose);
+      break;
+    case 'vanguard':
+      drawVanguard(ctx, owner, team, pose);
+      break;
+    case 'seacommando':
+      drawSeaCommando(ctx, owner, team, pose);
+      break;
+    case 'shadowbomber':
+      drawShadowBomber(ctx, team, pose);
+      break;
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -1690,6 +1720,13 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       break;
     case 'fortress':
       drawFortress(ctx, w, h, team, pose);
+      break;
+    // High tiers (2026-11-28).
+    case 'battlecommand':
+      drawBattleCommand(ctx, w, h, team, pose);
+      break;
+    case 'reactor':
+      drawReactor(ctx, w, h, team, pose);
       break;
     // round5:D end.
     // round6:A begin. Two armies: its structures' cases, if any, appended here.
@@ -6540,4 +6577,750 @@ function drawTrainingCentre(ctx: Ctx, w: number, h: number, team: Team, p: Build
   ctx.arc(w / 2, h - 12, 3.4, 0, Math.PI * 2);
   ctx.stroke();
   lamp(ctx, w - 9, h - 8, on && !!p.working, '#9ad7ff', p.t, 2);
+}
+
+// ---------------------------------------------------------------------------------------------
+// High tiers (2026-11-28, setup.highTiers): tier three's Outrider and Mechanised Infantry, tier
+// four's Rotary Cannon, tier five's Atomic Tank; the drone section and the high-altitude planes;
+// Battlefield Command and the Reactor Complex.
+
+type HTKind = 'mechinf' | 'rotarygun' | 'atomictank';
+const HT_HULL: Record<HTKind, [number, number]> = { mechinf: [25, 14], rotarygun: [24, 14], atomictank: [36, 22] };
+const HT_HALF: Record<HTKind, number> = { mechinf: 28, rotarygun: 30, atomictank: 42 };
+const HT_FN: Record<HTKind, VehicleFn> = {
+  mechinf: (c, t, p, l) => drawMechInf(c, t, p, l),
+  rotarygun: (c, t, p, l) => drawRotaryGun(c, t, p, l),
+  atomictank: (c, t, p, l) => drawAtomicTank(c, t, p, l),
+};
+
+/** The three high-tier tracked vehicles: two cached layers, as tier three's are, plus live effects. */
+function drawHighTierCached(ctx: Ctx, kind: HTKind, owner: Owner, team: Team, p: UnitPose) {
+  const fn = HT_FN[kind];
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const hurt = hp < 0.25 ? 3 : hp < 0.5 ? 2 : hp < 0.7 ? 1 : 0;
+  const hpq = [1, 0.6, 0.4, 0.2][hurt];
+  const frame = p.moving ? Math.floor(frac(p.t * 2) * 6) : 0;
+  const tq = frame / 12;
+  const hf = Math.round(frac(p.hull / TAU) * VANGLES) % VANGLES;
+  sprite(ctx, `${kind}${owner}h${hf}/${p.moving ? frame : 'i'}/${hurt}`, HT_HALF[kind], g =>
+    fn(g, team, { hull: (hf / VANGLES) * TAU, turret: 0, t: tq, moving: p.moving, cargo: 0, sinceShot: 9, hp: hpq, firing: false }, 'hull'),
+  );
+  if (hp < 0.5) {
+    ctx.save();
+    ctx.rotate(p.hull);
+    hullDamage(ctx, hp, p.t, HT_HULL[kind][0], HT_HULL[kind][1], 'live');
+    ctx.restore();
+  }
+  const tf = Math.round(frac(p.turret / TAU) * VANGLES) % VANGLES;
+  const rq = Math.min(8, Math.floor(p.sinceShot / 0.05));
+  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}`, HT_HALF[kind], g =>
+    fn(g, team, { hull: 0, turret: (tf / VANGLES) * TAU, t: tq, moving: p.moving, cargo: 0, sinceShot: rq === 8 ? 9 : rq * 0.05, hp: hpq, firing }, 'turret'),
+  );
+  if (kind === 'rotarygun') rotarySpin(ctx, p.turret, p.t, p.sinceShot);
+  else if (kind === 'atomictank') reactorGlow(ctx, p.hull, p.t, hp);
+  else if (!p.moving) dismountedSquad(ctx, p.hull, team, p.t);
+}
+
+/** Mechanised Infantry: a tracked carrier with a small autocannon turret and a rear ramp. */
+function drawMechInf(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 26, 18, 4);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 25, 7.6, 4.6, p.t, p.moving);
+    ctx.fillStyle = litGrad(ctx, p.hull, 12, team.main, team.dark);
+    ctx.beginPath();
+    ctx.moveTo(-12, -6.4);
+    ctx.lineTo(8, -6.4);
+    ctx.lineTo(12.5, -3);
+    ctx.lineTo(12.5, 3);
+    ctx.lineTo(8, 6.4);
+    ctx.lineTo(-12, 6.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Roof hatches for the squad and the rear ramp.
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (const hx of [-8, -3.5]) {
+      rrect(ctx, hx, -3.6, 3.4, 3, 0.8);
+      ctx.fill();
+      rrect(ctx, hx, 0.6, 3.4, 3, 0.8);
+      ctx.fill();
+    }
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(-13, -5, 1.6, 10);
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(11.8, -5, 1, 1.4);
+    ctx.fillRect(11.8, 3.6, 1, 1.4);
+    hullDamage(ctx, hp, p.t, 25, 14, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 1.2 - p.sinceShot * 8);
+    ctx.fillStyle = '#262a2b';
+    ctx.fillRect(3 - recoil, -0.8, 10, 1.6);
+    ctx.fillStyle = litGrad(ctx, p.turret, 5, team.light, team.main);
+    rrect(ctx, -3, -3.2, 7, 6.4, 1.6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    if (p.firing && p.sinceShot < 0.1) {
+      ctx.fillStyle = 'rgba(255,220,140,0.85)';
+      circle(ctx, 14, 0, 1.8);
+      ctx.fill();
+    }
+    emblem(ctx, team, -0.5, 0, 1.2);
+    ctx.restore();
+  }
+}
+
+/** Mechanised Infantry halted: the squad out of the back, kneeling in a fan behind the carrier. */
+function dismountedSquad(ctx: Ctx, hull: number, team: Team, t: number) {
+  ctx.save();
+  ctx.rotate(hull);
+  for (const [sx, sy] of [
+    [-16, -6],
+    [-18, 0],
+    [-16, 6],
+    [-12, -9],
+    [-12, 9],
+  ] as const) {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    circle(ctx, sx + 0.8, sy + 1, 1.9);
+    ctx.fill();
+    ctx.fillStyle = team.main;
+    circle(ctx, sx, sy, 1.8);
+    ctx.fill();
+    ctx.fillStyle = '#3c4334';
+    circle(ctx, sx + 0.3, sy, 1.05);
+    ctx.fill();
+  }
+  ctx.fillStyle = `rgba(255,220,140,${0.25 + 0.25 * Math.sin(t * 7)})`;
+  circle(ctx, -20, 0, 0.8);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Rotary Cannon: a squat tracked hull under a six-barrel gun. */
+function drawRotaryGun(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 25, 19, 4);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 24, 7.8, 5, p.t, p.moving);
+    ctx.fillStyle = litGrad(ctx, p.hull, 12, team.main, team.dark);
+    rrect(ctx, -11.5, -6.6, 23, 13.2, 2.4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Ammunition drums either side of the turret ring.
+    ctx.fillStyle = '#3a3f3a';
+    for (const side of [-1, 1]) {
+      rrect(ctx, -9, side * 3.2 - 1.6, 6, 3.2, 1.2);
+      ctx.fill();
+    }
+    ctx.fillStyle = ART.hazard;
+    ctx.fillRect(-11.5, -6.6, 2.2, 13.2);
+    hullDamage(ctx, hp, p.t, 24, 14, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    // The barrel cluster.
+    ctx.fillStyle = '#1e2224';
+    rrect(ctx, 3, -2.8, 15, 5.6, 1.2);
+    ctx.fill();
+    ctx.fillStyle = '#3c4246';
+    for (let i = 0; i < 3; i++) ctx.fillRect(4, -2.2 + i * 1.8, 14, 0.9);
+    ctx.fillStyle = '#121416';
+    ctx.fillRect(17, -2.8, 1.6, 5.6);
+    ctx.fillStyle = litGrad(ctx, p.turret, 6, team.light, team.main);
+    circle(ctx, 0, 0, 5.4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    emblem(ctx, team, -1.4, 0, 1.4);
+    ctx.restore();
+  }
+}
+
+/** The Rotary Cannon's barrels blur and flash live while it fires. */
+function rotarySpin(ctx: Ctx, ang: number, t: number, since: number) {
+  if (since > 0.9) return;
+  ctx.save();
+  ctx.rotate(ang);
+  const k = 1 - since / 0.9;
+  ctx.fillStyle = `rgba(200,210,215,${0.35 * k})`;
+  const ph = frac(t * 30);
+  for (let i = 0; i < 3; i++) ctx.fillRect(4, -2.4 + ((i + ph) % 3) * 1.8, 14, 0.9);
+  if (since < 0.12) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,214,130,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(18.5, -2.6);
+    ctx.lineTo(25 + Math.sin(t * 60) * 1.5, 0);
+    ctx.lineTo(18.5, 2.6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Atomic Tank: a broad super-heavy on four tracks, twin long guns and a shielded reactor at the back. */
+function drawAtomicTank(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 38, 28, 5);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 36, 11.5, 5.4, p.t, p.moving);
+    treads(ctx, 30, 5.5, 3.6, p.t, p.moving);
+    ctx.fillStyle = litGrad(ctx, p.hull, 18, team.main, team.dark);
+    ctx.beginPath();
+    ctx.moveTo(-17, -9.5);
+    ctx.lineTo(12, -9.5);
+    ctx.lineTo(18, -5);
+    ctx.lineTo(18, 5);
+    ctx.lineTo(12, 9.5);
+    ctx.lineTo(-17, 9.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    // The reactor housing: a ribbed drum with a hazard ring.
+    ctx.fillStyle = '#2a2f2c';
+    circle(ctx, -13, 0, 5);
+    ctx.fill();
+    ctx.strokeStyle = ART.hazard;
+    ctx.lineWidth = 1.4;
+    circle(ctx, -13, 0, 4.1);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.7;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      ctx.beginPath();
+      ctx.moveTo(-13 + Math.cos(a) * 1.5, Math.sin(a) * 1.5);
+      ctx.lineTo(-13 + Math.cos(a) * 3.5, Math.sin(a) * 3.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(17, -7, 1.3, 1.8);
+    ctx.fillRect(17, 5.2, 1.3, 1.8);
+    hullDamage(ctx, hp, p.t, 36, 22, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 3.2 - p.sinceShot * 9);
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(0, side * 2.8);
+      barrel(ctx, 6, 20, 2.4, recoil, p.firing === true);
+      ctx.restore();
+    }
+    ctx.fillStyle = litGrad(ctx, p.turret, 10, team.light, team.main);
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -7.4);
+    ctx.lineTo(5, -7.4);
+    ctx.lineTo(9, -3);
+    ctx.lineTo(9, 3);
+    ctx.lineTo(5, 7.4);
+    ctx.lineTo(-7.5, 7.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(-9, -5, 1.6, 10);
+    emblem(ctx, team, -3, 3.4, 1.8);
+    ctx.fillStyle = '#1f2a33';
+    circle(ctx, -3, -2.6, 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+/** The Atomic Tank's reactor glows green, live; a badly hurt one flickers. */
+function reactorGlow(ctx: Ctx, hull: number, t: number, hp: number) {
+  ctx.save();
+  ctx.rotate(hull);
+  ctx.globalCompositeOperation = 'lighter';
+  const flicker = hp < 0.3 ? (frac(t * 7) < 0.5 ? 0.4 : 1) : 1;
+  alpha(ctx, (0.45 + 0.2 * Math.sin(t * 4)) * flicker);
+  ctx.fillStyle = '#7dff9a';
+  circle(ctx, -13, 0, 2.2);
+  ctx.fill();
+  alpha(ctx, 0.18 * flicker);
+  circle(ctx, -13, 0, 6.5);
+  ctx.fill();
+  ctx.restore();
+  alpha(ctx, 1);
+}
+
+/** The Outrider: a motorcycle and sidecar, the sidecar gunner's machine gun turned to the target. */
+function drawOutrider(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.12;
+  bodyShadow(ctx, p.hull, 16, 10, 2, 2.5, 3);
+  ctx.save();
+  ctx.rotate(p.hull);
+  const spin = p.moving ? frac(p.t * 8) * 2 : 0;
+  for (const [wx, wy] of [
+    [-5.5, -1.6],
+    [5.5, -1.6],
+    [-3, 4.2],
+  ] as const) {
+    ctx.fillStyle = '#141515';
+    rrect(ctx, wx - 2.8, wy - 1.4, 5.6, 2.8, 1.3);
+    ctx.fill();
+    ctx.fillStyle = '#3a3c3c';
+    ctx.fillRect(wx - 2 + spin, wy - 1.1, 0.6, 2.2);
+  }
+  // The bike.
+  ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(-6, -3.2);
+  ctx.lineTo(4, -3.4);
+  ctx.lineTo(7.4, -1.6);
+  ctx.lineTo(4, 0.2);
+  ctx.lineTo(-6, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  // The sidecar.
+  ctx.fillStyle = litGrad(ctx, p.hull, 6, team.main, team.dark);
+  rrect(ctx, -5, 1.4, 9, 5.4, 2.4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#fff3c4';
+  ctx.fillRect(7, -2.2, 1, 1.2);
+  ctx.fillStyle = '#3c4334';
+  circle(ctx, -1.6, -1.6, 1.8);
+  ctx.fill();
+  emblem(ctx, team, 0.5, 4.1, 1);
+  hullDamage(ctx, hp, p.t, 14, 8, 'both');
+  ctx.restore();
+  // The gunner and his gun, turned to the target.
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.translate(-0.5, 4);
+  ctx.rotate(p.turret - p.hull);
+  ctx.fillStyle = '#3c4334';
+  circle(ctx, 0, 0, 1.9);
+  ctx.fill();
+  ctx.fillStyle = '#25292a';
+  ctx.fillRect(0.6, -0.5, 6.5, 1);
+  if (firing) {
+    ctx.fillStyle = 'rgba(255,214,130,0.9)';
+    circle(ctx, 7.6, 0, 1.4);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** The Scout Drone: a small X-frame quadcopter, its four rotors blurred, a camera pod at the nose. */
+function drawScoutDrone(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.strokeStyle = team.dark;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-5, -5);
+  ctx.lineTo(5, 5);
+  ctx.moveTo(-5, 5);
+  ctx.lineTo(5, -5);
+  ctx.stroke();
+  for (const [rx, ry] of [
+    [-5, -5],
+    [5, 5],
+    [-5, 5],
+    [5, -5],
+  ] as const) {
+    ctx.fillStyle = 'rgba(210,214,206,0.22)';
+    circle(ctx, rx, ry, 3.4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(40,44,46,0.6)';
+    ctx.lineWidth = 0.6;
+    const a = p.t * 40 + rx;
+    ctx.beginPath();
+    ctx.moveTo(rx - Math.cos(a) * 3, ry - Math.sin(a) * 3);
+    ctx.lineTo(rx + Math.cos(a) * 3, ry + Math.sin(a) * 3);
+    ctx.stroke();
+  }
+  ctx.fillStyle = litGrad(ctx, p.hull, 4, team.light, team.main);
+  rrect(ctx, -3, -2.2, 6, 4.4, 1.4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  ctx.fillStyle = '#1b2a33';
+  circle(ctx, 3.2, 0, 1.3);
+  ctx.fill();
+  const fuel = Math.max(0, Math.min(1, p.cargo));
+  ctx.fillStyle = fuel > 0.25 ? '#9fe08a' : '#ff8a5a';
+  ctx.fillRect(-2.4, -0.4, 3.6 * fuel, 0.8);
+  hullDamage(ctx, hp, p.t, 8, 6, 'both');
+  ctx.restore();
+}
+
+/** The Strike Drone: a small swept munition with a pusher propeller and a red-tipped warhead. */
+function drawStrikeDrone(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.fillStyle = litGrad(ctx, p.hull, 8, team.main, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(2, 0);
+  ctx.lineTo(-5, -8);
+  ctx.lineTo(-7, -8);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-7, 8);
+  ctx.lineTo(-5, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  ctx.fillStyle = litGrad(ctx, p.hull, 6, team.light, team.main);
+  rrect(ctx, -8, -1.6, 15, 3.2, 1.5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#d8403a';
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(7, -1.6);
+  ctx.lineTo(7, 1.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(210,214,206,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(-9, 0, 1, 3.6, 0, 0, TAU);
+  ctx.fill();
+  hullDamage(ctx, hp, p.t, 12, 5, 'both');
+  ctx.restore();
+}
+
+/** The Pathfinder: a long, slim jet with a sensor spine and long swept wings. */
+function drawPathfinder(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  if (p.moving) {
+    ctx.fillStyle = 'rgba(255,190,110,0.6)';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(-12, side * 3 - 0.9);
+      ctx.lineTo(-17 - Math.sin(p.t * 40) * 1.2, side * 3);
+      ctx.lineTo(-12, side * 3 + 0.9);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle = litGrad(ctx, p.hull, 16, team.light, team.main);
+  ctx.beginPath();
+  ctx.moveTo(4, -1.5);
+  ctx.lineTo(-4, -18);
+  ctx.lineTo(-7, -18);
+  ctx.lineTo(-4, -1.5);
+  ctx.lineTo(-4, 1.5);
+  ctx.lineTo(-7, 18);
+  ctx.lineTo(-4, 18);
+  ctx.lineTo(4, 1.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = litGrad(ctx, p.hull, 10, team.light, team.main);
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.quadraticCurveTo(10, -2.2, 4, -2.2);
+  ctx.lineTo(-13, -1.6);
+  ctx.lineTo(-13, 1.6);
+  ctx.lineTo(4, 2.2);
+  ctx.quadraticCurveTo(10, 2.2, 15, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#d9dcd2';
+  rrect(ctx, -8, -1, 10, 2, 1);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(25,45,60,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(8, 0, 2.6, 1.3, 0, 0, TAU);
+  ctx.fill();
+  const fuel = Math.max(0, Math.min(1, p.cargo));
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(-4, -12, 1.2, 8);
+  ctx.fillStyle = fuel > 0.25 ? '#9fe08a' : '#ff8a5a';
+  ctx.fillRect(-4, -12 + 8 * (1 - fuel), 1.2, 8 * fuel);
+  emblem(ctx, team, -6, 0, 1.2);
+  hullDamage(ctx, hp, p.t, 18, 8, 'both');
+  ctx.restore();
+}
+
+/**
+ * The Stratos: an ultra-high-altitude glider-winged spy plane. It is drawn small, faint and with
+ * long contrails, so it reads as far above everything else; nothing on the field can reach it.
+ */
+function drawStratos(ctx: Ctx, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.rotate(p.hull);
+  // Contrails, long and pale.
+  const g = ctx.createLinearGradient(-6, 0, -46, 0);
+  g.addColorStop(0, 'rgba(240,244,248,0.55)');
+  g.addColorStop(1, 'rgba(240,244,248,0)');
+  ctx.fillStyle = g;
+  for (const side of [-1, 1]) ctx.fillRect(-46, side * 6 - 0.9, 40, 1.8);
+  alpha(ctx, baseAlpha * 0.85);
+  ctx.fillStyle = litGrad(ctx, p.hull, 20, '#4b5258', '#22272b');
+  ctx.beginPath();
+  ctx.moveTo(1, -1.2);
+  ctx.lineTo(-1, -22);
+  ctx.lineTo(-3.4, -22);
+  ctx.lineTo(-3, -1.2);
+  ctx.lineTo(-3, 1.2);
+  ctx.lineTo(-3.4, 22);
+  ctx.lineTo(-1, 22);
+  ctx.lineTo(1, 1.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-3.2, -22, 2.6, 2);
+  ctx.fillRect(-3.2, 20, 2.6, 2);
+  ctx.fillStyle = litGrad(ctx, p.hull, 10, '#5d656c', '#2a3035');
+  ctx.beginPath();
+  ctx.moveTo(12, 0);
+  ctx.quadraticCurveTo(8, -1.8, 2, -1.8);
+  ctx.lineTo(-14, -1.2);
+  ctx.lineTo(-14, 1.2);
+  ctx.lineTo(2, 1.8);
+  ctx.quadraticCurveTo(8, 1.8, 12, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#22272b';
+  ctx.fillRect(-15, -4, 2, 8);
+  ctx.fillStyle = 'rgba(170,225,255,0.5)';
+  ctx.fillRect(6, -0.6, 2, 1.2);
+  ctx.restore();
+  alpha(ctx, 1);
+  // The designation ring it casts below, faint and turning.
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,90,70,0.28)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.lineDashOffset = -p.t * 12;
+  circle(ctx, 0, 0, 30);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Battlefield Command: a low command block under a forest of masts, a plotting table lit on its roof. */
+function drawBattleCommand(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  block(ctx, 10, 18, w - 20, h - 36, shade(ctx, 10, 18, w - 20, h - 36, team.light, team.dark), '#3b4144', 6);
+  // The plotting table: a glowing map with a front line on it.
+  const tx = w / 2 - 16;
+  const ty = h / 2 - 9;
+  ctx.fillStyle = '#132029';
+  rrect(ctx, tx, ty, 32, 18, 2);
+  ctx.fill();
+  if (on) {
+    ctx.strokeStyle = `rgba(127,216,255,${0.55 + 0.25 * Math.sin(p.t * 2)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tx + 3, ty + 12);
+    ctx.bezierCurveTo(tx + 10, ty + 4, tx + 18, ty + 15, tx + 29, ty + 6);
+    ctx.stroke();
+    ctx.fillStyle = '#ff6a5a';
+    for (const [mx, my] of [
+      [8, 5],
+      [20, 13],
+      [26, 4],
+    ])
+      ctx.fillRect(tx + mx, ty + my, 2, 2);
+  }
+  emblem(ctx, team, 20, h - 26, 3);
+  // Masts and a turning dish.
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.4;
+  for (const mx of [14, w - 14]) {
+    ctx.beginPath();
+    ctx.moveTo(mx, h - 14);
+    ctx.lineTo(mx, 6);
+    ctx.stroke();
+    lamp(ctx, mx, 6, on, '#ff4a3a', p.t, 2, true);
+  }
+  const dx = w - 30;
+  const dy = 14;
+  ctx.fillStyle = '#d9dcd2';
+  ctx.save();
+  ctx.translate(dx, dy);
+  ctx.rotate(on ? p.t * 0.8 : 0);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 8, 3, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.restore();
+  lamp(ctx, 24, h - 12, on, '#7fd8ff', p.t, 3);
+}
+
+/** The Reactor Complex: a containment dome beside two cooling towers venting steam, its core glowing. */
+function drawReactor(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  // Cooling towers.
+  for (const [cx, cy] of [
+    [w * 0.27, h * 0.3],
+    [w * 0.27, h * 0.72],
+  ]) {
+    ctx.fillStyle = shade(ctx, cx - 11, cy - 11, 22, 22, ART.concreteLight, ART.concreteDark);
+    circle(ctx, cx, cy, 11);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#2a2f30';
+    circle(ctx, cx, cy, 7);
+    ctx.fill();
+    for (let i = 0; i < 3; i++) {
+      const k = frac(p.t * 0.35 + i / 3);
+      ctx.fillStyle = `rgba(235,238,240,${0.4 * (1 - k)})`;
+      circle(ctx, cx + k * 4, cy - k * 10, 4 + k * 6);
+      ctx.fill();
+    }
+  }
+  // The containment dome, its core showing green through a ring of ports.
+  const dx = w * 0.66;
+  const dy = h * 0.5;
+  ctx.fillStyle = shade(ctx, dx - 22, dy - 22, 44, 44, team.light, team.dark);
+  circle(ctx, dx, dy, 20);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.strokeStyle = ART.hazard;
+  ctx.lineWidth = 2;
+  circle(ctx, dx, dy, 16);
+  ctx.stroke();
+  ctx.fillStyle = on ? `rgba(125,255,154,${0.6 + 0.3 * Math.sin(p.t * 3)})` : '#3a4246';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU;
+    circle(ctx, dx + Math.cos(a) * 11, dy + Math.sin(a) * 11, 1.6);
+    ctx.fill();
+  }
+  if (on) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    alpha(ctx, 0.3 + 0.12 * Math.sin(p.t * 3));
+    ctx.fillStyle = '#7dff9a';
+    circle(ctx, dx, dy, 8);
+    ctx.fill();
+    ctx.restore();
+    alpha(ctx, 1);
+  }
+  emblem(ctx, team, dx, dy, 2.6);
+  lamp(ctx, w - 10, 10, on, '#7dff9a', p.t, 3);
+  lamp(ctx, w - 10, h - 10, on, '#ffb43a', p.t, 2, true);
+}
+
+/** The Vanguard: a rifleman's frame in heavier kit, with a gold beret and a gold shoulder flash. */
+function drawVanguard(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(1.18, 1.18);
+  drawTrooperCached(ctx, 'rifleman', owner, team, p);
+  ctx.rotate(p.turret);
+  // Body armour plates.
+  ctx.fillStyle = 'rgba(40,44,40,0.55)';
+  rrect(ctx, -3.2, -3.4, 4.4, 6.8, 1.4);
+  ctx.fill();
+  ctx.fillStyle = '#d9a93a';
+  circle(ctx, -0.6, 0, 1.9);
+  ctx.fill();
+  ctx.fillStyle = '#f4d27a';
+  ctx.fillRect(-2.4, 2.6, 2, 1);
+  ctx.restore();
+}
+
+/** The Sea Commando: black-clad, with a diving mask and a charge pack on the back. */
+function drawSeaCommando(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  drawTrooperCached(ctx, 'rifleman', owner, team, p);
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = 'rgba(16,20,24,0.78)';
+  circle(ctx, -0.6, 0, 3.6);
+  ctx.fill();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-3.6, -0.5, 1.2, 1);
+  // Mask glass and the charge pack.
+  ctx.fillStyle = 'rgba(120,200,230,0.85)';
+  ctx.fillRect(0.8, -1.1, 1.3, 2.2);
+  ctx.fillStyle = '#3d3a2c';
+  rrect(ctx, -4.6, -1.8, 2.2, 3.6, 0.6);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** The Shadow Bomber: a dark flying wing with a saw-tooth trailing edge and shrouded engines. */
+function drawShadowBomber(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.fillStyle = litGrad(ctx, p.hull, 20, '#3e454b', '#15191c');
+  ctx.beginPath();
+  ctx.moveTo(13, 0);
+  ctx.lineTo(-4, -22);
+  ctx.lineTo(-8, -19);
+  ctx.lineTo(-5, -13);
+  ctx.lineTo(-9, -8);
+  ctx.lineTo(-6, -3);
+  ctx.lineTo(-9, 0);
+  ctx.lineTo(-6, 3);
+  ctx.lineTo(-9, 8);
+  ctx.lineTo(-5, 13);
+  ctx.lineTo(-8, 19);
+  ctx.lineTo(-4, 22);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  // Cockpit, engine intakes and a thin side's stripe.
+  ctx.fillStyle = 'rgba(60,90,110,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(6, 0, 2.6, 1.4, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#0d1012';
+  for (const side of [-1, 1]) ctx.fillRect(-1, side * 4.5 - 1, 4, 2);
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-3, -18);
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-3, 18);
+  ctx.stroke();
+  hullDamage(ctx, hp, p.t, 20, 12, 'both');
+  ctx.restore();
 }

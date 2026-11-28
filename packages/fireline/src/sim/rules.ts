@@ -146,6 +146,19 @@ export type UnitKind =
   // round6:C end.
   // Advanced production (2026-11-22, setup.production): the Supply Truck.
   | 'supplytruck'
+  // High tiers (2026-11-28, setup.highTiers): tier three's additions, tier four and tier five.
+  | 'outrider'
+  | 'mechinf'
+  | 'scoutdrone'
+  | 'rotarygun'
+  | 'strikedrone'
+  | 'pathfinder'
+  | 'atomictank'
+  | 'stratos'
+  // High tiers, later the same day: the Vanguard, the Sea Commando and the Shadow Bomber.
+  | 'vanguard'
+  | 'seacommando'
+  | 'shadowbomber'
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -200,6 +213,9 @@ export type BuildingKind =
   | 'farm'
   | 'munitions'
   | 'trainingcentre'
+  // High tiers (2026-11-28, setup.highTiers): Battlefield Command (tier four) and the Reactor Complex (tier five).
+  | 'battlecommand'
+  | 'reactor'
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
@@ -250,6 +266,23 @@ export interface UnitSpec {
   detector?: true;
   /** Air war: infantry it can carry (the Troop Carrier). Absent on the rest. */
   carries?: number;
+  // High tiers (2026-11-28; hightiers.ts). Each absent on every other kind.
+  /** The tier it belongs to (3, 4 or 5), for the build panel and How to play. */
+  tier?: 3 | 4 | 5;
+  /** Mechanised Infantry: the squad climbs out once the carrier has stood still DISMOUNT_TICKS. */
+  dismount?: true;
+  /** Rotary Cannon: every shot in a run reloads faster, to SPIN_MAX shots. */
+  spinUp?: true;
+  /** Atomic Tank: burns no fuel for upkeep, and its reactor breaches when it is destroyed. */
+  nuclear?: true;
+  /** Strike Drone: dives into its target, so its one shot is its end. */
+  expendable?: true;
+  /** Stratos: flies above every weapon. Never targeted, never hit, never splashed. */
+  untouchable?: true;
+  /** Stratos: enemies within DESIGNATE_RADIUS of it take DESIGNATE_DAMAGE from its side. */
+  designator?: true;
+  /** The rank it is trained at (the Vanguard: 2, Elite). */
+  startVet?: 1 | 2;
 }
 
 export interface BuildingSpec {
@@ -277,6 +310,13 @@ export interface BuildingSpec {
   buildRadius?: number;
   /** Round 5, workstream C: packs up into this unit where it stands (the Field Yard). */
   undeploysTo?: UnitKind;
+  // High tiers (2026-11-28; hightiers.ts). Each absent on every other kind.
+  /** The tier it opens (4 or 5). */
+  tier?: 3 | 4 | 5;
+  /** Upgrades this side must have finished researching before it may be built (unlocked, state.ts). */
+  researchNeeded?: number;
+  /** The Reactor Complex: destroyed, it melts down over everything within MELTDOWN_RADIUS. */
+  meltdown?: true;
 }
 
 export const UNITS: Record<UnitKind, UnitSpec> = {
@@ -807,6 +847,177 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     blurb: 'Your field commander, one at a time (Generals on). Your units within six tiles hit 10% harder and fire 10% faster. If the General falls, the doctrine weakens until a replacement arrives.',
   },
   // round6:C end.
+  // High tiers (2026-11-28, setup.highTiers; hightiers.ts). Tier three's additions come from the
+  // Prototype Works, tier four's from Battlefield Command, tier five's from the Reactor Complex.
+  outrider: {
+    name: 'Outrider',
+    category: 'vehicle',
+    cost: 450,
+    buildTicks: 55,
+    hp: 170,
+    armor: 'light',
+    speed: 0.22,
+    sight: 8,
+    weapon: { kind: 'bullet', damage: 10, range: 4, cooldown: 6 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'Tier three. A motorcycle troop: the fastest thing on the ground, a machine gun, and eyes that pick out Stealth Tanks and Spies seven tiles off. Paper armour.',
+    detector: true,
+    tier: 3,
+  },
+  mechinf: {
+    name: 'Mechanised Infantry',
+    category: 'vehicle',
+    cost: 900,
+    buildTicks: 110,
+    hp: 420,
+    armor: 'light',
+    speed: 0.1,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 13, range: 4, cooldown: 8 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'Tier three. A squad in a tracked carrier. On the move it fights with the carrier gun; halted for two seconds the squad climbs out, hits half as hard again, reaches a tile further and takes a quarter less.',
+    dismount: true,
+    tier: 3,
+  },
+  scoutdrone: {
+    name: 'Scout Drone',
+    category: 'air',
+    cost: 400,
+    buildTicks: 50,
+    hp: 90,
+    armor: 'aircraft',
+    speed: 0.22,
+    sight: 9,
+    requires: ['helipad', 'protoworks'],
+    airRole: 'scout',
+    blurb: 'Tier three. A cheap unarmed drone that circles where it is sent for well over a minute and a half. Lose it and you have lost little.',
+    tier: 3,
+  },
+  rotarygun: {
+    name: 'Rotary Cannon',
+    category: 'vehicle',
+    cost: 1500,
+    buildTicks: 170,
+    hp: 560,
+    armor: 'light',
+    speed: 0.085,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 16, range: 5.5, cooldown: 7 },
+    requires: ['factory', 'battlecommand'],
+    blurb: 'Tier four. A rapid-fire gun that spins up: every shot in a run comes sooner, to two and a half times the rate. Shreds infantry and light vehicles and reaches aircraft; poor against heavy armour.',
+    spinUp: true,
+    tier: 4,
+  },
+  strikedrone: {
+    name: 'Strike Drone',
+    category: 'air',
+    cost: 550,
+    buildTicks: 60,
+    hp: 110,
+    armor: 'aircraft',
+    speed: 0.26,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 260, range: 1, cooldown: 1, splash: 1.2, canHitAir: false },
+    requires: ['helipad', 'battlecommand'],
+    airRole: 'strafe',
+    blurb: 'Tier four. A loitering munition: it hunts like a gunship, then dives into its target with a warhead that breaks a tank. One use.',
+    expendable: true,
+    tier: 4,
+  },
+  pathfinder: {
+    name: 'Pathfinder',
+    category: 'air',
+    cost: 1400,
+    buildTicks: 150,
+    hp: 300,
+    armor: 'aircraft',
+    speed: 0.27,
+    sight: 13,
+    requires: ['helipad', 'battlecommand'],
+    airRole: 'scout',
+    blurb: 'Tier four. A long-range recon jet: three minutes of fuel, the widest sight of any aircraft but one, and it finds Stealth Tanks and Spies. Unarmed.',
+    detector: true,
+    tier: 4,
+  },
+  atomictank: {
+    name: 'Atomic Tank',
+    category: 'vehicle',
+    cost: 4200,
+    buildTicks: 360,
+    hp: 1700,
+    armor: 'heavy',
+    speed: 0.07,
+    sight: 7,
+    weapon: { kind: 'shell', damage: 130, range: 6.5, cooldown: 32, splash: 0.7 },
+    requires: ['factory', 'reactor'],
+    blurb: 'Tier five. A nuclear-powered super-heavy tank: enormous armour that mends itself and burns no fuel. Destroyed, its reactor breaches and scorches every enemy within two and a half tiles.',
+    selfRepair: 8,
+    nuclear: true,
+    tier: 5,
+  },
+  stratos: {
+    name: 'Stratos',
+    category: 'air',
+    cost: 3800,
+    buildTicks: 320,
+    hp: 400,
+    armor: 'aircraft',
+    speed: 0.3,
+    sight: 15,
+    requires: ['helipad', 'reactor'],
+    airRole: 'scout',
+    blurb: 'Tier five. An ultra-high-altitude spy plane that nothing can reach: no gun, missile or blast touches it. Sees fifteen tiles, finds anything hidden, and marks what lies under it, so your side hits everything within seven tiles a fifth harder. One at a time.',
+    detector: true,
+    untouchable: true,
+    designator: true,
+    tier: 5,
+  },
+  vanguard: {
+    name: 'Vanguard',
+    category: 'infantry',
+    cost: 600,
+    buildTicks: 90,
+    hp: 200,
+    armor: 'infantry',
+    speed: 0.065,
+    sight: 6,
+    weapon: { kind: 'bullet', damage: 18, range: 4.5, cooldown: 8 },
+    requires: ['barracks', 'protoworks'],
+    blurb: 'Tier three. Elite warriors: trained at Elite rank, so they hit 30% harder, reload a quarter faster and patch themselves up between fights. Three times a rifleman\'s health and a heavier rifle.',
+    startVet: 2,
+    tier: 3,
+  },
+  seacommando: {
+    name: 'Sea Commando',
+    category: 'infantry',
+    cost: 800,
+    buildTicks: 110,
+    hp: 120,
+    armor: 'infantry',
+    speed: 0.075,
+    sight: 6,
+    weapon: { kind: 'shell', damage: 110, range: 1.75, cooldown: 40, splash: 0.6 },
+    requires: ['barracks', 'battlecommand'],
+    blurb: 'Tier four. Special forces in black: unseen and untargetable unless an enemy is within two and a half tiles, or for three seconds after a charge goes off. Limpet and satchel charges wreck structures, armour and ships.',
+    stealth: true,
+    tier: 4,
+  },
+  shadowbomber: {
+    name: 'Shadow Bomber',
+    category: 'air',
+    cost: 3600,
+    buildTicks: 300,
+    hp: 420,
+    armor: 'aircraft',
+    speed: 0.2,
+    sight: 7,
+    weapon: { kind: 'bomb', damage: 140, range: 3.5, cooldown: 4, splash: 1.5, canHitAir: false },
+    requires: ['helipad', 'reactor'],
+    airRole: 'bomb',
+    blurb: 'Tier five. A stealth bomber: flak and fighters cannot see it beyond two and a half tiles, except for three seconds after each bomb. Six heavy bombs in one run.',
+    stealth: true,
+    tier: 5,
+  },
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -1035,7 +1246,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     power: -100,
     sight: 4,
     requires: ['researchlab', 'techcentre'],
-    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress. Draws heavy power.',
+    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress (with high tiers on, the Outrider, Mechanised Infantry, Vanguard and Scout Drone too). Draws heavy power.',
   },
   fortress: {
     name: 'Fortress',
@@ -1248,6 +1459,36 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     blurb: 'Shoots down shells, missiles and bombs falling within four tiles: three in five, one every three seconds. Never fires at units. Draws heavy power.',
   },
   // round7:fortification end.
+  // High tiers (2026-11-28, setup.highTiers; hightiers.ts).
+  battlecommand: {
+    name: 'Battlefield Command',
+    w: 3,
+    h: 3,
+    cost: 4000,
+    buildTicks: 300,
+    hp: 2400,
+    power: -120,
+    sight: 12,
+    requires: ['protoworks', 'strikecommand', 'helipad', 'researchlab'],
+    blurb: 'Tier four. Needs a Prototype Works, Strike Command, Helipad and three finished upgrades. Unlocks the Rotary Cannon, Sea Commando, Strike Drone and Pathfinder, and every unit your producers turn out while it stands arrives a Veteran.',
+    tier: 4,
+    researchNeeded: 3,
+  },
+  reactor: {
+    name: 'Reactor Complex',
+    w: 3,
+    h: 3,
+    cost: 6000,
+    buildTicks: 360,
+    hp: 2600,
+    power: 250,
+    sight: 6,
+    requires: ['battlecommand', 'techcentre', 'uplink'],
+    blurb: 'Tier five. Needs Battlefield Command, a Tech Centre, a Comms Uplink and five finished upgrades. Unlocks the Atomic Tank, the Stratos and the Shadow Bomber, and makes a great deal of power. Destroyed, it melts down over every enemy within three and a half tiles.',
+    tier: 5,
+    researchNeeded: 5,
+    meltdown: true,
+  },
 };
 
 /** Structures in the order the build menu offers them. */
@@ -1299,6 +1540,9 @@ export const BUILD_MENU: BuildingKind[] = [
   'farm',
   'munitions',
   'trainingcentre',
+  // High tiers (2026-11-28): last, so turning them on moves no item already listed.
+  'battlecommand',
+  'reactor',
 ];
 export const INFANTRY_MENU: UnitKind[] = [
   'rifleman',
@@ -1314,6 +1558,9 @@ export const INFANTRY_MENU: UnitKind[] = [
   // round6:C begin. Generals: the field General, if C lists it here.
   'general',
   // round6:C end.
+  // High tiers: last, so turning them on moves no item already listed.
+  'vanguard',
+  'seacommando',
 ];
 export const VEHICLE_MENU: UnitKind[] = [
   'hauler',
@@ -1337,9 +1584,16 @@ export const VEHICLE_MENU: UnitKind[] = [
   // round6:B end.
   // Advanced production (2026-11-22): last, so turning it on moves no item already listed.
   'supplytruck',
+  // High tiers (2026-11-28): likewise.
+  'outrider',
+  'mechinf',
+  'rotarygun',
+  'atomictank',
 ];
 /** Aircraft in the order the Air tab offers them. */
-export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber'];
+export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber',
+  // High tiers (2026-11-28): the drone section and the high-altitude planes, last.
+  'scoutdrone', 'strikedrone', 'pathfinder', 'stratos', 'shadowbomber'];
 /** Ships in the order the Naval tab offers them. */
 export const NAVAL_MENU: UnitKind[] = ['gunboat', 'destroyer', 'landingcraft', 'submarine', 'battleship'];
 
@@ -1807,6 +2061,12 @@ export interface SkirmishSetup {
    * during the battle at seeded times and places, to be raced for. Absent reads as off.
    */
   events?: boolean;
+  /**
+   * High tiers (2026-11-28; hightiers.ts): tier three's Outrider, Mechanised Infantry and Scout Drone,
+   * tier four (Battlefield Command: Rotary Cannon, Strike Drone, Pathfinder) and tier five (Reactor
+   * Complex: Atomic Tank, Stratos). Advanced tech only. Absent reads as off.
+   */
+  highTiers?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1848,6 +2108,8 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   // Commander characters and battlefield events (2026-11-28): on for a new skirmish.
   characters: true,
   events: true,
+  // High tiers (2026-11-28): on for a new skirmish.
+  highTiers: true,
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1887,6 +2149,7 @@ export const LEGACY_SETUP: SkirmishSetup = {
   // round7:adaptive end
   characters: false,
   events: false,
+  highTiers: false,
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
@@ -2020,11 +2283,22 @@ export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === '
 export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6, interceptor: 6, reconplane: 12, heavybomber: 10,
   kestrel: 10,
   firebrand: 6,
+  // High tiers: fuel for the scouts (a load every FUEL_TICKS), one warhead for the Strike Drone.
+  scoutdrone: 20,
+  strikedrone: 1,
+  pathfinder: 36,
+  stratos: 40,
+  shadowbomber: 6,
 };
 /** Ticks on its Helipad to put back one load (Air frames shortens it). */
 export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25, interceptor: 14, reconplane: 10, heavybomber: 30,
   kestrel: 9,
   firebrand: 22,
+  scoutdrone: 6,
+  strikedrone: 30,
+  pathfinder: 10,
+  stratos: 12,
+  shadowbomber: 26,
 };
 /** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
 export const BOMB_GAP = 4;
@@ -2524,6 +2798,38 @@ export const STEALTH_DETECT_RANGE = 2.5;
 export const STEALTH_REVEAL_TICKS = 30;
 /** The computer turns to tier three no sooner than this: 25 minutes. */
 export const TIER3_AI_TICKS = 15000;
+// High tiers (2026-11-28; hightiers.ts, aiTiers.ts). Every kind the setup's highTiers field governs.
+export const HIGH_TIER_KINDS: readonly (BuildingKind | UnitKind)[] = ['outrider', 'mechinf', 'scoutdrone', 'battlecommand', 'rotarygun', 'strikedrone', 'pathfinder', 'reactor', 'atomictank', 'stratos', 'vanguard', 'seacommando', 'shadowbomber'];
+/** Mechanised Infantry: ticks standing still before the squad is out, and what the squad gives. */
+export const DISMOUNT_TICKS = 20;
+export const DISMOUNT_DAMAGE = 1.5;
+export const DISMOUNT_RANGE = 1;
+export const DISMOUNT_TAKEN = 0.75;
+/** Rotary Cannon: shots in a run that count, the reload each takes off, and ticks per shot of spin lost when not firing. */
+export const SPIN_MAX = 10;
+export const SPIN_STEP = 0.06;
+export const SPIN_DECAY_TICKS = 5;
+/** Atomic Tank's reactor breach, and the Reactor Complex's meltdown: damage at the centre and radius. */
+export const BREACH_DAMAGE = 320;
+export const BREACH_RADIUS = 2.5;
+export const MELTDOWN_DAMAGE = 600;
+export const MELTDOWN_RADIUS = 3.5;
+/** Stratos: the radius it marks and what its side's weapons do to what is marked. */
+export const DESIGNATE_RADIUS = 7;
+export const DESIGNATE_DAMAGE = 1.2;
+/** Stratos aloft or queued at once, per side. */
+export const STRATOS_MAX = 1;
+/** Battlefield Command: the rank every unit made while it stands starts at. */
+export const FIELD_PROMOTION_VET = 1;
+/**
+ * The computer, with high tiers on: ticks from the start before it reaches for tier three (its
+ * own Prototype Works, ahead of TIER3_AI_TICKS, which battles without high tiers keep), tier four
+ * and tier five. Most battles are decided by minute 25, so a later start meant the commander never
+ * fielded what the player could.
+ */
+export const TIER3_HIGH_AI_TICKS = 9000;
+export const TIER4_AI_TICKS = 12600;
+export const TIER5_AI_TICKS = 16200;
 // round5:D end.
 
 // ---- Round 6 (fireline-round6-design.md) --------------------------------------------------------
