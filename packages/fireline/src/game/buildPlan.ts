@@ -58,6 +58,9 @@ const GROUP_OF: Partial<Record<BuildingKind, Group>> = {
   strikecommand: 'tech',
   intelcentre: 'tech',
   watchtower: 'tech',
+  // High tiers: tier four and five go with the rest of the tech tree (the Reactor's power would put it under economy).
+  battlecommand: 'tech',
+  reactor: 'tech',
 };
 
 /** A structure's group: the table above, else from its data (a weapon or wall, a producer, power). */

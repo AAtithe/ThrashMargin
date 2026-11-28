@@ -749,6 +749,8 @@ function BuildTab({
         ref={treeRef}
         className="fl-tree"
         data-orient={orient}
+        // High tiers add two more structure columns: past six the gaps close up so the tree still fits a 1280 window.
+        data-cols={tree.columns.length + (tree.ghosts.length > 0 ? 1 : 0) > 6 ? 'many' : 'few'}
         data-testid="build-tree"
         data-focus={focus ?? ''}
         onPointerOver={e => {
