@@ -39,6 +39,7 @@
  *   tsx scripts/ai-ladder.ts ... --upkeep --seasons          and seasons and spoilage (needs --upkeep)
  *   tsx scripts/ai-ladder.ts ... --characters --events       commander characters and battlefield events (2026-11-28)
  *   tsx scripts/ai-ladder.ts ... --sites --hold              neutral sites, and hold victory (needs --sites)
+ *   tsx scripts/ai-ladder.ts --map random --high-tiers       high tiers (2026-11-28): tier three's additions, tiers four and five
  *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
@@ -140,6 +141,7 @@ const SEEDS = Number(arg('--seeds', '150'));
 const FACTIONS_CARD = args.includes('--factions');
 /** Round 6's setup options: heroes in free play and field Generals. Off by default. */
 const HEROES = args.includes('--heroes');
+const HIGH_TIERS = args.includes('--high-tiers');
 const GENERALS = args.includes('--generals');
 const SIZE = arg('--size', 'standard') as MapSize;
 if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
@@ -233,6 +235,7 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     ...(HOLD ? { victory: 'hold' as const } : {}),
     ...(CHARACTERS ? { characters: true } : {}),
     ...(EVENTS ? { events: true } : {}),
+    ...(HIGH_TIERS ? { highTiers: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;

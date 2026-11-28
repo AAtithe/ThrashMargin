@@ -15,6 +15,7 @@ import { GeneralsPanel } from '../components/Generals';
 // round7:structures.
 import { StructuresHelp } from './StructuresHelp';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+import { BREACH_RADIUS, DESIGNATE_RADIUS, DISMOUNT_TICKS, MELTDOWN_RADIUS, TIER3_HIGH_AI_TICKS, TIER4_AI_TICKS, TIER5_AI_TICKS } from '../sim/rules';
 import {
   AIR_LOAD_FUEL,
   ALLOY_STORE_BASE,
@@ -903,6 +904,38 @@ function SitesPanel() {
         <li>
           The computer turns to tier three late in a long battle, and on a map with sites sends small parties of infantry to take
           them, the nearest first.
+        </li>
+      </ul>
+      {/* High tiers (2026-11-28; src/sim/hightiers.ts). */}
+      <h3 style={{ margin: '0.6rem 0 0', fontSize: '0.95rem' }}>Tiers four and five</h3>
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="howto-hightiers">
+        <li>
+          With <strong>High tiers</strong> on (the customise step; on for a new advanced skirmish), tier three adds the{' '}
+          <strong>{UNITS.outrider.name}</strong> (a motorcycle troop that finds Stealth Tanks and Spies), the{' '}
+          <strong>{UNITS.mechinf.name}</strong> (its squad climbs out after {seconds(DISMOUNT_TICKS)} halted, hits half as hard
+          again, reaches a tile further and takes a quarter less) and the <strong>{UNITS.scoutdrone.name}</strong>.
+        </li>
+        <li>
+          <strong>Tier four</strong>: <strong>{BUILDINGS.battlecommand.name}</strong> needs a {BUILDINGS.protoworks.name},{' '}
+          {BUILDINGS.strikecommand.name}, {BUILDINGS.helipad.name}, {BUILDINGS.researchlab.name} and{' '}
+          {BUILDINGS.battlecommand.researchNeeded} finished upgrades. Every unit you make while it stands arrives a Veteran. It
+          unlocks the <strong>{UNITS.rotarygun.name}</strong> (a rapid-fire gun that spins up to two and a half times its first
+          rate and reaches aircraft), the <strong>{UNITS.strikedrone.name}</strong> (a one-use diving warhead) and the{' '}
+          <strong>{UNITS.pathfinder.name}</strong> (a long-range recon jet with three minutes of fuel).
+        </li>
+        <li>
+          <strong>Tier five</strong>: the <strong>{BUILDINGS.reactor.name}</strong> needs {BUILDINGS.battlecommand.name}, a{' '}
+          {BUILDINGS.techcentre.name}, a {BUILDINGS.uplink.name} and {BUILDINGS.reactor.researchNeeded} finished upgrades, and
+          makes {BUILDINGS.reactor.power} power; destroyed, it melts down over every enemy within {MELTDOWN_RADIUS} tiles. It
+          unlocks the <strong>{UNITS.atomictank.name}</strong> (nuclear-powered: burns no fuel, mends itself, and its reactor
+          breaches over enemies within {BREACH_RADIUS} tiles when it dies) and the <strong>{UNITS.stratos.name}</strong>, an
+          ultra-high-altitude plane nothing can shoot down: it sees {UNITS.stratos.sight} tiles, finds anything hidden, and
+          everything within {DESIGNATE_RADIUS} tiles of it takes a fifth more from your side. One at a time.
+        </li>
+        <li>
+          On Normal and Hard the computer climbs too: tier three from about minute {Math.round(TIER3_HIGH_AI_TICKS / 600)}, tier
+          four from {Math.round(TIER4_AI_TICKS / 600)} and tier five from {Math.round(TIER5_AI_TICKS / 600)}, once its army at
+          home is up to strength.
         </li>
       </ul>
     </Section>

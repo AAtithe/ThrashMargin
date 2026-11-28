@@ -95,6 +95,8 @@ const strip = (k: string, v: unknown) =>
             (k === 'adaptive' && v === false) ||
             // Commander characters and battlefield events (2026-11-28): off is the earlier battle exactly.
             ((k === 'characters' || k === 'events') && v === false) ||
+            // High tiers (2026-11-28): off is the earlier battle exactly.
+            (k === 'highTiers' && v === false) ||
             // Victory (2026-11-27): conquest is the earlier battle exactly.
             (k === 'victory' && v === 'conquest') ||
             // Army upkeep (2026-11-27): off is the earlier battle exactly.
@@ -195,14 +197,14 @@ function rulesAndPresets(ok: Ok): void {
   const keys = Object.keys(normaliseSetup({}));
   // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace,
   // and industry (2026-11-21) follows them.
-  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'upkeep', 'seasons', 'structureUpgrades', 'strategicBuildings', 'adaptive', 'characters', 'events']), "pace is the last field of a normalised setup before round 6's four, the economy's six and round 7's");
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks', 'industry', 'supply', 'territory', 'production', 'upkeep', 'seasons', 'structureUpgrades', 'strategicBuildings', 'adaptive', 'characters', 'events', 'highTiers']), "pace is the last field of a normalised setup before round 6's four, the economy's six and round 7's");
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
     ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
   }
   // round7:structures: the two structure toggles read absent as off, whatever the base.
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false }), 'an empty setup normalises to the default, Quick included, bar the structure toggles, characters and events');
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false, highTiers: false }), 'an empty setup normalises to the default, Quick included, bar the structure toggles, characters and events');
   ok(normaliseSetup({ pace: 'junk' as never }).pace === DEFAULT_SETUP.pace, 'a junk pace takes the base\'s');
   ok(normaliseSetup({ pace: 'junk' as never }, { ...LEGACY_SETUP, pace: 'epic' }).pace === 'epic', 'a junk pace takes the base\'s, whatever the base says');
   ok(normaliseSetup({ pace: 7 as never }).pace === 'quick' && normaliseSetup({ pace: null as never }).pace === 'quick', 'a pace that is not a string reads Quick');

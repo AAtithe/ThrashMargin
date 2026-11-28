@@ -139,6 +139,9 @@ import { shelterMul, structureMaxHp } from './fortify';
 // round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
 import { apparentSpecOf, bunkersFallen, bunkersStep, isOutpost, levelRateOf, loadIncomeMulOf, structuresStep, unloadMulOf, upgradeTakenOf } from './structures';
 import { BUNKER_DAMAGE, BUNKER_RANGE } from './rules';
+// High tiers (2026-11-28; hightiers.ts).
+import { BREACH_DAMAGE, BREACH_RADIUS, DISMOUNT_TAKEN, DISMOUNT_TICKS, MELTDOWN_DAMAGE, MELTDOWN_RADIUS, SPIN_DECAY_TICKS, SPIN_MAX, SPIN_STEP } from './rules';
+import { designateMul, isDismounted, promotionFor } from './hightiers';
 // round7:structures end.
 
 /** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
@@ -281,6 +284,8 @@ export function step(s: GameState): void {
   // round7:fortification end.
   landProjectiles(s, ctx);
   separate(s, ctx);
+  // High tiers: Atomic Tanks and Reactor Complexes destroyed this tick blow up before they go.
+  if (s.setup?.highTiers) breaches(s);
   removeDead(s);
   // Skirmish powers go with the last of their structures, at once.
   syncSkirmishPowers(s);
@@ -483,6 +488,8 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category, ite
     const a = addUnit(s, owner, head.kind as UnitKind, producer.x + 1, producer.y + 1);
     launchAircraft(s, a, producer);
     upgradeNewUnit(s, a);
+    // High tiers: Battlefield Command's field promotion (0 without one).
+    a.vet = Math.max(a.vet, promotionFor(s, owner));
     ctx.units.set(a.id, a);
     s.players[owner].stats.trained++;
     if (producer.rally) a.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
@@ -503,6 +510,8 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category, ite
   u.fy = frontDir(s, owner);
   upgradeNewUnit(s, u);
   fitModules(u, head.modules);
+  // High tiers: Battlefield Command's field promotion (0 without one).
+  u.vet = Math.max(u.vet, promotionFor(s, owner));
   ctx.units.set(u.id, u);
   s.players[owner].stats.trained++;
   if (kind === 'hauler') {
@@ -594,6 +603,8 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
   u.x = nx;
   u.y = ny;
   u.stuck = 0;
+  // High tiers: a Mechanised Infantry carrier on the move has its squad aboard.
+  if (u.settled !== undefined) u.settled = 0;
   if (d > 0.0001) {
     u.fx = dx / d;
     u.fy = dy / d;
@@ -710,6 +721,8 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
     if (ex > range || ex < -range || ey > range || ey < -range) continue;
     if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
     const cat = UNITS[e.kind].category;
+    // High tiers: the Stratos flies above every weapon.
+    if (UNITS[e.kind].untouchable) continue;
     if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) continue;
     const d = dist(x, y, e.x, e.y);
     if (d > range) continue;
@@ -796,6 +809,7 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
     for (const u of s.units) {
       if (u.hp <= 0 || teamOf(s, u.owner) === team) continue;
       if ((UNITS[u.kind].category === 'air') !== antiAir) continue;
+      if (UNITS[u.kind].untouchable) continue;
       const d = dist(p.toX, p.toY, u.x, u.y);
       if (d > p.splash) continue;
       hurt(s, { unit: u }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
@@ -839,6 +853,17 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
   if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
   // round7:structures: a structure with an upgrade under way takes more (UPGRADE_DAMAGE_TAKEN).
   if (t.building?.upgrade) raw *= upgradeTakenOf(t.building);
+  // High tiers (hightiers.ts): nothing touches a Stratos; a squad out of its carrier takes less;
+  // whatever a Stratos marks takes more from its side. No-ops without high tiers.
+  if (s.setup?.highTiers) {
+    if (t.unit) {
+      if (UNITS[t.unit.kind].untouchable) return;
+      if (isDismounted(t.unit)) raw *= DISMOUNT_TAKEN;
+    }
+    const at = targetPoint(t);
+    const mark = designateMul(s, p.owner, at.x, at.y);
+    if (mark !== 1) raw *= mark;
+  }
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
   const victim = t.unit ?? t.building!;
   if (victim.hp <= 0) return;
@@ -885,6 +910,10 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     updateAircraft(s, u, ctx.air);
     return;
   }
+  // High tiers: a Mechanised Infantry carrier counts its stillness (a step clears it, stepAlong),
+  // and a Rotary Cannon out of the fight spins down.
+  if (spec.dismount) u.settled = Math.min(DISMOUNT_TICKS, (u.settled ?? 0) + 1);
+  if (u.spin && !u.engage && (s.tick + u.id) % SPIN_DECAY_TICKS === 0) u.spin--;
   const w = weaponOf(s, u);
   if (u.cooldown > 0) u.cooldown--;
 
@@ -965,6 +994,11 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           if (reload !== 1) u.cooldown = Math.max(1, Math.round(u.cooldown * reload));
           // Army upkeep: unfed soldiers and unfuelled machines reload slower.
           if (shortOfUpkeep(s, u)) u.cooldown = Math.max(1, Math.round(u.cooldown * SHORT_RELOAD));
+          // High tiers: a Rotary Cannon's run spins it up, each shot reloading sooner.
+          if (spec.spinUp) {
+            u.spin = Math.min(SPIN_MAX, (u.spin ?? 0) + 1);
+            u.cooldown = Math.max(1, Math.round(u.cooldown * (1 - SPIN_STEP * u.spin)));
+          }
         }
       } else if (
         u.order.type === 'attack' ||
@@ -1449,6 +1483,53 @@ function nudge(s: GameState, ctx: Ctx, u: Unit, dx: number, dy: number): void {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * High tiers (hightiers.ts): an Atomic Tank destroyed this tick breaches (BREACH_DAMAGE over
+ * BREACH_RADIUS) and a Reactor Complex melts down (MELTDOWN_*), over every enemy of its side in
+ * reach, falling off to half at the edge. What either destroys may be another one, which goes off
+ * in turn. An abandoned tank (upkeep) is cold and does not breach. Never twice for one thing: each
+ * id is spent in this call, and removeDead takes them all away after it.
+ */
+function breaches(s: GameState): void {
+  const spent = new Set<number>();
+  for (let round = 0; round < 8; round++) {
+    let any = false;
+    for (const u of s.units) {
+      if (u.hp > 0 || spent.has(u.id) || !UNITS[u.kind].nuclear || u.deserted) continue;
+      spent.add(u.id);
+      any = true;
+      blast(s, u.owner, u.x, u.y, BREACH_DAMAGE, BREACH_RADIUS);
+      if (u.owner === 0) log(s, 'An Atomic Tank\'s reactor has breached.', 'bad');
+    }
+    for (const b of s.buildings) {
+      if (b.hp > 0 || spent.has(b.id) || !BUILDINGS[b.kind].meltdown) continue;
+      spent.add(b.id);
+      any = true;
+      const spec = buildingSpecOf(s, b);
+      blast(s, b.owner, b.x + spec.w / 2, b.y + spec.h / 2, MELTDOWN_DAMAGE, MELTDOWN_RADIUS);
+      log(s, b.owner === 0 ? 'Our Reactor Complex has melted down.' : 'A Reactor Complex has melted down.', b.owner === 0 ? 'bad' : 'info');
+    }
+    if (!any) return;
+  }
+}
+
+/** One breach or meltdown: every enemy of `owner` within `radius`, ground and air alike (never a Stratos). */
+function blast(s: GameState, owner: Owner, x: number, y: number, damage: number, radius: number): void {
+  const p: Projectile = { id: 0, owner, weapon: 'artillery', fromX: x, fromY: y, toX: x, toY: y, firedAt: s.tick, hitAt: s.tick, target: 0, damage, splash: radius, shooter: 0 };
+  const team = teamOf(s, owner);
+  for (const u of s.units) {
+    if (u.hp <= 0 || teamOf(s, u.owner) === team || UNITS[u.kind].untouchable) continue;
+    const d = dist(x, y, u.x, u.y);
+    if (d <= radius) hurt(s, { unit: u }, damage * (1 - (0.5 * d) / radius), p, 0);
+  }
+  for (const b of s.buildings) {
+    if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
+    const d = distToTarget(x, y, { building: b });
+    if (d <= radius) hurt(s, { building: b }, damage * (1 - (0.5 * d) / radius), p, 0);
+  }
+  s.effects.push({ id: s.nextId++, kind: 'boom', x, y, at: s.tick, size: 3, weapon: 'artillery' });
+}
 
 function removeDead(s: GameState): void {
   let fallen: Building[] | null = null;

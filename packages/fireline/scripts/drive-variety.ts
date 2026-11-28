@@ -62,7 +62,7 @@ function setup(ok: Ok): void {
   ok(junk.characters === false && junk.events === false, 'anything but true reads as off');
   // The two keys come last, after adaptive.
   const keys = Object.keys(on);
-  ok(JSON.stringify(keys.slice(-3)) === JSON.stringify(['adaptive', 'characters', 'events']), 'the two keys come last, after adaptive');
+  ok(JSON.stringify(keys.slice(-4, -1)) === JSON.stringify(['adaptive', 'characters', 'events']), 'the two keys come after adaptive (and before high tiers)');
   // An older save (a setup without the keys) loads with both off and no events.
   const s = fresh({ map: 'plains', tech: 'advanced' });
   const raw = copy(s) as unknown as { setup: Record<string, unknown> };

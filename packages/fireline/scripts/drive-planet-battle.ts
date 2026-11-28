@@ -95,7 +95,7 @@ const preRound6 = (s: GameState): GameState => {
   if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
   if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
   if (!s.setup) return { ...s, players };
-  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, victory, structureUpgrades, strategicBuildings, adaptive, characters, events, ...setup } = s.setup;
+  const { factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, victory, structureUpgrades, strategicBuildings, adaptive, characters, events, highTiers, ...setup } = s.setup;
   if (territory !== undefined && territory !== false) throw new Error('setup territory on');
   // Round 7's options: a war on battle rules 3 turns them on in its planet battles, so they are checked
   // off only outside a planet battle (an older war's planet battles are held to their recorded hashes).
@@ -116,6 +116,8 @@ const preRound6 = (s: GameState): GameState => {
   // Commander characters and battlefield events (2026-11-28): never in a planet battle; off is the earlier battle exactly.
   if (characters !== undefined && characters !== false) throw new Error('setup characters on');
   if (events !== undefined && events !== false) throw new Error('setup events on');
+  // High tiers (2026-11-28): never in a planet battle; off is the earlier battle exactly.
+  if (highTiers !== undefined && highTiers !== false) throw new Error('setup high tiers on');
   if (factions !== undefined && (factions.length !== s.players.length || factions.some(f => f !== 'meridian'))) throw new Error(`setup armies ${factions}`);
   if (heroes !== undefined && heroes !== false) throw new Error('setup heroes on');
   if (generals !== undefined && generals !== false) throw new Error('setup Generals on');
