@@ -2,6 +2,7 @@ import { runAi } from './ai';
 // round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
 import { labWorking, productionOn, productionStep, spendMunition, truckStep } from './production';
 import { SHORT_RELOAD, shortOfUpkeep, upkeepStep } from './upkeep';
+import { eventsStep } from './events';
 import { seasonsStep } from './seasons';
 import { holdStep } from './victory';
 import { staffed, territoryOn, unstaffed } from './territory';
@@ -268,6 +269,8 @@ export function step(s: GameState): void {
   // derrick income, hospital healing), under this line. A no-op without s.sites.
   sitesStep(s);
   // round5:D end.
+  // Battlefield events (2026-11-28, events.ts): drops, ore strikes and the relief column. A no-op without s.events.
+  eventsStep(s);
   // round7:planet begin. A planet battle on battle rules 3: reinforcement waves arrive. A no-op otherwise.
   planetReinforce(s);
   // round7:planet end

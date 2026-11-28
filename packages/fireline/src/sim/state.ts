@@ -6,6 +6,8 @@ import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
+import { characterSpec } from './characters';
+import { cloneEvents, migrateEvents, startEvents } from './events';
 import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
@@ -180,7 +182,12 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const upkeep = production && (typeof r.upkeep === 'boolean' ? r.upkeep : (base.upkeep ?? false));
   // Seasons and spoilage (2026-11-27): on only when exactly true, and only with army upkeep.
   const seasons = upkeep && (typeof r.seasons === 'boolean' ? r.seasons : (base.seasons ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive };
+  // Commander characters and battlefield events (2026-11-28; characters.ts, events.ts): on only when
+  // exactly true. Absent reads as off whatever the base, so every older setup and every partial one
+  // plays exactly as before; the lobby states them (DEFAULT_SETUP has them on).
+  const characters = r.characters === true;
+  const events = r.events === true;
+  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, characters, events };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -387,6 +394,14 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       const first = scaledFor(s, d).firstAttack;
       for (const mem of s.ai) mem.nextAttack = first;
     }
+    // Commander characters (2026-11-28, characters.ts): each computer side's first attack on its
+    // character's clock. Read from the seed text, so nothing is stored; without characters, unchanged.
+    if (setup.characters) {
+      const scaled = scaledFor(s, d);
+      s.ai.forEach((mem, o) => {
+        mem.nextAttack = characterSpec(s, o as Owner, scaled).firstAttack;
+      });
+    }
   }
 
   for (const owner of sidesOf(s)) {
@@ -399,6 +414,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     }
   }
   updateExplored(s);
+  // Battlefield events (2026-11-28, events.ts): the first one scheduled. Nothing without setup.events.
+  startEvents(s);
   // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
   s.history = newHistory(s.players.length);
   // round7:review end.
@@ -550,6 +567,8 @@ export function cloneState(s: GameState): GameState {
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
     ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
+    // Battlefield events (events.ts): the live list copied, only when present.
+    ...(s.events ? { events: cloneEvents(s.events) } : {}),
     // Round 6: squads copied one level deep (their member lists too), only when present. Perks, side
     // 0's and the others' alike, are replaced whole and never edited in place, so they are shared.
     ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
@@ -863,6 +882,12 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.starts;
   }
   // round5:D begin. Neutral sites: s.sites repaired or dropped, never trusted blind.
+  // Battlefield events (2026-11-28): kept only with events on, every field checked (events.ts).
+  if (s.events !== undefined) {
+    const ev = migrateEvents(s.events, out);
+    if (ev) out.events = ev;
+    else delete out.events;
+  }
   if (s.sites !== undefined) {
     const sites = migrateSites(s.sites, out);
     if (sites) out.sites = sites;

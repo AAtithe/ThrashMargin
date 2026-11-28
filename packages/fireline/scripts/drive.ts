@@ -88,6 +88,8 @@ import { sections as territorySections } from './drive-territory';
 import { sections as structuresSections } from './drive-structures';
 import { sections as productionSections } from './drive-production';
 import { sections as upkeepSections } from './drive-upkeep';
+// Commander characters and battlefield events (2026-11-28): scripts/drive-variety.ts.
+import { sections as varietySections } from './drive-variety';
 import { sections as continentalSections } from './drive-continental';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
@@ -159,6 +161,7 @@ const SEEDS = seedArg >= 0 ? Number(args[seedArg + 1]) : 20;
  */
 const FAST = args.includes('--fast');
 const DEEP_SECTIONS = new Set([
+  'Variety: whole computer battles',
   'Bigger battles: whole battles of three and four sides',
   'Larger maps: whole battles',
   'Size: quick is today',
@@ -2603,7 +2606,7 @@ function missileTests(): void {
 
 function setupTests(): void {
   // round7:structures: the two structure toggles read absent as off, whatever the base.
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup is the default, bar the structure toggles');
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false }), 'an empty setup is the default, bar the structure toggles, characters and events');
   const junk = normaliseSetup({ map: 'moon' as never, tech: 'x' as never, ore: 'y' as never, credits: 999999 });
   ok(junk.map === DEFAULT_SETUP.map && junk.tech === DEFAULT_SETUP.tech && junk.ore === DEFAULT_SETUP.ore, 'unknown choices fall back to the default');
   ok(junk.credits === SETUP_CREDITS_MAX && normaliseSetup({ credits: 5 }).credits === SETUP_CREDITS_MIN, 'credits are clamped');
@@ -2870,6 +2873,8 @@ if (!CAMPAIGN_ONLY) {
     ...productionSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Army upkeep and the commander's patience (2026-11-27): from scripts/drive-upkeep.ts.
     ...upkeepSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Commander characters and battlefield events (2026-11-28): from scripts/drive-variety.ts.
+    ...varietySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Bigger maps (2026-11-27): Continental, routes over regions, ground-from-seed saves.
     ...continentalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];

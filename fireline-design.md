@@ -3544,3 +3544,111 @@ regenerated; `npm run check` all passed; `campaign-check` 7,713 of 7,713; `drive
 (its pins leave out the new `victory: 'conquest'`, as drive-size's do); `check:ui fireline` 32 of 32;
 the Fireline tour ok. In Chromium: the Victory, Seasons and Upkeep fields and the Continental note in
 the customise step, and a live battle showing the Hold ground gauge and the season chip, no page errors.
+
+### 2026-11-28: Commander characters and battlefield events
+
+The player said the game still felt linear and that every battle played the same. The diagnosis, from
+the code: two things made it so, and neither was content.
+
+- *One commander per difficulty.* The computer had a single plan at each difficulty: the same build
+  order, its first wave on the same minute (Normal at 6:00, every battle), waves on a fixed clock and one
+  unit mix. The adaptive commander (round 7) answers what it sees, but it starts from that same plan
+  every time, so the opening and the first twenty minutes repeated. Once a player had one answer to it,
+  every battle after it was the same battle.
+- *A static map.* Nothing on the battlefield changed between the first minute and the last. The only
+  decisions after the opening were how many units and when to send them, so every battle ran the same
+  arc: build, mass, attack a base.
+
+Two changes, each behind its own toggle, both on for a new skirmish and off for everything else.
+
+**Commander characters** (`setup.characters`, `src/sim/characters.ts`). Each computer seat fights in one
+of five ways, drawn from the seed text with its own salt (the same seed meets the same commander; the
+battle's stream is never touched; nothing is saved, since it is read from `seedText`):
+
+| Character | Plan | Normal's first attack | What the review says beats it |
+|---|---|---|---|
+| Steady | The commander as it was | 6:00 | Out-earn it and counter what it fields |
+| Striker | Early, frequent, smaller and lighter waves; one turret fewer, no walls | 3:36 | Early turrets and infantry, then counter-attack its thin defence |
+| Bulwark | Three more turrets, four walls, two more Rocket Turrets; late, large, heavy siege waves | 9:36 | Take the map early; crack it with artillery or air before its siege is ready |
+| Hunter | Raids from early on with two more fast units, almost twice as often; smaller main waves | 5:24 | Guard the ore line; a Hunter that cannot raid has a weak main army |
+| Builder | One more Refinery and hauler, then late waves that grow by one more each time | 8:06 | Pressure it before its economy pays, or match it and out-fight it later |
+
+Each is an adjustment to the difficulty's own numbers (`characterAdjust`, `characterTactics`), applied after
+the map's scaling and the patience cap, so it holds on every map size and pace; and a taste on the unit
+mix (`characterMix`), applied before the adaptive commander's answer, so an adaptive Bulwark still answers
+a tank column, from a heavier starting mix. The difficulty still sets the commander's quality (decision
+speed, income, focus, retreat). A Striker never attacks before `STRIKER_FIRST_FLOOR` (3:30): a Hard Striker
+would otherwise have come at 2:24, inside the three-minute guided first battle. Side 0 has a character
+only under the harness's autopilot. The player is told what they face the first time a commander sends a
+wave or a raid ("Intelligence: the Ashen Combine commander is a Bulwark, ..."), and the after-action
+review names each enemy's character and its counter once the battle is over.
+
+Normal's first attack now falls anywhere from 3:36 to 9:36 depending on the seed, where it was 6:00 in
+every battle; and the build order, the defence, the raids and the army's make-up move with it.
+
+**Battlefield events** (`setup.events`, `src/sim/events.ts`, the commander's side in `src/sim/aiEvents.ts`).
+The first event comes between minute 5 and 7, then one every 6 to 8 minutes, all drawn from the seed text
+with its own stream (`s.events.seed`):
+
+- *Supply drop* (two in five): a crate per side near the middle of the map (no further from the middle than a
+  quarter of the way to a yard, so the crates land close together and are raced for), 1,000 credits rising by 250 an event
+  to 2,500, to the first ground unit within 1.2 tiles. Three minutes to claim, longer on a larger map.
+- *Ore strike* (three in ten): a fresh field in each side's forward ground (0.4 to 0.8 of the way from its
+  yard to the middle), 4,000 to 6,700 ore each over ten seeds (less where it meets an existing field, which it only tops up): worth an expansion, and worth denying.
+- *Relief column* (three in ten, never the first): a beacon at the middle of the map when the middle is
+  open, reachable ground (its four centre tiles are their own image under every symmetry, so it is exactly
+  fair), else one per side near it. A team whose armed ground units hold it alone for 30 seconds gets six
+  units there (two tanks, two rocketeers, two riflemen, or what its army fields in their place); contested,
+  the hold stands still; left alone, it slips back at half the rate.
+
+Every spot goes through the map's own symmetry, as the neutral sites do (two sides the point mirror, four
+the quarter turn, three the third of a turn, nudged), and the test checks each yard is as far from its
+nearest copy as every other. Each event is announced with a compass bearing, drawn above the fog on the
+battlefield (`src/game/fx/events.ts`: a crate with a lamp, the beacon with its hold ring in the holder's
+colour, a fading ring round an ore strike; still with motion reduced) and marked on the minimap.
+
+The computer contests them: for a crate it sends its fastest one to three units (by difficulty), for the
+beacon three to six by attack-move, only when it still keeps three at home, never while its base is under
+threat, and only for what it reaches about as soon as its nearest enemy. A Striker or Hunter goes further
+and with one more; a Bulwark only for what lies on its own side. The party is left out of the reserve so
+no wave recruits it on the way, and comes home when its crate or beacon is gone. An ore strike needs
+nothing new: the economy already expands toward unclaimed ore.
+
+**Off is the earlier battle.** Both keys read as on only when exactly true: absent, junk or a partial
+setup reads off whatever the base, as the round 7 structure toggles do, so every older save, every partial
+setup in the harness, every mission and every War for the Planet battle plays exactly as before. The
+pinned hashes leave both keys out when off; the field-order checks name them after `adaptive`.
+
+**Measured** (`ladder:fire -- --map random --characters --events`, flags added; advanced tech, development
+lines, Quick, standard maps, adaptive off, 150 seeds a pairing; the same card without the flags beside it):
+
+| Pairing | Both off | Both on |
+|---|---|---|
+| Hard beats Normal, both ways round | 65.3% (60 to 71) | 67.3% (62 to 73) |
+| Normal beats Easy, both ways round | 99.3% (98 to 100) | 91.3% (88 to 95) |
+| Normal mirror, seat 0 | 45% | 51% |
+| Normal mirror, median minutes | 25.3 | 22.4 |
+| Unfinished, of 750 | 5 | 1 |
+
+Difficulty order holds and Hard's edge is unchanged within noise. The one real movement is Easy against
+Normal: Easy now wins about one battle in eleven, where it won one in 150. That is the change working, not a
+fault: an Easy Striker against a Normal Builder, or an Easy Bulwark against a Normal Striker, is a match
+whose outcome is no longer settled before it starts. Against a person Easy stays gentle (its decision speed,
+income and waves are unchanged; its earliest attack is 6:00 as a Striker, against 10:00 before). Battles are
+about three minutes shorter at the median, and stalls fell from five to one. The lobby's enemy cards show
+the first attack as the range the seed can produce (Normal 3.6 to 9.6 minutes) when characters are on.
+
+**Checks.** `scripts/drive-variety.ts`, twelve sections inside `npm run drive` (the heavier battle section
+in the deep tier): the setup and older saves; the draw (all five within 50 to 115 of 400 seeds, seats
+independent); every adjustment's direction at every difficulty, the Striker floor, the first attack on the
+character's clock at standard and large size; off and absent playing the same battle tick for tick; the
+schedule; fair placement for two, three and four sides over six seeds each; crates (reach, nearest unit,
+no aircraft, rising values, the cap, expiry); ore strikes (whole numbers, equal ore per side); the beacon
+(unarmed units hold nothing, the hold builds, stands still contested, slips back alone, the column joins);
+saves (exact round trip, junk and bad entries dropped, events dropped with the setup off, a junk party
+memory harmless); whole computer battles that finish, replay byte-identically and through a save at ten
+minutes, and claim events; purity (no dice, no clock; an illegal action returns the same state).
+Fireline deep tier 424,092 assertions, 0 failed; `npm run check` all passed (Fireline fast tier 349,496 assertions, campaign 7,713, War for the Planet
+33,564, every other game's suite); `npm run tours fireline` ok; `check:ui fireline` 32 of 32. In Chromium:
+the Commander character and Battlefield events fields in light and dark, and a live battle drawing crates,
+ore-strike rings and the beacon with a hold under way, no page errors.
