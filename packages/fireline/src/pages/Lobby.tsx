@@ -9,8 +9,6 @@ import { drawMap, mapFontsReady } from '../components/campaignArtBridge';
 import { previewView } from '../campaign/theatre';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta, isPlanetMeta } from './campaignSaves';
-import WarSetup from '../components/planet/WarSetup';
-import { startPlanetTour } from '../components/planet/PlanetTour';
 import type { LengthPreset } from '../planet/types';
 import { MISSIONS } from '../campaign/missions';
 import { ACT_TWO } from '../campaign/act2';
@@ -29,6 +27,10 @@ import {
   GAME_PACES,
   GENERAL_FACTION,
   GENERALS,
+  GRAND_PRESETS,
+  GRAND_PRESET_BLURBS,
+  GRAND_PRESET_NAMES,
+  GRAND_PRESET_ORDER,
   MAP_SIZE_NAMES,
   MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
@@ -38,6 +40,7 @@ import {
   type SkirmishSetup,
   type BuildingKind,
   type Difficulty,
+  type GrandPreset,
   type Owner,
   type UnitKind,
 } from '../sim/rules';
@@ -73,7 +76,6 @@ export default function Lobby() {
   // The campaign the theatre preview shows and the war-room card offers to continue: the latest saved.
   const latest = campaigns.reduce<SaveMeta | null>((a, s) => (!a || s.savedAt > a.savedAt ? s : a), null);
   const wars = allSaves.filter(isPlanetMeta);
-  const [warError, setWarError] = useState<string | null>(null);
   const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
   const [campName, setCampName] = useState('');
   const [campBusy, setCampBusy] = useState(false);
@@ -120,6 +122,23 @@ export default function Lobby() {
   })();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Grand War (fireline-grand-war-design.md): a preset, the rivals' difficulty and a name.
+  const [grandPreset, setGrandPreset] = useState<GrandPreset>('frontier');
+  const [grandLevel, setGrandLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
+  const [grandName, setGrandName] = useState('');
+  // Its own busy flag: one shared with the battle's Begin put a busy ring on both buttons.
+  const [grandBusy, setGrandBusy] = useState(false);
+  const beginGrand = async () => {
+    if (grandBusy || busy) return;
+    setGrandBusy(true);
+    try {
+      const id = await create(grandName.trim() || 'The Grand War', { seed: freshSeed(), difficulty: grandLevel, setup: GRAND_PRESETS[grandPreset] });
+      if (id) navigate(`/game/${id}`);
+    } finally {
+      setGrandBusy(false);
+    }
+  };
 
   const begin = async () => {
     if (busy) return;
@@ -346,58 +365,93 @@ export default function Lobby() {
           )}
         </section>
 
-        <section id="fl-war" className="fl-lobby-section" aria-labelledby="fl-war-title">
-          <SectionHead num="02" kicker="Strategic campaign" title="War for the Planet" id="fl-war-title">
-            <Label>Turn-based · every attack a battle</Label>
+        <section id="fl-grand" className="fl-lobby-section" aria-labelledby="fl-grand-title">
+          <SectionHead num="02" kicker="Grand War" title="Cities, treaties and trade" id="fl-grand-title">
+            <Label>Real time · three or four powers</Label>
           </SectionHead>
-          <WarSetup
-            defaultCommander={commander}
-            onBegin={async (req, guided) => {
-              setWarError(null);
-              try {
-                const id = await camp.createPlanet(req);
-                if (id) {
-                  if (guided) startPlanetTour(id);
-                  navigate(`/game/${id}`);
-                  return true;
-                }
-              } catch {
-                /* Reported below. */
-              }
-              setWarError('The war could not be started. Try again in a moment.');
-              return false;
-            }}
-          />
-          {warError && (
-            <div style={{ ...errorBanner, marginTop: '1rem' }} role="alert">
-              {warError}
-            </div>
-          )}
-          {!savesLoaded ? (
-            <LoadingRows rows={1} label="Loading your wars" />
-          ) : (
-            wars.length > 0 && (
-              <div className="fl-saves" data-testid="war-saves">
-                <span className="fl-saves-label">Your wars</span>
-                {wars.map(s => (
-                  <SaveRow
-                    key={s.id}
-                    s={s}
-                    war
-                    confirming={confirmDelete === s.id}
-                    onOpen={() => navigate(`/game/${s.id}`)}
-                    onAsk={() => setConfirmDelete(s.id)}
-                    onKeep={() => setConfirmDelete(null)}
-                    onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
-                  />
+          <ol className="fl-steps">
+            <SetupStep n={1} title="Scale" hint="How many powers, how much ground, and how long the war runs. A single battle is the Battle preset, below.">
+              <div className="fl-levels" role="group" aria-label="Grand War preset" data-testid="grand-presets">
+                {GRAND_PRESET_ORDER.map(p => {
+                  const ps = GRAND_PRESETS[p];
+                  const g = ps.grand!;
+                  return (
+                    <button key={p} type="button" className="fl-level" aria-pressed={grandPreset === p} data-testid={`grand-${p}`} onClick={() => setGrandPreset(p)}>
+                      <span className="fl-level-name">{GRAND_PRESET_NAMES[p]}</span>
+                      <span className="fl-level-attack">
+                        {ps.sides} powers · {MAP_SIZE_NAMES[ps.size ?? 'standard']} map
+                      </span>
+                      <span className="fl-level-facts">{GRAND_PRESET_BLURBS[p]}</span>
+                      <span className="fl-level-facts">
+                        {g.townsPerSide * ps.sides} independent towns. Dominion: {g.dominionShare}% of the cities for {g.dominionMinutes} minutes.
+                        {g.timeLimit ? ` Decided on cities held at ${g.timeLimit >= 120 ? `${g.timeLimit / 60} hours` : `${g.timeLimit} minutes`}.` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </SetupStep>
+            <SetupStep n={2} title="Rival commanders" hint="How hard the other powers fight. Every one of them also bargains: ceasefires, trade pacts, alliances, and betrayals.">
+              <div className="fl-levels" role="group" aria-label="Rival commanders">
+                {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => (
+                  <button key={d} type="button" className="fl-level" aria-pressed={grandLevel === d} data-testid={`grand-level-${d}`} onClick={() => setGrandLevel(d)}>
+                    <span className="fl-level-name">{DIFFICULTIES[d].label}</span>
+                    <span className="fl-level-facts">{DIFFICULTIES[d].blurb}</span>
+                  </button>
                 ))}
               </div>
-            )
+            </SetupStep>
+            <SetupStep n={3} title="Deploy" hint="One Command Yard each to start. Everything else you build, found, take or trade for.">
+              <ul className="fl-orders" aria-label="War orders" data-testid="grand-summary">
+                <Order k="Scale">{GRAND_PRESET_NAMES[grandPreset]}</Order>
+                <Order k="Rivals">{DIFFICULTIES[grandLevel].label}</Order>
+                <Order k="Cities">Grow with fed housing; a Forward Base Truck founds a new one</Order>
+                <Order k="Towns">Independent until their militia is broken</Order>
+                <Order k="Diplomacy">Ceasefires, trade pacts and alliances, each for a term</Order>
+                <Order k="Trade">Convoys between cities, paid on arrival</Order>
+                <Order k="Victory">Conquest, or dominion over the cities</Order>
+              </ul>
+              <div className="fl-deploy">
+                <Field
+                  label={<Label>Name this war</Label>}
+                  wrapStyle={{ ...field, flex: '1 1 220px', marginBottom: 0 }}
+                  className="fl-lobby-input"
+                  value={grandName}
+                  placeholder="The Grand War"
+                  maxLength={60}
+                  onChange={e => setGrandName(e.target.value)}
+                  data-testid="grand-name"
+                />
+                <div className="fl-begin-row">
+                  <Button tone="primary" disabled={grandBusy || busy} onClick={beginGrand} testId="grand-begin" style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
+                    {grandBusy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the war →'}
+                  </Button>
+                </div>
+              </div>
+              <p className="fl-setup-note">Built for long sessions with a mouse and keyboard on a desktop screen. It saves as you play.</p>
+            </SetupStep>
+          </ol>
+          {savesLoaded && wars.length > 0 && (
+            <div className="fl-saves" data-testid="war-saves">
+              <span className="fl-saves-label">War for the Planet: wars begun before Grand War</span>
+              {wars.map(s => (
+                <SaveRow
+                  key={s.id}
+                  s={s}
+                  war
+                  confirming={confirmDelete === s.id}
+                  onOpen={() => navigate(`/game/${s.id}`)}
+                  onAsk={() => setConfirmDelete(s.id)}
+                  onKeep={() => setConfirmDelete(null)}
+                  onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
+                />
+              ))}
+            </div>
           )}
         </section>
 
         <section id="fl-skirmish" ref={newBattleRef} className="fl-lobby-section" aria-labelledby="fl-skirmish-title">
-          <SectionHead num="03" kicker="Skirmish" title="A new battle" id="fl-skirmish-title">
+          <SectionHead num="03" kicker="Battle preset" title="A single battle" id="fl-skirmish-title">
             <Label>{setupStep === 'size' ? 'You against the computer' : `Customise · ${GAME_PACES[setup.pace].name}`}</Label>
           </SectionHead>
           {setupStep === 'custom' && (
@@ -537,7 +591,7 @@ export default function Lobby() {
                   onChange={e => setName(e.target.value)}
                 />
                 <div className="fl-begin-row">
-                  <Button tone="primary" disabled={busy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
+                  <Button tone="primary" disabled={busy || grandBusy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
                     {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
                   </Button>
                   {setupStep === 'size' && (
@@ -1097,7 +1151,7 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
-  { title: 'War for the Planet', text: 'A whole planet of cities, trade and treaties against two to four rival factions, every attack a real battle.' },
+  { title: 'Grand War', text: 'One real-time war of three or four powers: cities that grow, towns to take, treaties to make and break, and trade convoys to raid.' },
   { title: 'Seven battlefields', text: 'River, Highlands, Lakes, Plains, Canyon, Coast or Classic, or let the seed choose. See each map before you deploy.' },
   { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
   { title: 'The campaign', text: `${capital(inWords(CAMPAIGN_MISSIONS))} missions in two acts, a Commander who ranks up and learns perks, ${inWords(HERO_NAMES.length)} heroes who level up, and support powers.` },

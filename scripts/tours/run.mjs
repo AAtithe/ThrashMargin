@@ -5,7 +5,10 @@
  *   npm run tours                      # every game, full matrix (several minutes)
  *   npm run tours -- --quick           # a reduced matrix per game (what CI runs)
  *   npm run tours -- tea-race niccolo  # just those games
- *   npm run tours -- fireline-planet   # War for the Planet's guided first turn
+ *   npm run tours -- fireline-grand    # Grand War's guided first battle (Frontier)
+ *
+ * War for the Planet's guided first turn (fireline-planet.cjs) was retired with new wars on
+ * 2026-11-28: Grand War replaced the mode, so no war can be begun to play it (fireline-grand-war-design.md).
  *
  * Why this exists: `npm run check` and the `drive` harnesses never render anything, and every
  * tutorial bug found in November 2026 was invisible to them: a step that completed itself the
@@ -37,7 +40,7 @@ const GAMES = {
   'niccolo-rising': { dir: 'packages/niccolo-rising',       port: 5305 },
   'fireline':       { dir: 'packages/fireline',             port: 5306 },
   'fireline-touch': { dir: 'packages/fireline',             port: 5307 },
-  'fireline-planet': { dir: 'packages/fireline',            port: 5308 },
+  'fireline-grand': { dir: 'packages/fireline',             port: 5308 },
 };
 
 const args = process.argv.slice(2);

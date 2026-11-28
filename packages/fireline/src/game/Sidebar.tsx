@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { upkeepDue, upkeepOn } from '../sim/upkeep';
 import { seasonAt, seasonLeft, seasonsOn } from '../sim/seasons';
 import { holdOn, holdTarget, teamScore, teamSites } from '../sim/victory';
-import { enemiesOf } from '../sim/sides';
+import { cityCounts, grandOn } from '../sim/cities';
+import { enemiesOf, isAlly } from '../sim/sides';
 import { cutOff, isProducer, supplied, supplyOn } from '../sim/supply';
 import { crewNeed, crewWanted, housed, staffed, techNeed, technicians, territoryOn, unstaffed } from '../sim/territory';
 import { foodStore, munitionsStore, productionOn, projectProblem } from '../sim/production';
@@ -503,6 +504,7 @@ export function BuildPanel({
   compact = false,
   touch = false,
   group,
+  onOpenGrand,
 }: {
   state: GameState;
   /** The build window's tab, named on the Build button. */
@@ -517,6 +519,8 @@ export function BuildPanel({
   onToggleBuild: () => void;
   /** Open the window on a tab (a tap on a production strip icon, touch). */
   onOpenTab: (t: Tab) => void;
+  /** Grand War: open the war's panel (cities, diplomacy, trade). */
+  onOpenGrand?: () => void;
   /** A short or narrow panel: the minimap sits beside credits and power. */
   compact?: boolean;
   touch?: boolean;
@@ -586,6 +590,8 @@ export function BuildPanel({
       {holdOn(state) && <HoldGauge state={state} />}
       {/* round7:structures: every enemy's research and production, while an Intelligence Centre of yours works. */}
       <IntelPanel state={state} />
+      {/* Grand War (fireline-grand-war-design.md): cities and the dominion race, offers waiting, and the war's panel. */}
+      {grandOn(state) && <GrandGauge state={state} onOpen={onOpenGrand} />}
 
       {!compact && (
         <section className="fl-d-block" aria-label="Radar">
@@ -1916,6 +1922,43 @@ function Bar({ frac }: { frac: number }) {
 function goodsWords(g: { alloys: number; fuel: number; food?: number }): string {
   const parts = [g.alloys ? `${g.alloys} alloys` : '', g.fuel ? `${g.fuel} fuel` : '', g.food ? `${g.food} food` : ''].filter(Boolean);
   return parts.length ? ` and ${parts.join(' and ')}` : '';
+}
+
+/** Grand War: the cities we hold against the dominion share, offers waiting, and the button to the war's panel. */
+function GrandGauge({ state, onOpen }: { state: GameState; onOpen?: () => void }) {
+  const g = state.setup!.grand!;
+  const { total, byTeam } = cityCounts(state);
+  const ours = byTeam.get(0) ?? 0;
+  const offers = state.grand?.offers?.length ?? 0;
+  const dom = state.grand?.dominion;
+  return (
+    <div className="fl-d-gauge" id="fl-grand-gauge" data-testid="grand-gauge" title={`Dominion: hold ${g.dominionShare}% of the cities and towns for ${g.dominionMinutes} minutes.`}>
+      <span className="fl-d-gauge-label">
+        Grand War
+        {dom && (
+          <span className="fl-d-gauge-state" data-cut={isAlly(state, 0, dom.team) ? '0' : '1'} data-testid="grand-dominion-chip">
+            {isAlly(state, 0, dom.team) ? 'dominion' : 'enemy dominion'} {Math.max(0, Math.ceil((dom.since + g.dominionMinutes * 600 - state.tick) / 600))}m
+          </span>
+        )}
+        {offers > 0 && (
+          <span className="fl-d-gauge-state" data-cut="0" data-testid="grand-offers">
+            {offers} {offers === 1 ? 'offer' : 'offers'}
+          </span>
+        )}
+      </span>
+      <span className="fl-d-goods">
+        <span>
+          Cities <span className="fl-d-goods-n">{ours}</span>/{total}
+        </span>
+        <span>Need {Math.ceil((g.dominionShare * total) / 100)}</span>
+      </span>
+      {onOpen && (
+        <button type="button" className="fl-d-btn" id="fl-grand-open" data-testid="grand-open" onClick={onOpen}>
+          Cities, diplomacy, trade
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** Hold victory: our team's points and the best enemy team's, against the target, and the sites each holds. */

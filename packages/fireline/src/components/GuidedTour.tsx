@@ -26,22 +26,25 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { BUILDINGS, type BuildingKind, type Category } from '../sim/rules';
 import { countBuildings } from '../sim/state';
 import type { GameState } from '../sim/types';
+import { sidesOf } from '../sim/sides';
 import { UI } from '../theme';
 
 const TOUR_SEEN_KEY = 'fireline_tour_seen';
+/** Grand War's run has its own steps, so its own flag: a player who has done the battle's run is still offered the war's. */
+const GRAND_TOUR_SEEN_KEY = 'fireline_grand_tour_seen';
 
-/** Whether this browser has finished or skipped the run. A UI preference, so localStorage. */
-export function hasSeenGuidedTour(): boolean {
+/** Whether this browser has finished or skipped the run (Grand War's when `grand`). A UI preference, so localStorage. */
+export function hasSeenGuidedTour(grand = false): boolean {
   try {
-    return !!localStorage.getItem(TOUR_SEEN_KEY);
+    return !!localStorage.getItem(grand ? GRAND_TOUR_SEEN_KEY : TOUR_SEEN_KEY);
   } catch {
     return false;
   }
 }
 
-export function markGuidedTourSeen(): void {
+export function markGuidedTourSeen(grand = false): void {
   try {
-    localStorage.setItem(TOUR_SEEN_KEY, '1');
+    localStorage.setItem(grand ? GRAND_TOUR_SEEN_KEY : TOUR_SEEN_KEY, '1');
   } catch {
     /* Blocked storage: the run is offered again next time, which is harmless. */
   }
@@ -96,6 +99,8 @@ function windowNote(v: TourView, target: string | null): string {
 
 /** Taken when a step becomes current. Predicates measure change from here. */
 interface Baseline {
+  /** Grand War: the latest tick until which a proposal of ours waits (rises with every proposal made). */
+  proposed: number;
   built: Record<BuildingKind, number>;
   queued: Record<BuildingKind, boolean>;
   infantryQueued: number;
@@ -115,6 +120,7 @@ function baselineOf(v: TourView): Baseline {
   const orders: Record<number, string> = {};
   for (const u of v.s.units) if (u.owner === 0) orders[u.id] = JSON.stringify(u.order);
   return {
+    proposed: proposedUntil(v.s),
     built,
     queued,
     infantryQueued: v.s.players[0].queues.infantry.length,
@@ -178,7 +184,52 @@ const placeBody = (kind: BuildingKind, extra: string) => (v: TourView) => {
   return `The ${name} is under construction; the bar along the bottom of its button fills as it builds. When the button says Ready, ${verb.toLowerCase()} it again.`;
 };
 
-function buildSteps(): TourStep[] {
+/**
+ * Grand War: the latest tick until which a proposal of ours to any power waits. Proposing sets it
+ * (accepted or not), and nothing else does, so the step completes on the player's proposal, never
+ * on the computer's answer, which depends on how strong both sides have grown by then.
+ */
+function proposedUntil(s: GameState): number {
+  let n = 0;
+  for (const o of sidesOf(s)) if (o !== 0) n = Math.max(n, s.grand?.cool?.[o] ?? 0);
+  return n;
+}
+
+/** Grand War's two steps: the war's gauge, then peace made through its panel. */
+const GRAND_STEPS: TourStep[] = [
+  {
+    title: 'The Grand War',
+    body: () =>
+      'This battle is one front of a war. Your Command Yard is a city: it grows as you build and feed Quarters, and each level widens your borders and lets it hold more. The other powers grow too, and independent towns lie between you. Hold enough of the cities and towns for long enough and the war is yours.',
+    target: () => 'fl-grand-gauge',
+    isComplete: () => false,
+    manual: true,
+  },
+  {
+    title: 'Offer peace on one front',
+    body: () =>
+      'You need not fight everyone at once. Open Cities, diplomacy, trade, then on Diplomacy propose a ceasefire to one power. A power that fears your army, or is busy elsewhere, accepts more readily; one that thinks you weak declines, and says why. Close the panel to carry on.',
+    target: () => 'fl-grand-open',
+    isComplete: (v, b) => proposedUntil(v.s) > b.proposed,
+  },
+];
+
+function buildSteps(grand = false): TourStep[] {
+  const steps = buildBattleSteps();
+  if (!grand) return steps;
+  const last = steps[steps.length - 1];
+  return [
+    ...steps.slice(0, -1),
+    ...GRAND_STEPS,
+    {
+      ...last,
+      body: v =>
+        `From here: a War Factory, turrets toward the nearest enemy, and Quarters and Farms to grow your city. When it can spare six people, a Forward Base Truck founds a second city well away from the first; take a town with a strong force, then open trade routes between your cities. Treaties must be renewed, and the computer remembers a broken one. ${v.touch ? 'Menu, then Controls, lists every gesture.' : 'Press ? at any time for the controls.'}`,
+    },
+  ];
+}
+
+function buildBattleSteps(): TourStep[] {
   return [
     {
       title: 'Your first battle',
@@ -362,7 +413,9 @@ interface Props {
 }
 
 export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
-  const steps = useMemo(buildSteps, []);
+  // Grand War: the battle's run with the war's two steps before its closing card. Fixed for the run.
+  const grandRun = !!view.s.setup?.grand;
+  const steps = useMemo(() => buildSteps(grandRun), [grandRun]);
   const [stepIndex, setStepIndex] = useState(0);
   const [latched, setLatched] = useState(-1);
   const baseline = useRef<{ index: number; b: Baseline }>({ index: 0, b: baselineOf(view) });
@@ -481,7 +534,7 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
   pos.top = Math.max(narrow || short ? 8 : 16, pos.top);
 
   const finish = () => {
-    markGuidedTourSeen();
+    markGuidedTourSeen(grandRun);
     onFinish();
   };
 

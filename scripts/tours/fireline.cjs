@@ -31,6 +31,9 @@ const { checkBuildWindow } = require('./fireline-build-window.cjs');
 const path = require('path');
 
 const BASE = process.env.TOUR_BASE || 'http://localhost:5306';
+/** Grand War mode (fireline-grand.cjs): the run begins a Frontier war, and its two Grand War steps are walked too. */
+const GRAND = process.env.TOUR_GRAND === '1';
+const NAME = GRAND ? 'fireline-grand' : 'fireline';
 const OUT = process.env.TOUR_OUT || path.join(require('os').tmpdir(), 'tours', 'fireline');
 const IDLE_MS = 1500;
 const USER = JSON.stringify({ userId: 'local-dev', username: 'local-dev' });
@@ -141,7 +144,10 @@ async function main() {
     await page.waitForSelector('text=Sign in / Register');
     await page.evaluate(u => localStorage.setItem('tm_user', u), USER);
     await page.reload();
-    await page.getByRole('button', { name: /Begin the battle/ }).click();
+    if (GRAND) {
+      await page.locator('[data-testid=grand-frontier]').click();
+      await page.getByRole('button', { name: /Begin the war/ }).click();
+    } else await page.getByRole('button', { name: /Begin the battle/ }).click();
     await page.waitForURL(/\/game\//);
     const id = page.url().split('/game/')[1].split(/[?#]/)[0];
     const startSave = await page.evaluate(k => JSON.parse(localStorage.getItem(k)), `fireline_save_${id}`);
@@ -234,6 +240,29 @@ async function main() {
         break;
       }
 
+      // Grand War: make peace through the war's panel, as the card says. The card hides while the
+      // panel is open and must come back, on the same step, once it closes.
+      if (cs.target === 'fl-grand-open') {
+        await checkTarget(page, cs);
+        await page.locator('#fl-grand-open').click();
+        await page.locator('[data-testid=grand-panel]').waitFor({ timeout: 3000 });
+        if (await cardState(page)) problems.push('the card stayed up over the Grand War panel');
+        await page.locator('[data-testid=grand-tab-diplomacy]').click();
+        // Propose to the first power the panel allows; the step waits on the proposal, not the answer.
+        let proposed = false;
+        for (const btn of await page.locator('[data-testid^=grand-ceasefire-]').all()) {
+          if (await btn.isDisabled()) continue;
+          await btn.click();
+          proposed = true;
+          break;
+        }
+        if (!proposed) problems.push('no ceasefire could be proposed at the start of a Frontier war');
+        await sleep(300);
+        await page.locator('[data-testid=grand-close]').click();
+        cs = await waitChange(page, cs, 4000);
+        continue;
+      }
+
       if (cs.target === 'fl-battlefield') {
         const b = await field(page);
         if (cs.title.startsWith('Place') || cs.title.startsWith('Build')) {
@@ -300,6 +329,11 @@ async function main() {
     if (s.players[0].stats.trained < 1 && s.players[0].queues.infantry.length < 1) problems.push('save: no soldier trained or queued');
     const moved = s.units.some(u => startRifles.has(u.id) && Math.hypot(u.x - startRifles.get(u.id)[0], u.y - startRifles.get(u.id)[1]) > 1);
     if (!moved) problems.push('save: no rifleman moved from where it started');
+    if (GRAND) {
+      // The proposal's cool-down is its trace in the save, accepted or not (cool index 0 * 4 + o).
+      const cool = s.grand && s.grand.cool;
+      if (!cool || ![1, 2].some(o => cool[o] > 0)) problems.push('save: no proposal made to any power during the run');
+    }
 
     // Seen: a reload does not offer it again, and the Tour button reopens it on the welcome card.
     await page.reload();
@@ -316,7 +350,7 @@ async function main() {
 
     // The build window on its own battle: open and close, hotkeys, placement, every menu item, a
     // kind it has never seen (fireline-build-window.cjs).
-    await checkBuildWindow(browser, BASE, problems, OUT);
+    if (!GRAND) await checkBuildWindow(browser, BASE, problems, OUT);
   } finally {
     await browser.close();
   }
@@ -326,9 +360,9 @@ main()
   .catch(e => problems.push('driver crashed: ' + (e.stack || e.message)))
   .finally(() => {
     if (problems.length) {
-      console.log(`fireline tour: ${problems.length} problem(s)`);
+      console.log(`${NAME} tour: ${problems.length} problem(s)`);
       for (const p of problems) console.log('  - ' + p);
       process.exit(1);
     }
-    console.log('fireline tour: ok');
+    console.log(`${NAME} tour: ok`);
   });

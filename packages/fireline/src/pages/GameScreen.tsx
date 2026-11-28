@@ -18,6 +18,7 @@ import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
 // round7:review begin. The after-action review: its button, on the end card, the paused card and the menu.
 import { ReviewButton } from '../components/Review';
+import GrandPanel from '../components/GrandPanel';
 // round7:review end.
 import BuildWindow from '../game/BuildWindow';
 // Round 8: the build window's groups, unlock watch, planning numbers and quick bar (fireline-round8-build-window.md).
@@ -262,6 +263,8 @@ export function Battle({
   const buildOpenRef = useRef(false);
   const reopenAfterPlacing = useRef(false);
   const [help, setHelp] = useState(false);
+  // Grand War (fireline-grand-war-design.md): the war's panel (cities, diplomacy, trade).
+  const [grandOpen, setGrandOpen] = useState(false);
   // Campaign: a hero ability or support power waiting for its click on the map.
   const [targeting, setTargetingState] = useState<Targeting>(null);
   const targetingRef = useRef<Targeting>(null);
@@ -276,7 +279,7 @@ export function Battle({
   // in this browser; the Tour button reopens it at any time. Bumping `tourRun` remounts it, so a
   // reopened run always starts on the welcome card.
   // The tour teaches a skirmish base; a campaign battle never opens it.
-  const [tourOpen, setTourOpen] = useState(() => !initial.mission && !initial.planet && !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
+  const [tourOpen, setTourOpen] = useState(() => !initial.mission && !initial.planet && !hasSeenGuidedTour(!!initial.setup?.grand) && initial.tick < 600 && initial.winner === null);
   const [tourRun, setTourRun] = useState(0);
   // On a phone the bar row is one line with a Heroes button; the hero cards open in a drawer over the map.
   const [heroDrawer, setHeroDrawer] = useState(false);
@@ -1172,7 +1175,9 @@ export function Battle({
       // round6:D end.
       if (e.key === 'Escape') {
         // The controls sheet hides the build window, so it goes first; then the window, then the rest.
-        if (help) setHelp(false);
+        // Grand War: its panel, open over everything, goes before them all.
+        if (grandOpen) setGrandOpen(false);
+        else if (help) setHelp(false);
         else if (buildOpenRef.current) {
           reopenAfterPlacing.current = false;
           setBuildOpen(false);
@@ -1247,7 +1252,7 @@ export function Battle({
       window.removeEventListener('blur', blur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound, choosePlacing, jumpToAlert, selectHero, triggerAbility, setTargeting, toggleBuild, setBuildOpen]);
+  }, [dispatch, refresh, setPlacing, centreOn, help, grandOpen, changeSound, choosePlacing, jumpToAlert, selectHero, triggerAbility, setTargeting, toggleBuild, setBuildOpen]);
 
   // Browsers only allow audio after the player has touched the page.
   useEffect(() => {
@@ -2093,6 +2098,11 @@ export function Battle({
             </div>
           )}
           {/* round7:pause end */}
+          {grandOpen && !help && !ended && (
+            <div style={scrim} onClick={() => setGrandOpen(false)}>
+              <GrandPanel state={s} dispatch={dispatch} onClose={() => setGrandOpen(false)} />
+            </div>
+          )}
           {help && (
             <div style={scrim} onClick={() => setHelp(false)}>
               <div className="fl-d-card fl-d-help-card fl-scroll" role="dialog" aria-label="Controls" onClick={e => e.stopPropagation()}>
@@ -2120,7 +2130,7 @@ export function Battle({
             key={tourRun}
             view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !help && !ended, sheet }}
             onFinish={() => setTourOpen(false)}
-            hidden={paused || help || menu || ended}
+            hidden={paused || help || menu || ended || grandOpen}
           />
         )}
 
@@ -2155,6 +2165,12 @@ export function Battle({
             onOpenTab={t => {
               setTab(t);
               setBuildOpen(true);
+            }}
+            onOpenGrand={() => {
+              // The build window lies above everything else; it would cover the panel.
+              reopenAfterPlacing.current = false;
+              setBuildOpen(false);
+              setGrandOpen(true);
             }}
             minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} selected={overlay.current.selected} />}
           />

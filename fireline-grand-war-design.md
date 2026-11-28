@@ -179,9 +179,9 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 - [x] G2b Diplomacy in battle (no fire between non-war pairs, allied vision) and computer temperaments
 - [x] G2c G2 harness sections, check, log, push
 - [x] G3 Trade routes and convoys: pay on arrival, raidable, blockade, computer escorts and raids, conservation tests
-- [ ] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
-- [ ] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
-- [ ] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
+- [x] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
+- [x] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
+- [x] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
 - [ ] G5 Computer grand strategy by temperament; ladder 150 seeds per preset and difficulty; `check:deep`; final log
 
 ---
@@ -369,3 +369,43 @@ in bounds every minute, exact replay). G3, every refusal, opening, the convoy sh
 equals trips times the trip's value), a lost convoy replaced at a price, a lost city closing its route, closing
 by hand, a foreign route paying both and closing at war, saves, and deep whole battles in which the computer
 opened 19 routes. `npm run check`: all passed.
+
+### 2026-11-28: G4, the lobby, the war's panel and the guided run
+
+**Lobby** (`pages/Lobby.tsx`). Section 02 is now Grand War: three preset cards (powers, map size, towns,
+dominion share and time, time limit), the rivals' difficulty, a summary, a name and Begin the war. Section
+03, the single battle, is labelled the Battle preset and is unchanged. "New war" (War for the Planet's setup)
+is gone; wars begun before stay listed under the Grand War section and open as before. The battle's and the
+war's Begin buttons have their own busy flags (`check:loading` caught the shared one putting a busy ring on
+both).
+
+**In battle.** A Grand War gauge in the sidebar (cities held against the total and the number needed, the
+dominion clock either way, offers waiting) opens the war's panel (`components/GrandPanel.tsx`): Cities
+(population, level, housing, districts against the cap, towns held, the dominion and time-limit lines),
+Diplomacy (each power's temperament, stance and minutes left, trust both ways, a button for each step with
+the rules' own reason when it is refused, offers to accept or decline) and Trade (routes with trips, credits
+paid and the convoy's state, and a new route between two ends with what a trip pays). Every button sends an
+ordinary action. Opening the panel closes the build window (the tour driver found the window lying over the
+panel and swallowing its clicks); Escape closes it. Towns are drawn 3 by 3 as a cluster of roofs round a
+square, with a bar for their militia. Powers are named as the battle names them (an early version invented
+"The Third Power" beside the header's "Verdant Front"). Styles use existing tokens only.
+
+**Guided run** (`components/GuidedTour.tsx`). In a Grand War the guided first battle gains two steps before
+its closing card: the war's gauge (read), then "Offer peace on one front" (open the panel and propose a
+ceasefire). The step completes on the proposal, never on the answer: the first version waited for a ceasefire
+to be signed, and in the full tour matrix on a busy machine the run reached the step later, both rivals had
+grown stronger and declined, and the step could not complete. The closing card speaks of founding, towns,
+trade and treaties. Its own seen flag (`fireline_grand_tour_seen`), so a player who did the battle's run is
+still offered the war's.
+
+**Tours.** `scripts/tours/fireline-grand.cjs` runs the battle's driver in a Grand War mode: it begins a
+Frontier war from the lobby, walks every step, opens the panel, proposes, closes it, checks the card hid and
+came back on the same step, and checks the save for the proposal. War for the Planet's driver
+(`fireline-planet.cjs`) is retired with new wars: no war can be begun to play it.
+
+**Manual** (`pages/HowToPlay.tsx`). A Grand War section from the same numbers the game reads; War for the
+Planet's section is marked as for wars begun before.
+
+**Checks.** `npm run tours -- --quick`: all eight drivers pass. `npm run check:ui -- fireline`: 32 of 32 (its
+battle is a skirmish, so the panel was checked by hand in Chromium, dark mode at 1440 and 390: no sideways
+scroll, no page errors). `npm run check:loading`: 184 of 184. `npm run check`: all passed.

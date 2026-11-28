@@ -3,6 +3,7 @@ import type { BuildingKind, Owner, UnitKind } from '../sim/rules';
 import type { SiteKind } from '../sim/rules';
 import type { Building, GameState } from '../sim/types';
 import { BUILDINGS, SUPPLY_LINK_RANGE } from '../sim/rules';
+import { townGarrisonMax } from '../sim/grand';
 import { ART, TEAM } from '../theme';
 
 /**
@@ -5096,9 +5097,10 @@ function drawFortress(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPos
  * (grey while nobody holds it), and while a capture is under way a ring filling round it in the
  * capturing side's colour.
  */
-export function drawSite(ctx: Ctx, kind: SiteKind, owner: Owner | null, x: number, y: number, t: number, capture: { by: Owner; progress: number } | null): void {
-  const w = 2 * TILE;
-  const h = 2 * TILE;
+export function drawSite(ctx: Ctx, kind: SiteKind, owner: Owner | null, x: number, y: number, t: number, capture: { by: Owner; progress: number } | null, militia: number | null = null): void {
+  // Grand War: a town is 3 by 3; every other site 2 by 2.
+  const w = (kind === 'town' ? 3 : 2) * TILE;
+  const h = (kind === 'town' ? 3 : 2) * TILE;
   const flag = owner === null ? { main: SITE_ART.neutral, dark: SITE_ART.neutralDark, light: SITE_ART.neutralLight } : TEAM[owner];
   baseAlpha = ctx.globalAlpha;
   ctx.save();
@@ -5115,6 +5117,7 @@ export function drawSite(ctx: Ctx, kind: SiteKind, owner: Owner | null, x: numbe
   ctx.stroke();
   if (kind === 'derrick') siteDerrick(ctx, w, h, t, owner !== null);
   else if (kind === 'hospital') siteHospital(ctx, w, h, t, owner !== null);
+  else if (kind === 'town') siteTown(ctx, w, h, t, owner !== null);
   else siteRelay(ctx, w, h, t, owner !== null);
   // The flag on its pole, top left.
   ctx.strokeStyle = '#2c3032';
@@ -5134,6 +5137,13 @@ export function drawSite(ctx: Ctx, kind: SiteKind, owner: Owner | null, x: numbe
   ctx.strokeStyle = flag.dark;
   ctx.lineWidth = 0.6;
   ctx.stroke();
+  // Grand War: a town's militia, as a bar along its foot while it stands.
+  if (militia !== null && militia > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(6, h - 7, w - 12, 4);
+    ctx.fillStyle = flag.light;
+    ctx.fillRect(7, h - 6, (w - 14) * clamp01(militia, 0), 2);
+  }
   if (capture) {
     const c = TEAM[capture.by];
     ctx.strokeStyle = 'rgba(0,0,0,0.45)';
@@ -5235,6 +5245,35 @@ function siteHospital(ctx: Ctx, w: number, h: number, t: number, working: boolea
   lamp(ctx, w - 9, h - 10, working, '#7dff8a', t, 2);
 }
 
+/** Grand War: an independent town, a cluster of roofs round a square with a well, a lamp lit while held. */
+function siteTown(ctx: Ctx, w: number, h: number, t: number, held: boolean) {
+  const houses: [number, number, number, number, string][] = [
+    [14, 16, 22, 16, '#b0705a'],
+    [42, 12, 24, 18, '#8e5a48'],
+    [70, 18, 18, 16, '#a66a52'],
+    [16, 46, 18, 20, '#9a604c'],
+    [64, 50, 24, 18, '#b4775e'],
+    [36, 66, 26, 14, '#8a5644'],
+  ];
+  for (const [x, y, bw, bh, roof] of houses) {
+    if (x + bw > w - 4 || y + bh > h - 8) continue;
+    block(ctx, x, y, bw, bh, roof, '#5b3a2e', 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(x + 2, y + 2, bw - 4, 2);
+  }
+  // The square and its well.
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  circle(ctx, w / 2, h / 2 + 2, 7);
+  ctx.fill();
+  ctx.fillStyle = '#7d8682';
+  circle(ctx, w / 2, h / 2, 5);
+  ctx.fill();
+  ctx.fillStyle = '#2b4a5c';
+  circle(ctx, w / 2, h / 2, 2.6);
+  ctx.fill();
+  lamp(ctx, w - 14, 10, held, '#ffd36a', t, 3, true);
+}
+
 function siteRelay(ctx: Ctx, w: number, h: number, t: number, working: boolean) {
   // An equipment hut, a mast and a dish that sweeps the horizon while held.
   block(ctx, 12, h - 26, 22, 14, '#8d9390', '#5a605d', 4);
@@ -5276,7 +5315,9 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
     let seen = false;
     for (let y = site.y; y < site.y + 2 && !seen; y++) for (let x = site.x; x < site.x + 2; x++) if (explored.charCodeAt(y * s.mapW + x) === 49) seen = true;
     if (!seen) continue;
-    drawSite(ctx, site.kind, site.owner, site.x * TILE, site.y * TILE, t + site.id * 0.71, site.capture);
+    // Grand War: a town shows what is left of its militia.
+    const militia = site.kind === 'town' ? (site.garrison ?? 0) / Math.max(1, townGarrisonMax(s)) : null;
+    drawSite(ctx, site.kind, site.owner, site.x * TILE, site.y * TILE, t + site.id * 0.71, site.capture, militia);
   }
   for (const e of s.effects) {
     if (e.kind !== 'muzzle' || e.weapon !== 'rail') continue;

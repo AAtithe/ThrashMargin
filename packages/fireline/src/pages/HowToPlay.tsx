@@ -12,7 +12,24 @@ import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 import { GeneralsPanel } from '../components/Generals';
 // round7:structures.
 import { StructuresHelp } from './StructuresHelp';
-import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+import {
+  CITY_BEAT,
+  CITY_CLAIM_PER_LEVEL,
+  CITY_DISTRICTS_BASE,
+  CITY_DISTRICTS_PER_LEVEL,
+  CITY_FOUNDED_POP,
+  CITY_FOUNDING_COST,
+  CITY_GAP,
+  CITY_LEVEL_POP,
+  CITY_START_POP,
+  MAP_SIZE_NAMES,
+  MAP_SIZE_TILES,
+  MAP_SIZES,
+  ROUTE_COST,
+  TOWN_HOUSING,
+  TOWN_INCOME,
+  TREATY_MINUTES,
+} from '../sim/rules';
 import {
   AIR_LOAD_FUEL,
   ALLOY_STORE_BASE,
@@ -422,11 +439,47 @@ export default function HowToPlay() {
           </div>
         </Section>
 
+        <Section title="Grand War">
+          <p style={{ ...bodySmall, margin: 0 }}>
+            One real-time war of three or four powers on one map, begun from the lobby&apos;s Grand War panel. Everything in a battle still
+            holds; around it, the war:
+          </p>
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem' }}>
+            <li>
+              <strong>Cities.</strong> Your Command Yard is a city of {CITY_START_POP}. Every {CITY_BEAT / 600 * 60} seconds it grows a person
+              toward the housing round it (fed Quarters raise it; a hungry Quarters houses half). Levels 2 to 5 come at{' '}
+              {CITY_LEVEL_POP.join(', ')} people; each widens its borders by {CITY_CLAIM_PER_LEVEL} tiles and lets it hold{' '}
+              {CITY_DISTRICTS_PER_LEVEL} more districts (structures that need a crew), from {CITY_DISTRICTS_BASE + CITY_DISTRICTS_PER_LEVEL} at level 1.
+            </li>
+            <li>
+              <strong>Founding.</strong> A Forward Base Truck deployed at least {CITY_GAP} tiles from every city and town founds a new city of{' '}
+              {CITY_FOUNDED_POP}, taking {CITY_FOUNDING_COST} people from your largest city. A city does not pack up.
+            </li>
+            <li>
+              <strong>Towns.</strong> Independent towns fire on anyone near. Wear their militia down with a strong force, then infantry take
+              them. A held town pays {TOWN_INCOME * 12} credits a minute, houses {TOWN_HOUSING} workers, claims the ground round it and counts as a city.
+            </li>
+            <li>
+              <strong>Diplomacy.</strong> Ceasefires, trade pacts and alliances last {TREATY_MINUTES.c}, {TREATY_MINUTES.p} and {TREATY_MINUTES.a}{' '}
+              minutes and must be renewed. Powers at peace never fire on each other; allies share sight and win together. Breaking a treaty early
+              costs the trust of every power. Each rival has a temperament: expansionist, mercantile or defensive.
+            </li>
+            <li>
+              <strong>Trade.</strong> A route between two of your cities, or to a partner&apos;s, costs {ROUTE_COST} and runs a convoy that is
+              paid on arrival; longer routes pay more a minute, and raiders hunt convoys.
+            </li>
+            <li>
+              <strong>Winning.</strong> Conquest, or dominion: hold a set share of all cities and towns for a set time without a break. A war
+              with a time limit is decided on cities held when it runs out.
+            </li>
+          </ul>
+        </Section>
+
         <Section title="War for the Planet">
           <p style={{ ...bodySmall, margin: 0 }}>
-            A whole planet held by you, the Meridian Corps, and two to four computer factions, each with its own temperament. Start a war from
-            the lobby: choose a length, the number of factions, a difficulty and the optional rules. Tick <strong>Guided first turn</strong> for
-            a tutorial that walks your first turn one step at a time; <strong>Tour</strong> at the top of the war screen reopens it.
+            The turn-based war that came before Grand War. Wars begun before 2026-11-28 still open from the lobby and play exactly as they
+            did; new wars are Grand Wars. A whole planet held by you, the Meridian Corps, and two to four computer factions, each with its own
+            temperament.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
             {LENGTH_PRESETS.map(k => {
