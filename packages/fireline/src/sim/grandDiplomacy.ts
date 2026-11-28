@@ -26,6 +26,7 @@ import {
   BREACH_VICTIM,
   DIPLO_BEAT,
   GRAND_TEMPERS,
+  SIDE_NAMES,
   MAX_SIDES,
   OFFER_TICKS,
   PROPOSAL_COOL,
@@ -40,9 +41,9 @@ import {
   type GrandTemperSpec,
   type Owner,
 } from './rules';
-import { cityCounts, citiesOf, grandOn, townsHeld } from './cities';
+import { cityCounts, citiesOf, grandOn, townsHeld, townsOf } from './cities';
 import { next, seedFromString } from './rng';
-import { enemiesOf, isEnemy, sidesOf, stanceOf } from './sides';
+import { enemiesOf, isAlly, isEnemy, sidesOf, stanceOf } from './sides';
 import type { GameState, GrandTemper, TreatyKind } from './types';
 
 type Say = (s: GameState, text: string, tone: 'info' | 'good' | 'bad') => void;
@@ -52,6 +53,12 @@ const TEMPERS: GrandTemper[] = ['expansionist', 'mercantile', 'defensive'];
 const RENEW_TICKS = 1200;
 /** War interest above which a side wants war on someone it is at peace with. */
 const WAR_WANT = 25;
+/** War interest a power gains with no independent town left and no more cities than a neighbour (an expansionist, and the rest). */
+const ROOM_EXPANSIONIST = 25;
+const ROOM_OTHERS = 10;
+/** War interest against a power within DOMINION_NEAR points of the dominion share. */
+const DOMINION_THREAT = 40;
+const DOMINION_NEAR = 10;
 /** A breaker breaks a dated treaty only while its trust in the other is at most this. */
 const BREACH_TRUST_MAX = 60;
 
@@ -67,7 +74,8 @@ export const temperOf = (s: GameState, o: Owner): GrandTemperSpec | null => {
 export const trustOf = (s: GameState, a: Owner, b: Owner): number => s.grand?.trust?.[idx(a, b)] ?? TRUST_START;
 export const endsOf = (s: GameState, a: Owner, b: Owner): number => s.grand?.ends?.[idx(a, b)] ?? 0;
 
-export const SIDE_NAMES_GRAND = ['You', 'The Ashen Combine', 'The Third Power', 'The Fourth Power'];
+/** The powers by name in the war's news: the battle's own side names (SIDE_NAMES), with "the". */
+export const SIDE_NAMES_GRAND = ['We', ...[1, 2, 3].map(o => `the ${SIDE_NAMES[o as Owner]}`)];
 
 // ---------------------------------------------------------------------------------------------
 // The start
@@ -128,6 +136,8 @@ function shiftTrust(s: GameState, a: Owner, b: Owner, by: number): void {
 }
 
 const name = (o: Owner): string => SIDE_NAMES_GRAND[o];
+/** A name at the start of a sentence. */
+const Name = (o: Owner): string => name(o).charAt(0).toUpperCase() + name(o).slice(1);
 /** "a ceasefire", "a trade pact", "an alliance". */
 const aTreaty = (k: TreatyKind): string => `${k === 'a' ? 'an' : 'a'} ${TREATY_NAME[k]}`;
 /** Side 0 under the harness's autopilot answers and moves as a defensive computer side would. */
@@ -140,10 +150,11 @@ function enact(s: GameState, a: Owner, b: Owner, kind: TreatyKind, say: Say): vo
   setPair(s, a, b, kind, s.tick + TREATY_MINUTES[kind] * 600);
   const offers = s.grand!.offers?.filter(o => !(o.from === a && b === 0) && !(o.from === b && a === 0));
   if (offers) s.grand = { ...s.grand!, offers };
-  const who = a === 0 ? name(b) : b === 0 ? name(a) : null;
+  const who = a === 0 ? Name(b) : b === 0 ? Name(a) : null;
   const what = TREATY_NAME[kind];
-  if (who) say(s, renewal ? `The ${what} with ${who} is renewed for ${TREATY_MINUTES[kind]} minutes.` : `${who}: ${aTreaty(kind)} is signed, for ${TREATY_MINUTES[kind]} minutes.`, 'good');
-  else if (!renewal) say(s, `${name(a)} and ${name(b)} sign ${aTreaty(kind)}.`, 'info');
+  const other = a === 0 ? b : a;
+  if (who) say(s, renewal ? `The ${what} with ${name(other)} is renewed for ${TREATY_MINUTES[kind]} minutes.` : `${who}: ${aTreaty(kind)} is signed, for ${TREATY_MINUTES[kind]} minutes.`, 'good');
+  else if (!renewal) say(s, `${Name(a)} and ${name(b)} sign ${aTreaty(kind)}.`, 'info');
 }
 
 /** War declared by `a` on `b`; a breach when a treaty between them is still running. */
@@ -157,8 +168,8 @@ function declare(s: GameState, a: Owner, b: Owner, say: Say): void {
   const offers = s.grand!.offers?.filter(o => !((o.from === a || o.from === b) && (a === 0 || b === 0)));
   if (offers) s.grand = { ...s.grand!, offers };
   if (a === 0) say(s, breach ? `We have broken our treaty with ${name(b)}. Every power will remember it.` : `We are at war with ${name(b)}.`, 'bad');
-  else if (b === 0) say(s, breach ? `${name(a)} has broken its treaty with us and declared war.` : `${name(a)} has declared war on us.`, 'bad');
-  else say(s, breach ? `${name(a)} has broken its treaty with ${name(b)}.` : `${name(a)} is at war with ${name(b)}.`, 'info');
+  else if (b === 0) say(s, breach ? `${Name(a)} has broken its treaty with us and declared war.` : `${Name(a)} has declared war on us.`, 'bad');
+  else say(s, breach ? `${Name(a)} has broken its treaty with ${name(b)}.` : `${Name(a)} is at war with ${name(b)}.`, 'info');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -188,6 +199,19 @@ export function warInterest(s: GameState, j: Owner, b: Owner): { value: number; 
   if (mine >= most + 2) {
     v += 15;
     forWar.push('You hold too many cities.');
+  }
+  // Close to dominion: every other power's concern above all else.
+  const g = s.setup?.grand;
+  const { total } = cityCounts(s);
+  if (g && total && mine * 100 >= (g.dominionShare - DOMINION_NEAR) * total) {
+    v += DOMINION_THREAT;
+    forWar.push('You are close to ruling the cities.');
+  }
+  // No room to grow: every town taken and no more cities than this neighbour. Peace then only freezes
+  // the map, and a power that means to grow must take from someone (an expansionist most of all).
+  if (!townsOf(s).some(t => t.owner === null) && (byTeam.get(j) ?? 0) <= mine) {
+    v += T.warBias >= 10 ? ROOM_EXPANSIONIST : ROOM_OTHERS;
+    forWar.push('They have no room left to grow.');
   }
   const fronts = enemiesOf(s, j).length - (isEnemy(s, j, b) ? 1 : 0);
   v -= 10 * fronts;
@@ -299,7 +323,7 @@ export function doDiplomacy(s: GameState, a: Owner, b: Owner, act: DiplomacyAct,
   s.grand = { ...s.grand!, cool };
   const v = verdict(s, b, a, kind);
   if (v.accept) enact(s, a, b, kind, say);
-  else if (a === 0) say(s, `${name(b)} declines ${aTreaty(kind)}. ${(v.against.length ? v.against : ['The terms do not suit them.']).slice(0, 2).join(' ')}`, 'bad');
+  else if (a === 0) say(s, `${Name(b)} declines ${aTreaty(kind)}. ${(v.against.length ? v.against : ['The terms do not suit them.']).slice(0, 2).join(' ')}`, 'bad');
 }
 
 /** Why the player may not answer this offer now, or null. */
@@ -377,7 +401,7 @@ function propose(s: GameState, j: Owner, b: Owner, kind: TreatyKind, say: Say): 
     const offer = { id: s.nextId++, from: j, kind, expires: s.tick + OFFER_TICKS };
     s.grand = { ...s.grand!, offers: [...s.grand!.offers!, offer] };
     const renewal = stanceOf(s, j, 0) === kind;
-    say(s, `${name(j)} ${renewal ? 'offers to renew' : 'proposes'} ${aTreaty(kind)}. Answer on the Diplomacy panel.`, 'info');
+    say(s, `${Name(j)} ${renewal ? 'offers to renew' : 'proposes'} ${aTreaty(kind)}. Answer on the Diplomacy panel.`, 'info');
     return;
   }
   if (verdict(s, b, j, kind).accept) enact(s, j, b, kind, say);
@@ -395,7 +419,9 @@ function computerMove(s: GameState, j: Owner, alive: Owner[], say: Say): void {
     const wi = warInterest(s, j, b).value;
     if (wi <= WAR_WANT) continue;
     const dated = endsOf(s, j, b) > s.tick;
-    if (dated && (T.breakAt === null || wi <= T.breakAt || trustOf(s, j, b) > BREACH_TRUST_MAX)) continue;
+    // Once a power's dominion clock runs, any temperament breaks a treaty to stop it.
+    const ruling = !!s.grand?.dominion && isAlly(s, s.grand.dominion.team, b);
+    if (dated && !ruling && (T.breakAt === null || wi <= T.breakAt || trustOf(s, j, b) > BREACH_TRUST_MAX)) continue;
     declare(s, j, b, say);
     return;
   }
@@ -403,6 +429,8 @@ function computerMove(s: GameState, j: Owner, alive: Owner[], say: Say): void {
   for (const b of others) {
     const st = stanceOf(s, j, b)!;
     if (st === 'w' || endsOf(s, j, b) - s.tick > RENEW_TICKS || !ready(b)) continue;
+    // A power that wants war lets the treaty in its way run out rather than break it.
+    if (warInterest(s, j, b).value > WAR_WANT) continue;
     if (verdict(s, j, b, st as TreatyKind).accept) {
       propose(s, j, b, st as TreatyKind, say);
       return;

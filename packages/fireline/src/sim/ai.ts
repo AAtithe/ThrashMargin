@@ -1,4 +1,4 @@
-import { grandTradePlan, grandWaveHeld, grandWaveTarget } from './aiGrand';
+import { grandHasPrey, grandTradePlan, grandWaveHeld, grandWaveTarget } from './aiGrand';
 import { cityWithRoom, grandOn, isDistrict } from './cities';
 import { creepFocus, navalPlan, navalSpot } from './aiNaval';
 import { isShip } from './naval';
@@ -720,7 +720,8 @@ function commander(s: GameState, owner: Owner): void {
   if (adapting) sampleFoe(s, owner, aimedAt);
   const punch = adapting && !broke && counterPunch(s, owner, aimedAt);
   if (mem.wavePhase === 0) {
-    if (!threat && (s.tick >= mem.nextAttack || punch) && enemy.length) {
+    // Grand War: at peace with everyone, a wave still forms to take a free town (aiGrand.ts).
+    if (!threat && (s.tick >= mem.nextAttack || punch) && (enemy.length || grandHasPrey(s, owner))) {
       const fit = recruits();
       // A wave that has waited a whole extra interval goes with what it has; with no income left
       // and none coming, everything goes now, since waiting can only make it weaker.
@@ -839,6 +840,19 @@ function commander(s: GameState, owner: Owner): void {
           mem.wave++;
           mem.nextAttack = s.tick + d.attackInterval;
         }
+      }
+    } else if (s.setup?.grand) {
+      // Grand War, at peace with everyone: a wave sent for a town keeps to it until it is taken, then
+      // comes home so the next wave can form (with no enemy the branch above never runs, and the
+      // wave would stand where it took the town for the rest of the war).
+      const town = grandWaveHeld(s, owner);
+      if (town) {
+        const idle = members.filter(u => u.order.type === 'idle' && !u.engage).map(u => u.id);
+        if (idle.length) doMove(s, owner, idle, town.x, town.y, true);
+      } else {
+        doMove(s, owner, waveIds, stage.x, stage.y, false);
+        waveIds = [];
+        mem.wavePhase = 0;
       }
     }
   }

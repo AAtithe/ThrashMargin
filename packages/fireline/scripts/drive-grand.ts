@@ -377,7 +377,11 @@ function dominionTests(ok: Ok): void {
   const lim = staged('dom-b', 'grand');
   lim.setup = { ...lim.setup!, grand: { ...lim.setup!.grand!, timeLimit: 1, dominionShare: 100 } };
   const level = tick(lim, 700);
-  ok(level.winner === null, 'at the time limit, level teams play on');
+  ok(level.winner === null, 'at the time limit, teams level on cities and people play on');
+  const people = copy(lim);
+  people.buildings.find(b => b.owner === 1 && b.kind === 'hq')!.pop = 30;
+  const byPeople = tick(people, 700);
+  ok(byPeople.winner === 1, 'level on cities, the team with more people wins');
   const ahead = copy(lim);
   ahead.sites = ahead.sites!.map(t => (t.id === townsOf(ahead)[0].id ? { ...t, owner: 2 as Owner, garrison: 0 } : t));
   const timed = tick(ahead, 700);

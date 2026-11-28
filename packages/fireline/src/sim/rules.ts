@@ -1946,7 +1946,7 @@ const grandSetup = (sides: 2 | 3 | 4, size: MapSize, pace: GamePace, grand: Gran
   grand,
 });
 export const GRAND_PRESETS: Record<GrandPreset, SkirmishSetup> = {
-  frontier: grandSetup(3, 'huge', 'long', { preset: 'frontier', townsPerSide: 1, townStrength: 1, diplomacy: true, trade: true, dominionShare: 60, dominionMinutes: 8, timeLimit: 90 }),
+  frontier: grandSetup(3, 'huge', 'long', { preset: 'frontier', townsPerSide: 1, townStrength: 1, diplomacy: true, trade: true, dominionShare: 60, dominionMinutes: 10, timeLimit: 90 }),
   grand: grandSetup(4, 'vast', 'long', { preset: 'grand', townsPerSide: 2, townStrength: 1.2, diplomacy: true, trade: true, dominionShare: 65, dominionMinutes: 12, timeLimit: 240 }),
   epic: grandSetup(4, 'continental', 'epic', { preset: 'epic', townsPerSide: 3, townStrength: 1.4, diplomacy: true, trade: true, dominionShare: 70, dominionMinutes: 15, timeLimit: 480 }),
 };

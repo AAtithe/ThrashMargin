@@ -146,6 +146,13 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   save is made of. Target finding reads units by map cell (`nearIndex`, `tick.ts`) and must pick exactly
   what the full scan picks: run `npm run drive -- --near-check` after touching `acquire`, the unit loop or
   anything that moves units. `scripts/perf-crowd.ts` times a tick at Grand War's crowd (700 units).
+  Grand War's rules live in `cities.ts`, `grand.ts` (cities, towns, dominion), `grandDiplomacy.ts` (stance
+  per pair, read by `isEnemy`/`isAlly` in `sides.ts`, so every system obeys it) and `grandTrade.ts`
+  (convoys); the computer's side in `aiGrand.ts`. All are no-ops without `setup.grand`. Their harness is
+  `scripts/drive-grand.ts` (inside `npm run drive`); `scripts/grand-ladder.ts` plays whole computer wars
+  per preset and difficulty and reports how they ended. `npm run tours -- fireline-grand` plays the
+  guided run in a Grand War. War for the Planet no longer starts new wars (its tour driver is retired);
+  older wars still open and play as before, so `npm run drive:planet` stays.
 - **Fireline's ground is held in chunks** (`src/game/terrainStore.ts`), on every map size: 512-pixel
   squares painted near the camera by a worker, the furthest dropped past a 96 MB budget, so memory
   follows the screen, not the map. `createTerrainPainter` (`terrain.ts`) paints any region; anything it

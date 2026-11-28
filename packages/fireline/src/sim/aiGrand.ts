@@ -15,7 +15,7 @@ import { doRoute, endOf, routeCap, routeProblem, routesOf, tripValue } from './g
 import { ROUTE_COST } from './rules';
 import { sidesOf, stanceOf } from './sides';
 import { dist } from './grid';
-import { isAlly } from './sides';
+import { isAlly, isEnemy } from './sides';
 import type { Owner } from './rules';
 import type { GameState, Site } from './types';
 
@@ -29,7 +29,8 @@ export function grandWaveTarget(s: GameState, owner: Owner, from: Pt, aim: Pt | 
   let best: Site | null = null;
   let bestD = Infinity;
   for (const t of townsOf(s)) {
-    if (t.owner !== null && isAlly(s, t.owner, owner)) continue;
+    // A town held by an ally, or by a power at peace with us, is not ours to take.
+    if (t.owner !== null && !isEnemy(s, owner, t.owner)) continue;
     const c = townCentre(t);
     const d = dist(from.x, from.y, c.x, c.y);
     if (d < bestD) {
@@ -48,7 +49,7 @@ export function grandWaveHeld(s: GameState, owner: Owner): Pt | null {
   const mem = s.ai[owner];
   if (mem.grandTown === undefined) return null;
   const t = grandOn(s) ? townsOf(s).find(x => x.id === mem.grandTown) : undefined;
-  if (!t || (t.owner !== null && isAlly(s, t.owner, owner)) || mem.wavePhase !== 2) {
+  if (!t || (t.owner !== null && !isEnemy(s, owner, t.owner)) || mem.wavePhase !== 2) {
     delete mem.grandTown;
     return null;
   }
@@ -94,4 +95,9 @@ export function grandTradePlan(s: GameState, owner: Owner): void {
       }
     }
   if (best && endOf(s, best[0])) doRoute(s, owner, best[0], best[1]);
+}
+
+/** True when a town is free for this side's wave to take: independent, or held by a power at war with it. */
+export function grandHasPrey(s: GameState, owner: Owner): boolean {
+  return grandOn(s) && townsOf(s).some(t => t.owner === null || isEnemy(s, owner, t.owner));
 }

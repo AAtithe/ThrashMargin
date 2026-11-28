@@ -104,8 +104,8 @@ Every preset states every option (invariant 3); the harness compares key sets.
 | industry, supply, territory, production | as chosen | on | on | on |
 | upkeep, seasons | as chosen | on | on | on |
 | victory | conquest or hold | conquest, dominion | conquest, dominion, score | conquest, dominion, score |
-| dominionShare / dominionMinutes | n/a | 60% / 8 | 65% / 12 | 70% / 15 |
-| time limit (score) | none | none | 4 h | 8 h |
+| dominionShare / dominionMinutes | n/a | 60% / 10 | 65% / 12 | 70% / 15 |
+| time limit (cities, then people) | none | 90 min | 4 h | 8 h |
 | typical length | 20 to 60 min | about 1 h | 2 to 4 h | 4 h or more |
 
 "Battle" with cities, diplomacy and convoys off is today's skirmish setup field for field.
@@ -182,7 +182,7 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 - [x] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
 - [x] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
 - [x] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
-- [ ] G5 Computer grand strategy by temperament; ladder 150 seeds per preset and difficulty; `check:deep`; final log
+- [ ] G5 Computer grand strategy by temperament; ladder 150 seeds per preset and difficulty; `check:deep`; final log (in progress: see the G5 entries)
 
 ---
 
@@ -409,3 +409,37 @@ Planet's section is marked as for wars begun before.
 **Checks.** `npm run tours -- --quick`: all eight drivers pass. `npm run check:ui -- fireline`: 32 of 32 (its
 battle is a skirmish, so the panel was checked by hand in Chromium, dark mode at 1440 and 390: no sideways
 scroll, no page errors). `npm run check:loading`: 184 of 184. `npm run check`: all passed.
+
+### 2026-11-28: G5, the computer's grand strategy and the first balance pass
+
+`scripts/grand-ladder.ts` plays whole computer wars per preset and difficulty (side 0 under the autopilot,
+which answers offers as a defensive power) and reports the endings, length, seats, treaties, wars, founding,
+towns and trade. What it found, and what changed, in order:
+
+1. **Peace froze the map.** Six treaties signed a war and none ever broken or left to lapse: computer powers
+   at peace renewed every treaty, and the only wars were the opening ones. A power that wants war now lets
+   the treaty in its way run out instead of renewing it, and a power with no independent town left and no
+   more cities than a neighbour gains war interest ("no room to grow": 25 for an expansionist, 10 for the rest).
+2. **At peace, nobody took a town.** A wave formed only with an enemy to aim at, so once everyone was at peace
+   the towns stayed independent and the pressure in (1) never arrived. A wave now forms for any free town
+   (independent, or held by a power at war with it), keeps to it until taken, then comes home so the next can
+   form (with no enemy the wave had stood where it took the town for the rest of the war).
+3. **Then the first to grab towns simply won.** 83% of Frontier wars ended by dominion at a median 39 minutes,
+   with 0.3 wars declared a war. A power within 10 points of the dominion share now draws 40 war interest from
+   every other, and once its dominion clock runs any temperament will break a treaty to stop it. Frontier's hold
+   went from 8 to 10 minutes, to give the coalition time.
+4. **Level at the time limit played on past it** (17% of a small run unfinished): a level count of cities is now
+   decided by population, and only a level on both plays on.
+
+**Frontier, Normal mirror, 150 wars** (prefix gl, cap 100 minutes): dominion 44%, conquest 30%, time 25%,
+unfinished 1% (target under 2%). Median 47.7 minutes, quartiles 34 to 90. Side 0, the player's seat, won 31%:
+a fair third. 7.0 treaties signed a war, 1.6 wars declared or resumed (1.2 of them breaches), 4.1 cities founded,
+2.6 towns held at the end, 60 trade trips.
+
+The seat spread the first report printed (seat 1 58%, seat 2 11%) was the ladder's error, not the game's: when
+side 0 loses its last structure the engine names the lowest surviving seat the winner, so seat 1 collected every
+war the player's seat lost by elimination. The ladder now reports eliminations apart and the spread only over wars
+with a real winner.
+
+`npm run check`: all passed (Fireline 348,966). Deep tier with the exactness check: 423,565 assertions, none
+failed, so none of this moved an ordinary battle.

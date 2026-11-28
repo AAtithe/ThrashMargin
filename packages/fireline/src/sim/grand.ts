@@ -358,20 +358,25 @@ function dominionStep(s: GameState, say: Say): void {
     return;
   }
   if (g.timeLimit > 0 && s.tick >= g.timeLimit * 600) {
+    // Most cities and towns; on a level count, most people in the team's cities; level on both plays on.
     const { byTeam } = cityCounts(s);
+    const people = (team: Owner): number => sidesOf(s).filter(o => isAlly(s, o, team)).reduce<number>((n, o) => n + citiesOf(s, o).reduce<number>((m, c) => m + (c.pop ?? 0), 0), 0);
     let best: Owner | null = null;
     let bestN = -1;
+    let bestP = -1;
     let level = false;
     for (const [team, n] of [...byTeam.entries()].sort((a, b) => a[0] - b[0])) {
-      if (n > bestN) {
+      const p = people(team);
+      if (n > bestN || (n === bestN && p > bestP)) {
         best = team;
         bestN = n;
+        bestP = p;
         level = false;
-      } else if (n === bestN) level = true;
+      } else if (n === bestN && p === bestP) level = true;
     }
     if (best === null || level) return;
     s.winner = isAlly(s, 0, best) ? 0 : best;
-    say(s, s.winner === 0 ? `Time. We hold the most cities: ${bestN}. Victory.` : `Time. The enemy holds the most cities: ${bestN}. Defeat.`, s.winner === 0 ? 'good' : 'bad');
+    say(s, s.winner === 0 ? `Time. We hold the most cities and people: ${bestN} cities. Victory.` : `Time. The enemy holds the most cities and people: ${bestN} cities. Defeat.`, s.winner === 0 ? 'good' : 'bad');
   }
 }
 
