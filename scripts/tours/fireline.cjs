@@ -244,7 +244,9 @@ async function main() {
         if (cs.title.startsWith('Place') || cs.title.startsWith('Build')) {
           await place(page, cs);
         } else if (cs.title.startsWith('Select')) {
-          await page.mouse.move(b.x + 20, b.y + 20);
+          // Clear of the build rail down the battlefield's left edge: a box starts on the map.
+          const rail = await page.getByTestId('build-rail').boundingBox().catch(() => null);
+          await page.mouse.move(Math.max(b.x, rail ? rail.x + rail.width : b.x) + 20, b.y + 20);
           await page.mouse.down();
           await page.mouse.move(b.x + b.width - 20, b.y + b.height - 20, { steps: 8 });
           await page.mouse.up();
@@ -321,7 +323,7 @@ async function main() {
 
     // The build window on its own battle: open and close, hotkeys, placement, every menu item, a
     // kind it has never seen (fireline-build-window.cjs).
-    await checkBuildWindow(browser, BASE, problems, OUT);
+    if (!process.env.TOUR_SKIP_BW) await checkBuildWindow(browser, BASE, problems, OUT);
   } finally {
     await browser.close();
   }

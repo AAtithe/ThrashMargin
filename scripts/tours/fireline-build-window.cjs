@@ -49,6 +49,10 @@ async function checkBuildWindow(browser, base, problems, out) {
   };
   const isOpen = () => page.locator('#fl-build-window').count().then(n => n > 0);
   const label = () => page.locator('#fl-build-open').textContent();
+  // A list on the build rail, without closing it: pressing the list already showing puts the window away.
+  const showTab = async t => {
+    if ((await page.locator(`#fl-tab-${t}`).getAttribute('aria-expanded')) !== 'true') await page.locator(`#fl-tab-${t}`).click();
+  };
   const until = async (fn, ms = 5000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) {
@@ -153,7 +157,7 @@ async function checkBuildWindow(browser, base, problems, out) {
         await fail(`the window has no ${tab} tab on an advanced-tech Coast battle`);
         continue;
       }
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(250);
       for (const item of list) {
         if (tab === 'building') {
@@ -194,14 +198,14 @@ async function checkBuildWindow(browser, base, problems, out) {
     }
     for (const [tab, list] of Object.entries(rules.absent)) {
       if (!list.length || !(await page.locator(`#fl-tab-${tab}`).count())) continue;
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(150);
       for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes, Generals and the economy toggles off`);
     }
     console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes, Generals and the economy toggles off`);
 
     // ---- Every structure has a key within its group -------------------------------------------------
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(150);
     const groups = await page.locator('#fl-build-window .fl-bw-grp').evaluateAll(els => els.map(e => e.id.replace('fl-group-', '')));
     if (groups.length < 3) await fail(`Structures shows ${groups.length} groups`);
@@ -295,7 +299,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await page.locator('#fl-view-tree').click();
     await sleep(250);
     for (const [tab, list] of Object.entries(rules.menus)) {
-      await page.locator(`#fl-tab-${tab}`).click();
+      await showTab(tab);
       await sleep(200);
       for (const item of list) {
         const col = await page.locator(`#fl-build-${item.kind}`).evaluate(e => e.closest('[data-tier]')?.getAttribute('data-tier')).catch(() => null);
@@ -303,7 +307,7 @@ async function checkBuildWindow(browser, base, problems, out) {
       }
       if (await page.locator('#fl-build-window path.fl-tree-line').count()) await fail(`the ${tab} tree draws lines with nothing pointed at`);
     }
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(200);
     const chainItem = rules.menus.building.find(i => i.kind === 'techcentre') || rules.menus.building[rules.menus.building.length - 1];
     await page.locator(`#fl-build-${chainItem.kind}`).hover();
@@ -329,7 +333,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await page.evaluate(x => {
       window.__flExtraMenuItem = x;
     }, extra);
-    await page.locator('#fl-tab-vehicle').click();
+    await showTab('vehicle');
     const ok = await until(async () => (await page.locator('#fl-build-testwalker').count()) > 0);
     if (!ok) await fail('the extra item was not laid out');
     else {
@@ -348,7 +352,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     });
     await page.mouse.move(5, 300);
     await page.locator('#fl-view-build').click();
-    await page.locator('#fl-tab-building').click();
+    await showTab('building');
     await sleep(150);
 
     // ---- Open and close: button, key, Esc ---------------------------------------------------------
@@ -454,7 +458,7 @@ async function checkBuildWindow(browser, base, problems, out) {
     await until(isOpen);
     for (const v of ['build', 'tree']) {
       await page.locator(`#fl-view-${v}`).click();
-      await page.locator('#fl-tab-building').click();
+      await showTab('building');
       await sleep(300);
       const [sw, cw] = await page.getByTestId('build-window-body').evaluate(e => [e.scrollWidth, e.clientWidth]);
       if (sw > cw + 1) await fail(`the ${v} view scrolls sideways at 1280 by 720 (${sw} in ${cw})`);
