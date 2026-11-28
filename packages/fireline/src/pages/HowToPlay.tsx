@@ -1,3 +1,5 @@
+import { CHARACTER_IDS, CHARACTERS } from '../sim/characters';
+import { DROP_VALUE, RELIEF_HOLD_TICKS } from '../sim/events';
 import type { CSSProperties, ReactNode } from 'react';
 import { INFANTRY_UPKEEP, UPKEEP_GRACE, VEHICLE_UPKEEP } from '../sim/upkeep';
 import { GROWING_TICKS, HOARD_DECAY, HOARD_FREE, LEAN_ROT, SEASON_YEAR } from '../sim/seasons';
@@ -202,6 +204,18 @@ export default function HowToPlay() {
             <li>
               <strong>Starting credits</strong> are the same for both sides. <strong>Ore</strong> sets how rich the fields are:
               poor fields run dry quickly, rich ones are denser and wider.
+            </li>
+            <li>
+              <strong>Commander character</strong> (Varied by default): each computer commander fights in one of five ways, drawn
+              from the seed. {CHARACTER_IDS.map(c => `${CHARACTERS[c].name}: ${CHARACTERS[c].line}`).join(' ')} You are told which once
+              it first attacks or raids; scouting tells you sooner. The after-action review says what beats it.
+            </li>
+            <li>
+              <strong>Battlefield events</strong> (on by default): from about the fifth minute, every six to eight minutes, one of three.
+              A <em>supply drop</em> puts a crate per side near the middle, {DROP_VALUE.toLocaleString('en-GB')} credits and rising to the
+              first ground unit to reach it. An <em>ore strike</em> opens a fresh field in each side&apos;s forward ground. A{' '}
+              <em>relief column</em> joins whoever holds the beacon at the middle with armed units, unopposed, for{' '}
+              {RELIEF_HOLD_TICKS / 10} seconds. Each is announced, marked on the map and the minimap, and the computer races for them too.
             </li>
           </ul>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>

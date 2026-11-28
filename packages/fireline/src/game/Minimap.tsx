@@ -10,6 +10,7 @@ import { paintMiniTerrain } from './terrain';
 import { SITES } from '../sim/rules';
 import { SITE_ART } from './art';
 import { stealthSeen } from '../sim/sites';
+import { drawEventMarks } from './fx/events';
 import { isDetected } from '../sim/mission';
 
 const SCALE = 3;
@@ -240,6 +241,8 @@ export default function Minimap({
       ctx.stroke();
     }
     // round5:D end.
+    // Battlefield events (src/sim/events.ts): every live crate, beacon and ore strike, announced so always shown.
+    drawEventMarks(ctx, state, SCALE);
     for (const u of state.units) {
       const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
       if (u.owner !== 0 && !vis[k]) continue;

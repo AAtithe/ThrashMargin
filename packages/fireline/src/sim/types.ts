@@ -437,6 +437,8 @@ export interface AiMemory {
   engineeringFund?: number;
   // round5:C end.
   // round5:D begin. Neutral sites and tier three: optional AiMemory fields (its capture parties).
+  /** Battlefield events (aiEvents.ts): the party sent for a crate or the relief beacon. Absent or null: none. */
+  eventParty?: { item: number; ids: number[] } | null;
   /** Infantry parties sent to take neutral sites (aiSites.ts): the site, the party, and when it set out. */
   siteParties?: { site: number; ids: number[]; since: number }[];
   /** Sites given up on, and the tick each may be tried again. */
@@ -638,6 +640,9 @@ export interface GameState {
   sidePerks?: Partial<Record<Owner, Perks>>;
   /** Squads moving in formation (workstream D). Absent: none. Read by nothing until workstream D. */
   squads?: Squad[];
+
+  // ---- Battlefield events (2026-11-28; events.ts). Absent unless setup.events is on. ----------
+  events?: import('./events').BattleEvents;
 
   // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
   /** A battle generated from the planet war (fireline-planet-design.md, section 14). */

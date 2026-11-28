@@ -1797,6 +1797,16 @@ export interface SkirmishSetup {
    * it off without). Absent: off.
    */
   seasons?: boolean;
+  /**
+   * Commander characters (2026-11-28; characters.ts): each computer seat fights in one of five ways
+   * (Steady, Striker, Bulwark, Hunter, Builder), drawn from the seed text. Absent reads as off.
+   */
+  characters?: boolean;
+  /**
+   * Battlefield events (2026-11-28; events.ts): supply drops, ore strikes and a relief column arrive
+   * during the battle at seeded times and places, to be raced for. Absent reads as off.
+   */
+  events?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
@@ -1835,6 +1845,9 @@ export const DEFAULT_SETUP: SkirmishSetup = {
   // round7:adaptive begin
   adaptive: true,
   // round7:adaptive end
+  // Commander characters and battlefield events (2026-11-28): on for a new skirmish.
+  characters: true,
+  events: true,
 };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
@@ -1872,6 +1885,8 @@ export const LEGACY_SETUP: SkirmishSetup = {
   // round7:adaptive begin
   adaptive: false,
   // round7:adaptive end
+  characters: false,
+  events: false,
 };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };

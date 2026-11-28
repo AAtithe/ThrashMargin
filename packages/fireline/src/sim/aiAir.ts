@@ -217,10 +217,13 @@ function danger(cover: { x: number; y: number; r: number; b?: Building }[], x: n
   return n;
 }
 
+import { characterSpec } from './characters';
+
 export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number }, enemy: Building[], foes: Unit[]): void {
   if (s.mission || !techAllowed(s, owner, 'helipad')) return;
   const diff: Difficulty = owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
-  const d = difficultyFor(s, diff);
+  // Commander characters (characters.ts): the side's character, as the commander reads it; unchanged without one.
+  const d = characterSpec(s, owner, difficultyFor(s, diff));
   const over = AIR_FACTION_TACTICS[factionOf(s, owner)][diff];
   const t = over ? { ...AIR_TACTICS[diff], ...over } : AIR_TACTICS[diff];
   const p = s.players[owner];

@@ -85,7 +85,7 @@ function setups(ok: Ok): void {
     ok(JSON.stringify(base.generalPicks) === '[null,null]', `${name} states every seat's doctrine General: none`);
   }
   // round7:structures: the two structure toggles read absent as off, whatever the base (the lobby states them on).
-  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false }), 'an empty setup is still exactly the default, bar the structure toggles (off when absent)');
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify({ ...DEFAULT_SETUP, structureUpgrades: false, strategicBuildings: false, characters: false, events: false }), 'an empty setup is still exactly the default, bar the structure toggles (off when absent)');
   const n4 = normaliseSetup({ sides: 4 });
   ok(n4.factions!.length === 4 && n4.factions!.every(f => f === 'meridian'), 'four sides: four armies, all Meridian by default');
   ok(n4.generalPicks!.length === 4 && n4.generalPicks!.every(g => g === null), 'four sides: four doctrine picks, all none by default');

@@ -51,6 +51,7 @@ import { paintMiniTerrain } from './terrain';
 import { TerrainStore } from './terrainStore';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { drawSiteLayer } from './art';
+import { drawEventLayer } from './fx/events';
 import { stealthSeen } from '../sim/sites';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { drawGeneralAuras } from './art';
@@ -1245,6 +1246,8 @@ export class Renderer {
         if (until <= cur.tick || !isAlly(cur, side as Owner, 0)) continue;
         drawBatteryMark(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
       }
+    // Battlefield events (src/sim/events.ts): crates, the relief beacon and ore strikes, above the fog.
+    drawEventLayer(ctx, cur, t, !this.sparkle);
     // Edges of the world.
     ctx.fillStyle = '#050707';
     ctx.fillRect(-400, -400, MAP_W * TILE + 800, 400);

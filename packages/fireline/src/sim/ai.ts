@@ -25,7 +25,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, lineCount, oreLeft, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, log, oreLeft, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
@@ -53,6 +53,10 @@ import { WAVE_PATIENCE, armourThreat, bracing, counterPunch, holdWave, outmatche
 import { upkeepAllows } from './upkeep';
 import { holdOn } from './victory';
 import { siteCentre } from './sites';
+// Commander characters (2026-11-28; characters.ts): every hook returns its input unchanged when off.
+import { characterMix, characterNews, characterSpec, characterTactics } from './characters';
+// Battlefield events (2026-11-28; events.ts): the commander's party for a crate or the beacon.
+import { eventsPlan } from './aiEvents';
 /** Hold victory: how much nearer, in tiles, an enemy-held site counts as a wave's target. */
 const HOLD_SITE_BONUS = 12;
 import { adaptAfter, adaptMix, adaptObserve, adaptShare, adaptStage, adaptTarget, adaptWaveSize, adaptiveOn } from './aiAdapt';
@@ -267,9 +271,10 @@ function commander(s: GameState, owner: Owner): void {
   // The game pace (round 6) scales the attack timing; a mission always reads 'quick'.
   // round5:B begin. Larger maps (fireline-round5-design.md): the numbers scaled for the map's size
   // (aiScale.ts); 'standard' maps unchanged.
-  const d = scaledFor(s, tuned(difficultyFor(s, diff), mode));
+  // Commander characters (characters.ts): the side's character adjusts the scaled numbers and its tactics.
+  const d = characterSpec(s, owner, scaledFor(s, tuned(difficultyFor(s, diff), mode)));
   // round5:B end.
-  const t = TACTICS[diff];
+  const t = characterTactics(s, owner, TACTICS[diff]);
   const mem = s.ai[owner];
   normalise(mem);
   // round7:adaptive begin. A look round and the plan reconsidered, every few seconds (aiAdapt.ts).
@@ -476,6 +481,12 @@ function commander(s: GameState, owner: Owner): void {
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
       // round7:adaptive begin. The share answers what it has seen (aiAdapt.ts).
       riflemen = adaptShare(s, owner, 'rifleman', 'rocketeer', riflemen, 'infantry');
+      // Commander characters: the side's taste (characters.ts); unchanged without one.
+      {
+        const plain: [UnitKind, number][] = [['rifleman', riflemen], ['rocketeer', 1 - riflemen]];
+        const m = characterMix(s, owner, plain);
+        if (m !== plain) riflemen = m[0][1] / (m[0][1] + m[1][1]);
+      }
       // round7:adaptive end.
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
       if (upkeepAllows(s, owner, kind) && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
@@ -496,6 +507,15 @@ function commander(s: GameState, owner: Owner): void {
         const sum = m.reduce((a, [, w]) => a + w, 0);
         return [m[0][1] / sum, m[1][1] / sum];
       })(adaptMix(s, owner, [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]], 'vehicle').slice(0, 3));
+      // Commander characters: the side's taste (characters.ts); unchanged without one.
+      {
+        const plain: [UnitKind, number][] = [['tank', tank], ['buggy', buggy], ['artillery', 1 - tank - buggy]];
+        const m = characterMix(s, owner, plain);
+        if (m !== plain) {
+          const sum = m.reduce((a, [, w]) => a + w, 0);
+          [tank, buggy] = [m[0][1] / sum, m[1][1] / sum];
+        }
+      }
       // round7:adaptive end.
       let kind: UnitKind = roll < tank ? 'tank' : roll < tank + buggy ? 'buggy' : 'artillery';
       // Keep the raiding party up to strength once raids are due.
@@ -595,7 +615,10 @@ function commander(s: GameState, owner: Owner): void {
   // Advanced tech: get out from under an enemy missile while it is in the air.
   if (adv && t.dodge) dodgeMissiles(s, owner, units);
 
-  const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !retreating(u));
+  // Battlefield events (aiEvents.ts): a party racing for a crate or holding a beacon is out of the
+  // reserve, so no wave recruits it on its way. Nothing without events.
+  const inEvent = new Set(eventsPlan(s, owner, army.filter(u => !retreating(u)), new Set([...inWave, ...inRaid]), home, foes, diff));
+  const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !inEvent.has(u.id) && !retreating(u));
   const free = (u: Unit) => u.order.type === 'idle' || (u.order.type === 'move' && dist(u.order.x, u.order.y, stage.x, stage.y) < 4);
 
   // Defend the base: a structure hit lately, or armed enemies close to the yard.
@@ -663,6 +686,7 @@ function commander(s: GameState, owner: Owner): void {
         if (target) {
           raidIds = buggies.slice(0, t.raidSize).map(u => u.id);
           mem.raidTarget = target.id;
+          tellCharacter(s, owner);
           mem.nextRaid = s.tick; // While a raid is out, nextRaid holds the tick it set out.
           doAttack(s, owner, raidIds, target.id);
         }
@@ -739,6 +763,7 @@ function commander(s: GameState, owner: Owner): void {
         // round7:adaptive: at waveStage (the staging point itself unless the plan is a flank).
         doMove(s, owner, waveIds, waveStage.x, waveStage.y, true);
         // round6:D end.
+        tellCharacter(s, owner);
         mem.wave++;
         mem.nextAttack = s.tick + d.attackInterval;
       }
@@ -859,6 +884,20 @@ function keptBack(s: GameState, u: Unit): boolean {
   if (u.kind === 'general') return true;
   // round6:C end.
   return false;
+}
+
+/**
+ * Commander characters (characters.ts): the first time a computer side sends a wave or a raid, side 0
+ * is told what kind of commander it faces, once a battle. Nothing without characters.
+ */
+function tellCharacter(s: GameState, owner: Owner): void {
+  if (owner === 0) return;
+  const key = `character-${owner}`;
+  if (s.alarms[key] !== undefined) return;
+  const news = characterNews(s, owner);
+  if (!news) return;
+  s.alarms[key] = s.tick;
+  log(s, news, 'info');
 }
 
 /** Memory from a save made before these fields existed. */
@@ -1368,7 +1407,7 @@ function advancedUnits(
     // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
     if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
     // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
-    let kind = weighted(s, owner, adaptMix(s, owner, vehicles, 'vehicle'), roll) ?? 'tank';
+    let kind = weighted(s, owner, adaptMix(s, owner, characterMix(s, owner, vehicles), 'vehicle'), roll) ?? 'tank';
     // round7:adaptive end.
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
@@ -1407,7 +1446,7 @@ function advancedUnits(
       // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.
       if (army === 'meridian' && twoArmies) infantry.push(['sapper', fortified ? 1.5 : armourHeavy ? 1 : 0.6]);
       // round7:adaptive begin. The weights answer what it has seen (aiAdapt.ts); unchanged when off.
-      kind = weighted(s, owner, adaptMix(s, owner, infantry, 'infantry'));
+      kind = weighted(s, owner, adaptMix(s, owner, characterMix(s, owner, infantry), 'infantry'));
       // round7:adaptive end.
     }
     kind = kind ?? 'rifleman';
