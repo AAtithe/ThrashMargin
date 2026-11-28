@@ -7,6 +7,7 @@ import { setAutopilotAi } from '../src/sim/ai';
  *   npm run drive -- --seeds 60   a wider sweep
  *   npm run drive -- --campaign   only the campaign sections (missions, heroes, powers, perks)
  *   npm run drive -- --deep       the full development-lines and pace sweeps (npm run check runs a lighter sample)
+ *   npm run drive -- --near-check every target search by map cell (Grand War G0) is compared with the full scan
  *   npm run drive -- --fast       leaves out the heaviest whole-battle sections (DEEP_SECTIONS): what
  *                                 npm run check runs on every push and deploy; npm run check:deep runs all
  *
@@ -89,6 +90,7 @@ import { sections as structuresSections } from './drive-structures';
 import { sections as productionSections } from './drive-production';
 import { sections as upkeepSections } from './drive-upkeep';
 import { sections as continentalSections } from './drive-continental';
+import { sections as grandSections } from './drive-grand';
 // round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
 import { sections as formationsSections } from './drive-formations';
 // round7:review begin. The after-action review: its sections, from scripts/drive-review.ts.
@@ -135,6 +137,7 @@ import {
   type Owner,
   type UnitKind,
 } from '../src/sim/rules';
+import { setNearCheck } from '../src/sim/tick';
 import { addBuilding, addUnit, costFor, createInitialState, maxHpOf, migrateState, powerOf, readyStructure, visibility } from '../src/sim/state';
 import type { AiMode, Building, GameAction, GameState, MissionContext, MissionSpec, ObjectiveSpec, Perks, Unit } from '../src/sim/types';
 
@@ -158,6 +161,7 @@ const SEEDS = seedArg >= 0 ? Number(args[seedArg + 1]) : 20;
  * also has quick checks that stay in the fast tier; what moves out is the long-battle evidence.
  */
 const FAST = args.includes('--fast');
+if (args.includes('--near-check')) setNearCheck(true);
 const DEEP_SECTIONS = new Set([
   'Bigger battles: whole battles of three and four sides',
   'Larger maps: whole battles',
@@ -180,6 +184,7 @@ const DEEP_SECTIONS = new Set([
   'Review: recording never changes play',
   'Continental: replay through a save',
   'Hold victory: computer battles',
+  'Grand War G0: a long battle saved',
 ]);
 let skipped = 0;
 /** `--campaign` runs only the campaign sections (missions, heroes, powers, perks). */
@@ -2872,6 +2877,8 @@ if (!CAMPAIGN_ONLY) {
     ...upkeepSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Bigger maps (2026-11-27): Continental, routes over regions, ground-from-seed saves.
     ...continentalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Grand War G0 (fireline-grand-war-design.md): saves as tables, from scripts/drive-grand.ts.
+    ...grandSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   // A renamed section would drop out of the list unnoticed and run in the fast tier; say so.
   for (const name of DEEP_SECTIONS) ok(freeplay.some(([n]) => n === name), `the deep-only section "${name}" exists`);

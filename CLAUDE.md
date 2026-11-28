@@ -140,6 +140,12 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   walkable tile goes in both `isWalkable` (`map.ts`) and `walkCode` (`grid.ts`). Their saves pack the
   per-tile fields (`src/sim/pack.ts`; `migrateState` unpacks first), or a four-sided vast save would pass
   the portal's 512 KB limit. Tested in `scripts/drive-vast.ts`, inside `npm run drive:fire`.
+- **Fireline's Grand War** (`fireline-grand-war-design.md`) merges skirmish and War for the Planet into
+  one real-time mode, built in phases G0 to G5. Packed saves (vast and Continental) keep units, structures
+  and the commanders' memory as tables (`packRows`, `pack.ts`); `scripts/save-size.ts` shows what a long
+  save is made of. Target finding reads units by map cell (`nearIndex`, `tick.ts`) and must pick exactly
+  what the full scan picks: run `npm run drive -- --near-check` after touching `acquire`, the unit loop or
+  anything that moves units. `scripts/perf-crowd.ts` times a tick at Grand War's crowd (700 units).
 - **Fireline's ground is held in chunks** (`src/game/terrainStore.ts`), on every map size: 512-pixel
   squares painted near the camera by a worker, the furthest dropped past a 96 MB budget, so memory
   follows the screen, not the map. `createTerrainPainter` (`terrain.ts`) paints any region; anything it

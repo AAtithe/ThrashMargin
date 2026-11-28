@@ -8,6 +8,7 @@
  *   tsx scripts/perf-fire.ts --size large --sides 2  one size and side count only
  *   tsx scripts/perf-fire.ts --from 20 --to 30 --seed perf-1 --mode teams
  *   tsx scripts/perf-fire.ts --dump late.json --to 25  a late-game huge battle saved as JSON (perf-render.cjs loads it)
+ *   tsx scripts/perf-fire.ts --size continental --sides 4 --grand  with the full economy, as Grand War plays (G0)
  *
  * The client runs ten ticks a second, so a median under 4 ms and a 99th percentile under 25 ms
  * leave the frame its budget. Times are wall-clock on this machine: compare runs on one machine.
@@ -27,6 +28,9 @@ const FROM = Number(arg('from', '20'));
 const TO = Number(arg('to', '30'));
 const SEED = arg('seed', 'perf-1');
 const MODE = arg('mode', 'teams') as SideMode;
+/** Grand War G0: the full economy, research lines and neutral sites, at the long pace. */
+const GRAND = args.includes('--grand');
+const GRAND_SETUP = { research: 'lines', pace: 'long', sites: true, industry: true, supply: true, territory: true, production: true, upkeep: true, seasons: true } as const;
 
 function percentile(sorted: number[], p: number): number {
   if (!sorted.length) return 0;
@@ -39,7 +43,7 @@ export function measure(size: MapSize, sides: 2 | 3 | 4, from = FROM, to = TO, s
     difficulty: 'normal',
     createdAt: 0,
     autopilot: true,
-    setup: { map: 'random', tech: 'advanced', sides, mode: sides > 2 ? MODE : 'ffa', size },
+    setup: { map: 'random', tech: 'advanced', sides, mode: sides > 2 ? MODE : 'ffa', size, ...(GRAND ? GRAND_SETUP : {}) },
   });
   const start = from * 600;
   const end = to * 600;

@@ -174,6 +174,96 @@ interface Ctx {
   infantrySpeed: number[];
   /** What the aircraft borrow from here (air.ts). */
   air: AirHooks;
+  /** Grand War G0: the units by map cell for target finding, built on first use (`nearIndex`). */
+  near?: Near | null;
+}
+
+// ---- Target finding by map cell (Grand War G0, fireline-grand-war-design.md) ------------------------
+//
+// acquire used to test every unit on the map, so its cost grew with the square of the armies; a
+// four-sided Continental game with seven hundred units spent most of its tick there. The index puts
+// each unit's position in s.units into a NEAR_CELL-tile cell; a search reads only the cells round its
+// square, widened by NEAR_MARGIN, and visits the candidates in s.units order, so it picks exactly the
+// unit the full scan picked (ties go to the first in the list, as before). Built once a tick on first
+// use; the unit loop moves each unit's entry after its update; anything that may move units outside
+// the loop drops the index (`ctx.near = null`), and a units array replaced wholesale is noticed by
+// identity. Units appended after the build are scanned one by one. `setNearCheck(true)` (the
+// harness) runs the full scan beside every search and throws on any difference.
+
+const NEAR_CELL = 8;
+/** Tiles a unit may have moved since its entry was made (another unit's update can shift it). */
+const NEAR_MARGIN = 3;
+
+interface Near {
+  arr: Unit[];
+  len: number;
+  cols: number;
+  cells: Map<number, number[]>;
+  /** Per index in arr: its cell. */
+  cellOf: Int32Array;
+}
+
+let nearCheck = false;
+/** The harness's exactness check: every indexed search is compared with the full scan. */
+export function setNearCheck(on: boolean): void {
+  nearCheck = on;
+}
+
+function nearIndex(s: GameState, ctx: Ctx): Near {
+  if (ctx.near && ctx.near.arr === s.units && s.units.length >= ctx.near.len) return ctx.near;
+  const cols = Math.ceil(s.mapW / NEAR_CELL) + 1;
+  const cells = new Map<number, number[]>();
+  const cellOf = new Int32Array(s.units.length);
+  s.units.forEach((u, i) => {
+    const c = Math.floor(u.y / NEAR_CELL) * cols + Math.floor(u.x / NEAR_CELL);
+    cellOf[i] = c;
+    const list = cells.get(c);
+    if (list) list.push(i);
+    else cells.set(c, [i]);
+  });
+  ctx.near = { arr: s.units, len: s.units.length, cols, cells, cellOf };
+  return ctx.near;
+}
+
+/** After unit i of the indexed array has moved: its entry follows it. */
+function nearMoved(ctx: Ctx, arr: Unit[], i: number): void {
+  const n = ctx.near;
+  if (!n || n.arr !== arr || i >= n.len) return;
+  const u = arr[i];
+  const c = Math.floor(u.y / NEAR_CELL) * n.cols + Math.floor(u.x / NEAR_CELL);
+  const was = n.cellOf[i];
+  if (c === was) return;
+  const old = n.cells.get(was)!;
+  old.splice(old.indexOf(i), 1);
+  const list = n.cells.get(c);
+  if (list) list.push(i);
+  else n.cells.set(c, [i]);
+  n.cellOf[i] = c;
+}
+
+/** Indices into s.units that may lie within `range` of (x, y), in list order. */
+function nearCandidates(s: GameState, ctx: Ctx, x: number, y: number, range: number): Uint32Array {
+  const n = nearIndex(s, ctx);
+  const r = range + NEAR_MARGIN;
+  const c0 = Math.max(0, Math.floor((x - r) / NEAR_CELL));
+  const c1 = Math.floor((x + r) / NEAR_CELL);
+  const r0 = Math.max(0, Math.floor((y - r) / NEAR_CELL));
+  const r1 = Math.floor((y + r) / NEAR_CELL);
+  let count = 0;
+  for (let row = r0; row <= r1; row++)
+    for (let col = c0; col <= Math.min(c1, n.cols - 1); col++) count += n.cells.get(row * n.cols + col)?.length ?? 0;
+  const tail = s.units.length - n.len;
+  const out = new Uint32Array(count + tail);
+  let k = 0;
+  for (let row = r0; row <= r1; row++)
+    for (let col = c0; col <= Math.min(c1, n.cols - 1); col++) {
+      const list = n.cells.get(row * n.cols + col);
+      if (list) for (const i of list) out[k++] = i;
+    }
+  // A typed array sorts numerically, and fast.
+  out.subarray(0, count).sort();
+  for (let i = n.len; i < s.units.length; i++) out[k++] = i;
+  return out;
 }
 
 const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air', 'naval'];
@@ -194,7 +284,7 @@ export function step(s: GameState): void {
   };
   ctx.air = {
     lookup: id => lookup(ctx, id),
-    acquire: (owner, x, y, range, w) => acquire(s, owner, x, y, range, false, w),
+    acquire: (owner, x, y, range, w) => acquire(s, owner, x, y, range, false, w, ctx),
     fire: (owner, sx, sy, w, t, shooter, mul) => fire(s, owner, sx, sy, w, t, shooter, mul),
     nextOrder,
   };
@@ -225,7 +315,17 @@ export function step(s: GameState): void {
   // round6:C begin. Generals (fireline-round6-design.md): the command aura scan, one call under this line.
   generalsStep(s);
   // round6:C end.
-  for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
+  {
+    const arr = s.units;
+    for (let i = 0; i < arr.length; i++) {
+      const u = arr[i];
+      if (u.hp <= 0) continue;
+      updateUnit(s, ctx, u);
+      nearMoved(ctx, arr, i);
+    }
+  }
+  // Grand War G0: what follows may move, add or replace units; the index is built again on first use.
+  ctx.near = null;
   // The air war: infantry climbing into Troop Carriers, and carriers setting them down.
   transportStep(s);
   // round7:structures begin. Infantry going into Fortified Bunkers. A no-op without strategic structures.
@@ -692,32 +792,42 @@ function sparedKinds(s: GameState): BuildingKind[] | null {
  * Nearest enemy within range, preferring things that shoot back over things that do not. Only what
  * the weapon can reach: aircraft when it hits the air (hitsAir), the ground when it hits the ground.
  */
-function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly: boolean, w: Weapon): number {
+function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly: boolean, w: Weapon, ctx?: Ctx): number {
   const team = teamOf(s, owner);
   const air = hitsAir(w);
   const ground = hitsGround(w);
   const naval = hitsNaval(w);
   let best = 0;
   let bestScore = Infinity;
-  for (const e of s.units) {
+  const consider = (e: Unit): void => {
     // The cheapest test first: anything outside the square round the range is out of it. (Only
     // filters are reordered, so the pick is the same; it matters on vast maps' bigger armies.)
     const ex = e.x - x;
     const ey = e.y - y;
-    if (ex > range || ex < -range || ey > range || ey < -range) continue;
-    if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
+    if (ex > range || ex < -range || ey > range || ey < -range) return;
+    if (e.hp <= 0 || teamOf(s, e.owner) === team) return;
     const cat = UNITS[e.kind].category;
-    if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) continue;
+    if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) return;
     const d = dist(x, y, e.x, e.y);
-    if (d > range) continue;
+    if (d > range) return;
     // A Spy nobody has spotted is never picked as a target.
-    if ((e.kind === 'spy' || UNITS[e.kind].stealth) && !seenBy(s, e, owner)) continue;
+    if ((e.kind === 'spy' || UNITS[e.kind].stealth) && !seenBy(s, e, owner)) return;
     const score = d + (unitSpecOf(s, e).weapon ? 0 : 1.5);
     if (score < bestScore) {
       bestScore = score;
       best = e.id;
     }
-  }
+  };
+  if (ctx) {
+    for (const i of nearCandidates(s, ctx, x, y, range)) consider(s.units[i]);
+    if (nearCheck) {
+      const got = best;
+      best = 0;
+      bestScore = Infinity;
+      for (const e of s.units) consider(e);
+      if (got !== best) throw new Error(`acquire by cell picked ${got}, the full scan ${best} (tick ${s.tick}, at ${x}, ${y}, range ${range})`);
+    }
+  } else for (const e of s.units) consider(e);
   if (unitsOnly || !ground) return best;
   const spare = owner === 0 ? sparedKinds(s) : null;
   for (const b of s.buildings) {
@@ -926,7 +1036,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     // The Spy never picks targets of its own: it fires only when ordered to.
     if (u.kind !== 'spy' && (s.tick + u.id) % 4 === 0 && (!current || u.order.type === 'idle')) {
       const range = u.order.type === 'idle' && stance !== 'aggressive' ? w.range + 0.5 : spec.sight + 1;
-      const found = acquire(s, u.owner, u.x, u.y, range, false, w);
+      const found = acquire(s, u.owner, u.x, u.y, range, false, w, ctx);
       if (found && (!current || u.order.type === 'attackMove')) u.engage = found;
     }
   }
@@ -1293,7 +1403,7 @@ function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   if (t && (distToTarget(cx, cy, t) > w.range || !canHit(w, t))) t = null;
   if (t?.unit && (t.unit.kind === 'spy' || UNITS[t.unit.kind].stealth) && !seenBy(s, t.unit, b.owner)) t = null;
   if (!t && (s.tick + b.id) % 4 === 0) {
-    const found = acquire(s, b.owner, cx, cy, w.range, true, w);
+    const found = acquire(s, b.owner, cx, cy, w.range, true, w, ctx);
     t = found ? lookup(ctx, found) : null;
   }
   b.engage = t ? (t.unit ? t.unit.id : t.building!.id) : 0;
@@ -1347,7 +1457,7 @@ function bunkerFire(s: GameState, ctx: Ctx, b: Building): void {
     if (t && (distToTarget(cx, cy, t) > range || distToTarget(cx, cy, t) < (w.minRange ?? 0) || !canHit(w, t))) t = null;
     if (t?.unit && (t.unit.kind === 'spy' || UNITS[t.unit.kind].stealth) && !seenBy(s, t.unit, b.owner)) t = null;
     if (!t && (s.tick + g.id) % 4 === 0) {
-      const found = acquire(s, b.owner, cx, cy, range, false, w);
+      const found = acquire(s, b.owner, cx, cy, range, false, w, ctx);
       t = found ? lookup(ctx, found) : null;
       if (t && distToTarget(cx, cy, t) < (w.minRange ?? 0)) t = null;
     }

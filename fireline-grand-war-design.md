@@ -167,4 +167,56 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 
 ## Build log
 
-(none yet)
+### 2026-11-28: G0, foundations (saves and target finding)
+
+Measured first, on a four-sided Continental battle with the full economy (`scripts/save-size.ts`,
+seed size-1, the computer on every seat). The packed save before this phase: 92 KB at minute 10,
+130 at 20, 152 at 30, 164 at 50. Units were more than half of it (about 360 bytes each, most of them
+key names and idle defaults), the adaptive commanders' memory a fifth.
+
+**1. Saves as tables** (`src/sim/pack.ts`, `packRows` and `unpackRows`). In a packed save (every map
+wider than the balanced sizes: vast and Continental) units, structures and each adaptive commander's
+`seen` and `sites` lists are kept as tables: each distinct key order once, each column's commonest
+value once, and per object a mask and only the values that differ. Exact both ways: key order, every
+value (denormals included), keys holding undefined left out as JSON leaves them, defaults returned as
+fresh copies. A packed save carries `tables: 1`; one without it (every save made before) loads exactly
+as it did; an unknown version or a malformed table is refused rather than loaded half-made. Nothing
+changes for standard, large and huge battles, campaign missions or planet battles, which are never
+packed. The server stores what the client sends and never reads units, so it needed no change.
+
+Same battle, same seed, after: 49 KB at minute 10, 68 at 20, 81 at 30, 91 at 50 (about 45% smaller
+throughout). A second seed (g0-long, the deep harness section) peaks at 126 KB in its first thirty
+minutes. Unit positions are now most of what remains: full-precision floats, kept because rounding
+would break exact replay through a save.
+
+**2. Target finding by map cell** (`src/sim/tick.ts`, `nearIndex`, `nearCandidates`). `acquire`
+tested every unit on the map, so its cost grew with the square of the armies. Units are now indexed
+by 8-tile cell, built once a tick on first use; a search reads the cells round its square, widened by
+a 3-tile margin, and visits the candidates in list order so it picks exactly the unit the full scan
+picked, ties included. The unit loop moves each unit's entry after its update; anything after the loop
+drops the index; a replaced units array is noticed by identity; units added during the loop are
+scanned one by one. `npm run drive -- --near-check` runs the full scan beside every indexed search and
+throws on any difference.
+
+Tick time with a Grand War's crowd (`scripts/perf-crowd.ts`: minute 12 of the same battle, filled to
+737 units, half of them attack-moving to the middle; 900 ticks, one per call, under `tsx`):
+
+| | median | p95 | p99 |
+|---|---|---|---|
+| full scan (before) | 15.1 ms | 25.7 ms | 36.1 ms |
+| by cell (after) | 13.0 ms | 24.1 ms | 32.7 ms |
+
+The budget (p99 under 40 ms at 700 units) is met. The gain is modest because target finding was a
+smaller share than the 2026-11-27 log assumed. The window's CPU profile puts the rest in route finding
+(`tilePath`), the per-tick state copy, garbage collection and, only under `tsx`, the getters it
+generates for module exports (about 15%, absent from the browser build). Those are the next
+performance items if G1's cities push the crowd past this.
+
+**3. Deferred to G1.** The `setup.grand` block is not added yet: an empty field with no rule behind it
+would be dead weight in every save. It arrives with the first rule that reads it (cities).
+
+**Checks.** `scripts/drive-grand.ts` (new, inside `npm run drive`): the table format (round trip, key
+order, undefined keys, fresh defaults, wide objects, six malformed cases refused), saves as tables
+(exact load, pre-table saves unchanged, unknown version and malformed tables refused, two minutes of
+play identical after loading), and a deep-only thirty-minute battle saved and reloaded every five
+minutes under 150 KB. `npm run drive -- --fast --near-check`: 348,770 assertions, none failed.
