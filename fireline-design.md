@@ -3648,7 +3648,7 @@ no aircraft, rising values, the cap, expiry); ore strikes (whole numbers, equal 
 saves (exact round trip, junk and bad entries dropped, events dropped with the setup off, a junk party
 memory harmless); whole computer battles that finish, replay byte-identically and through a save at ten
 minutes, and claim events; purity (no dice, no clock; an illegal action returns the same state).
-`npm run check` all passed (Fireline fast tier 349,496 assertions, campaign 7,713, War for the Planet
+Fireline deep tier 424,092 assertions, 0 failed; `npm run check` all passed (Fireline fast tier 349,496 assertions, campaign 7,713, War for the Planet
 33,564, every other game's suite); `npm run tours fireline` ok; `check:ui fireline` 32 of 32. In Chromium:
 the Commander character and Battlefield events fields in light and dark, and a live battle drawing crates,
 ore-strike rings and the beacon with a hold under way, no page errors.
