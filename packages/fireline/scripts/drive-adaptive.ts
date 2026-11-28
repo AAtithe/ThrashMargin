@@ -98,7 +98,7 @@ function setupField(ok: Ok): void {
   }
   const keys = Object.keys(normaliseSetup({}));
   // Commander characters and battlefield events (2026-11-28) follow it.
-  ok(keys[keys.length - 3] === 'adaptive' && keys.slice(-2).join() === 'characters,events', 'adaptive is the last field before characters and events');
+  ok(keys[keys.length - 4] === 'adaptive' && keys.slice(-3).join() === 'characters,events,highTiers', 'adaptive is the last field before characters and events');
   // A save from before round 7: its setup has no field, and it loads off.
   const s = newBattle('adapt-old-save', 'hard', { map: 'random' });
   const raw = copy(s);
