@@ -155,6 +155,10 @@ export type UnitKind =
   | 'pathfinder'
   | 'atomictank'
   | 'stratos'
+  // High tiers, later the same day: the Vanguard, the Sea Commando and the Shadow Bomber.
+  | 'vanguard'
+  | 'seacommando'
+  | 'shadowbomber'
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -277,6 +281,8 @@ export interface UnitSpec {
   untouchable?: true;
   /** Stratos: enemies within DESIGNATE_RADIUS of it take DESIGNATE_DAMAGE from its side. */
   designator?: true;
+  /** The rank it is trained at (the Vanguard: 2, Elite). */
+  startVet?: 1 | 2;
 }
 
 export interface BuildingSpec {
@@ -966,6 +972,52 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     designator: true,
     tier: 5,
   },
+  vanguard: {
+    name: 'Vanguard',
+    category: 'infantry',
+    cost: 600,
+    buildTicks: 90,
+    hp: 200,
+    armor: 'infantry',
+    speed: 0.065,
+    sight: 6,
+    weapon: { kind: 'bullet', damage: 18, range: 4.5, cooldown: 8 },
+    requires: ['barracks', 'protoworks'],
+    blurb: 'Tier three. Elite warriors: trained at Elite rank, so they hit 30% harder, reload a quarter faster and patch themselves up between fights. Three times a rifleman\'s health and a heavier rifle.',
+    startVet: 2,
+    tier: 3,
+  },
+  seacommando: {
+    name: 'Sea Commando',
+    category: 'infantry',
+    cost: 800,
+    buildTicks: 110,
+    hp: 120,
+    armor: 'infantry',
+    speed: 0.075,
+    sight: 6,
+    weapon: { kind: 'shell', damage: 110, range: 1.75, cooldown: 40, splash: 0.6 },
+    requires: ['barracks', 'battlecommand'],
+    blurb: 'Tier four. Special forces in black: unseen and untargetable unless an enemy is within two and a half tiles, or for three seconds after a charge goes off. Limpet and satchel charges wreck structures, armour and ships.',
+    stealth: true,
+    tier: 4,
+  },
+  shadowbomber: {
+    name: 'Shadow Bomber',
+    category: 'air',
+    cost: 3600,
+    buildTicks: 300,
+    hp: 420,
+    armor: 'aircraft',
+    speed: 0.2,
+    sight: 7,
+    weapon: { kind: 'bomb', damage: 140, range: 3.5, cooldown: 4, splash: 1.5, canHitAir: false },
+    requires: ['helipad', 'reactor'],
+    airRole: 'bomb',
+    blurb: 'Tier five. A stealth bomber: flak and fighters cannot see it beyond two and a half tiles, except for three seconds after each bomb. Six heavy bombs in one run.',
+    stealth: true,
+    tier: 5,
+  },
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -1194,7 +1246,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     power: -100,
     sight: 4,
     requires: ['researchlab', 'techcentre'],
-    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress. Draws heavy power.',
+    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress (with high tiers on, the Outrider, Mechanised Infantry, Vanguard and Scout Drone too). Draws heavy power.',
   },
   fortress: {
     name: 'Fortress',
@@ -1418,7 +1470,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     power: -120,
     sight: 12,
     requires: ['protoworks', 'strikecommand', 'helipad', 'researchlab'],
-    blurb: 'Tier four. Needs a Prototype Works, Strike Command, Helipad and three finished upgrades. Unlocks the Rotary Cannon, Strike Drone and Pathfinder, and every unit your producers turn out while it stands arrives a Veteran.',
+    blurb: 'Tier four. Needs a Prototype Works, Strike Command, Helipad and three finished upgrades. Unlocks the Rotary Cannon, Sea Commando, Strike Drone and Pathfinder, and every unit your producers turn out while it stands arrives a Veteran.',
     tier: 4,
     researchNeeded: 3,
   },
@@ -1432,7 +1484,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     power: 250,
     sight: 6,
     requires: ['battlecommand', 'techcentre', 'uplink'],
-    blurb: 'Tier five. Needs Battlefield Command, a Tech Centre, a Comms Uplink and five finished upgrades. Unlocks the Atomic Tank and the Stratos, and makes a great deal of power. Destroyed, it melts down over every enemy within three and a half tiles.',
+    blurb: 'Tier five. Needs Battlefield Command, a Tech Centre, a Comms Uplink and five finished upgrades. Unlocks the Atomic Tank, the Stratos and the Shadow Bomber, and makes a great deal of power. Destroyed, it melts down over every enemy within three and a half tiles.',
     tier: 5,
     researchNeeded: 5,
     meltdown: true,
@@ -1506,6 +1558,9 @@ export const INFANTRY_MENU: UnitKind[] = [
   // round6:C begin. Generals: the field General, if C lists it here.
   'general',
   // round6:C end.
+  // High tiers: last, so turning them on moves no item already listed.
+  'vanguard',
+  'seacommando',
 ];
 export const VEHICLE_MENU: UnitKind[] = [
   'hauler',
@@ -1538,7 +1593,7 @@ export const VEHICLE_MENU: UnitKind[] = [
 /** Aircraft in the order the Air tab offers them. */
 export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber',
   // High tiers (2026-11-28): the drone section and the high-altitude planes, last.
-  'scoutdrone', 'strikedrone', 'pathfinder', 'stratos'];
+  'scoutdrone', 'strikedrone', 'pathfinder', 'stratos', 'shadowbomber'];
 /** Ships in the order the Naval tab offers them. */
 export const NAVAL_MENU: UnitKind[] = ['gunboat', 'destroyer', 'landingcraft', 'submarine', 'battleship'];
 
@@ -2233,6 +2288,7 @@ export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber:
   strikedrone: 1,
   pathfinder: 36,
   stratos: 40,
+  shadowbomber: 6,
 };
 /** Ticks on its Helipad to put back one load (Air frames shortens it). */
 export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25, interceptor: 14, reconplane: 10, heavybomber: 30,
@@ -2242,6 +2298,7 @@ export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bom
   strikedrone: 30,
   pathfinder: 10,
   stratos: 12,
+  shadowbomber: 26,
 };
 /** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
 export const BOMB_GAP = 4;
@@ -2742,7 +2799,7 @@ export const STEALTH_REVEAL_TICKS = 30;
 /** The computer turns to tier three no sooner than this: 25 minutes. */
 export const TIER3_AI_TICKS = 15000;
 // High tiers (2026-11-28; hightiers.ts, aiTiers.ts). Every kind the setup's highTiers field governs.
-export const HIGH_TIER_KINDS: readonly (BuildingKind | UnitKind)[] = ['outrider', 'mechinf', 'scoutdrone', 'battlecommand', 'rotarygun', 'strikedrone', 'pathfinder', 'reactor', 'atomictank', 'stratos'];
+export const HIGH_TIER_KINDS: readonly (BuildingKind | UnitKind)[] = ['outrider', 'mechinf', 'scoutdrone', 'battlecommand', 'rotarygun', 'strikedrone', 'pathfinder', 'reactor', 'atomictank', 'stratos', 'vanguard', 'seacommando', 'shadowbomber'];
 /** Mechanised Infantry: ticks standing still before the squad is out, and what the squad gives. */
 export const DISMOUNT_TICKS = 20;
 export const DISMOUNT_DAMAGE = 1.5;

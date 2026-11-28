@@ -3726,3 +3726,21 @@ promotion; the Hard commander raising tiers four and five and fielding them; a w
 replaying byte-identically, off and absent playing the same battle; purity. The existing setup-shape
 assertions (drive, lines, size, factions, variety, planet battle) now include the new key.
 `ai-ladder` takes `--high-tiers`.
+
+**Later the same day: elite warriors, sea commandos and a stealth bomber.** The player asked how
+Spies and Commandos are built (they are heroes: Heroes on in the customise step, a Command Academy,
+one of each; How to play and the high-tiers block now say so) and for stealth bombers, Navy-SEAL-style
+special forces and elite warriors. Three more high-tier units, original names:
+
+| Unit | Tier | Cost | What makes it different |
+|---|---|---|---|
+| Vanguard | 3 (Barracks, Prototype Works) | 600 | Elite warriors: trained at Elite rank (`startVet`), 200 health, heavier rifle (18, range 4.5) |
+| Sea Commando | 4 (Barracks, Battlefield Command) | 800 | Special forces with the Stealth Tank's stealth (unseen beyond 2.5 tiles, seen 3 s after a charge), charges (110, splash 0.6) that wreck structures, armour and ships. They do not swim: amphibious movement would need a third movement layer in the path search |
+| Shadow Bomber | 5 (Helipad, Reactor Complex) | 3600 | Stealth bomber: the same stealth, so flak and Interceptors see it only close up or for 3 s after each bomb; six bombs (140, splash 1.5) in one run |
+
+Stealth was already generic (`stealthSeen`, the bomb's projectile carries its shooter), so no rule
+changed for the two stealthy units. The computer trains Vanguards (Easy 2, Normal 3, Hard 4) and Sea
+Commandos (Normal 1, Hard 2), taking back a line soldier not yet started when its Barracks' queue is
+full, and flies a Shadow Bomber on Hard with its bomber strikes. Harness: the Vanguard arrives Elite;
+a Sea Commando and a Shadow Bomber sit beside a Flak Cannon and a rifleman for sixty ticks unseen and
+unhurt; the commander fields Vanguards.

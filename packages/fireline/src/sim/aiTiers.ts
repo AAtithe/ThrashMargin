@@ -2,7 +2,7 @@ import { canQueue, doMove, doQueue } from './commands';
 import { refundGoods } from './industry';
 import { airRoom } from './air';
 import { DIFFICULTIES, TIER3_HIGH_AI_TICKS, TIER4_AI_TICKS, TIER5_AI_TICKS, UNITS, type BuildingKind, type Difficulty, type Owner, type UnitKind } from './rules';
-import { costFor, countBuildings, highTiersOn, lineCount, powerOf, researchShort, unlocked } from './state';
+import { costFor, countBuildings, highTiersOn, lineCount, powerOf, queueCap, researchShort, unlocked } from './state';
 import { buildingSpec, unitSpec, unitSpecOf } from './specs';
 import type { GameState, Unit } from './types';
 
@@ -37,12 +37,15 @@ interface TierTactics {
   tier5: boolean;
   atomic: number;
   stratos: number;
+  vanguards: number;
+  seaCommandos: number;
+  shadowBombers: number;
 }
 
 const TIER_TACTICS: Record<Difficulty, TierTactics> = {
-  easy: { outriders: 1, mech: 1, scoutDrones: 0, tier4: false, rotary: 0, strikeDrones: 0, pathfinders: 0, tier5: false, atomic: 0, stratos: 0 },
-  normal: { outriders: 2, mech: 2, scoutDrones: 1, tier4: true, rotary: 2, strikeDrones: 2, pathfinders: 0, tier5: true, atomic: 1, stratos: 1 },
-  hard: { outriders: 2, mech: 3, scoutDrones: 1, tier4: true, rotary: 3, strikeDrones: 3, pathfinders: 1, tier5: true, atomic: 2, stratos: 1 },
+  easy: { outriders: 1, mech: 1, scoutDrones: 0, tier4: false, rotary: 0, strikeDrones: 0, pathfinders: 0, tier5: false, atomic: 0, stratos: 0, vanguards: 2, seaCommandos: 0, shadowBombers: 0 },
+  normal: { outriders: 2, mech: 2, scoutDrones: 1, tier4: true, rotary: 2, strikeDrones: 2, pathfinders: 0, tier5: true, atomic: 1, stratos: 1, vanguards: 3, seaCommandos: 1, shadowBombers: 0 },
+  hard: { outriders: 2, mech: 3, scoutDrones: 1, tier4: true, rotary: 3, strikeDrones: 3, pathfinders: 1, tier5: true, atomic: 2, stratos: 1, vanguards: 4, seaCommandos: 2, shadowBombers: 1 },
 };
 
 /** Ticks between two sorties of a Stratos or a scout over the enemy's army. */
@@ -78,8 +81,31 @@ export function tiersPlan(s: GameState, owner: Owner, home: Pt, enemyHome: Pt, u
     const want = order.find(([k, n]) => queued(k) < n && unlocked(s, owner, k));
     if (want && fund(s, owner, unitSpec(s, owner, want[0]).cost) && canQueue(s, owner, 'vehicle', want[0])) doQueue(s, owner, 'vehicle', want[0]);
   }
+  // Infantry: the Vanguard and the Sea Commando. The commander keeps its Barracks' queue full of
+  // line infantry, so one not yet started gives way (refunded) when the queue has no room.
+  {
+    const order: [UnitKind, number][] = [
+      ['seacommando', t.seaCommandos],
+      ['vanguard', t.vanguards],
+    ];
+    const want = order.find(([k, n]) => queued(k) < n && unlocked(s, owner, k));
+    if (want) {
+      const q = p.queues.infantry;
+      if (q.length >= queueCap(s, owner, 'infantry')) {
+        for (let i = q.length - 1; i >= 0; i--) {
+          if (q[i].progress !== 0 || UNITS[q[i].kind as UnitKind]?.tier) continue;
+          const [item] = q.splice(i, 1);
+          p.credits += costFor(s, owner, item.kind);
+          refundGoods(p, item);
+          break;
+        }
+      }
+      if (fund(s, owner, unitSpec(s, owner, want[0]).cost) && canQueue(s, owner, 'infantry', want[0])) doQueue(s, owner, 'infantry', want[0]);
+    }
+  }
   if (airRoom(s, owner) > 0 && p.queues.air.length === 0) {
     const order: [UnitKind, number][] = [
+      ['shadowbomber', t.shadowBombers],
       ['stratos', t.stratos],
       ['strikedrone', t.strikeDrones],
       ['pathfinder', t.pathfinders],

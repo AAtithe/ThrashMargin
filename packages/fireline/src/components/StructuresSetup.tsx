@@ -40,7 +40,7 @@ function Toggle({ label, testid, on, disabled, onPick, note }: { label: string; 
 function highTiersNote(setup: SkirmishSetup): string {
   if (setup.tech !== 'advanced') return 'Advanced tech only.';
   if (!setup.highTiers) return 'Off: tier three is the top of the tree.';
-  return 'Tier three adds the Outrider, Mechanised Infantry and Scout Drone. Tier four, Battlefield Command (three upgrades researched first): the Rotary Cannon, Strike Drone and Pathfinder. Tier five, the Reactor Complex (five upgrades): the Atomic Tank and the Stratos, which nothing can shoot down.';
+  return 'Tier three adds the Outrider, Mechanised Infantry, Vanguard and Scout Drone. Tier four, Battlefield Command (three upgrades researched first): the Rotary Cannon, Sea Commando, Strike Drone and Pathfinder. Tier five, the Reactor Complex (five upgrades): the Atomic Tank, the Stratos, which nothing can shoot down, and the Shadow Bomber.';
 }
 
 export function StructuresSetup({ value, set }: { value: SkirmishSetup; set: (patch: Partial<SkirmishSetup>) => void }) {

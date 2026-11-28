@@ -13,6 +13,8 @@ import { designateMul, isDismounted } from '../src/sim/hightiers';
 import { weaponOf } from '../src/sim/loadout';
 import {
   AIR_MENU,
+  INFANTRY_MENU,
+  STEALTH_DETECT_RANGE,
   BREACH_DAMAGE,
   BREACH_RADIUS,
   BUILD_MENU,
@@ -100,7 +102,8 @@ function setup(ok: Ok): void {
   ok(JSON.stringify(BUILD_MENU.slice(-2)) === JSON.stringify(['battlecommand', 'reactor']), 'the two structures close the Structures list');
   ok(JSON.stringify(VEHICLE_MENU.slice(-4)) === JSON.stringify(['outrider', 'mechinf', 'rotarygun', 'atomictank']), 'the four vehicles close the Vehicles list');
   ok(JSON.stringify(AIR_MENU.slice(0, 6)) === JSON.stringify(['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber']), 'the Air list keeps its first six');
-  ok(JSON.stringify(AIR_MENU.slice(-4)) === JSON.stringify(['scoutdrone', 'strikedrone', 'pathfinder', 'stratos']), 'the drone section and high planes close it');
+  ok(JSON.stringify(AIR_MENU.slice(-5)) === JSON.stringify(['scoutdrone', 'strikedrone', 'pathfinder', 'stratos', 'shadowbomber']), 'the drone section and high planes close it');
+  ok(JSON.stringify(INFANTRY_MENU.slice(-2)) === JSON.stringify(['vanguard', 'seacommando']), 'the Vanguard and Sea Commando close the Infantry list');
   for (const k of HIGH_TIER_KINDS) {
     const spec = k in BUILDINGS ? BUILDINGS[k as BuildingKind] : UNITS[k as UnitKind];
     ok(spec.tier === 3 || spec.tier === 4 || spec.tier === 5, `${k}: states its tier`);
@@ -337,6 +340,37 @@ const promotion = quiet((ok: Ok) => {
   ok(make(true) === 1, 'with it standing he arrives a Veteran');
 });
 
+const promotionVanguard = quiet((ok: Ok) => {
+  const s0 = arena();
+  addBuilding(s0, 0, 'power', 4, 4);
+  addBuilding(s0, 0, 'power', 7, 4);
+  addBuilding(s0, 0, 'barracks', 10, 4);
+  addBuilding(s0, 0, 'protoworks', 14, 4);
+  let s = processAction(s0, { type: 'queue', category: 'infantry', kind: 'vanguard' } as never);
+  ok(s !== s0, 'a Vanguard can be trained with a Prototype Works');
+  s = tick(s, 300);
+  const v = s.units.find(u => u.owner === 0 && u.kind === 'vanguard');
+  ok(v && v.vet === 2, 'and arrives Elite');
+});
+
+/** Sea Commandos and Shadow Bombers are stealthy: unseen by an enemy beyond STEALTH_DETECT_RANGE. */
+const stealthy = quiet((ok: Ok) => {
+  for (const kind of ['seacommando', 'shadowbomber'] as UnitKind[]) {
+    const s0 = arena();
+    const c = mid(s0);
+    const u = addUnit(s0, 0, kind, c.x + 0.5, c.y + 0.5);
+    u.stance = 'hold';
+    if (kind === 'shadowbomber') u.order = { type: 'idle' };
+    const watcher = addUnit(s0, 1, 'rifleman', c.x + 0.5, c.y + STEALTH_DETECT_RANGE + 2.5);
+    const flak = addBuilding(s0, 1, 'flakcannon', c.x + 5, c.y);
+    void flak;
+    ok(!canAttack(s0, 1, [watcher.id], u.id), `${kind}: no attack order on it beyond detection range`);
+    const after = tick(s0, 60);
+    const left = unitIn(after, u.id);
+    ok(left && left.hp === UNITS[kind].hp, `${kind}: sixty ticks beside a Flak Cannon and a rifleman, unseen and unhurt`);
+  }
+});
+
 /** The commander climbs: given the ground and the research, it raises tiers four and five and fields them. */
 function commander(ok: Ok): void {
   const s0 = fresh({ ...ON, credits: 60000 }, 'tiers-ai', false, 'hard');
@@ -355,10 +389,11 @@ function commander(ok: Ok): void {
       s = tick(s, 100);
       for (const b of s.buildings) if (b.owner === 1) seen.add(b.kind);
       for (const u of s.units) if (u.owner === 1) seen.add(u.kind);
-      if (seen.has('reactor') && seen.has('atomictank') && seen.has('stratos')) break;
+      if (seen.has('reactor') && seen.has('atomictank') && seen.has('stratos') && seen.has('vanguard')) break;
     }
     for (const k of ['protoworks', 'battlecommand', 'reactor', 'rotarygun', 'atomictank'] as const) ok(seen.has(k), `the Hard commander fields a ${k}`);
-    ok(seen.has('stratos') || seen.has('strikedrone'), 'and high-tier aircraft');
+    ok(seen.has('stratos') || seen.has('strikedrone') || seen.has('shadowbomber'), `and high-tier aircraft (${[...seen].filter(k => k in UNITS && UNITS[k as UnitKind].category === 'air').join(', ')})`);
+    ok(seen.has('vanguard'), 'and Vanguards');
   } finally {
     setAutopilotAi(null, 0);
   }
@@ -407,6 +442,8 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['High tiers: the Atomic Tank', atomic],
   ['High tiers: the Reactor Complex', meltdown],
   ['High tiers: field promotion', promotion],
+  ['High tiers: the Vanguard trains Elite', promotionVanguard],
+  ['High tiers: Sea Commandos and Shadow Bombers are stealthy', stealthy],
   ['High tiers: the commander climbs', commander],
   ['High tiers: whole computer battles', battles],
   ['High tiers: purity', purity],

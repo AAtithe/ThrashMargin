@@ -489,7 +489,7 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category, ite
     launchAircraft(s, a, producer);
     upgradeNewUnit(s, a);
     // High tiers: Battlefield Command's field promotion (0 without one).
-    a.vet = Math.max(a.vet, promotionFor(s, owner));
+    a.vet = Math.max(a.vet, promotionFor(s, owner), UNITS[a.kind].startVet ?? 0);
     ctx.units.set(a.id, a);
     s.players[owner].stats.trained++;
     if (producer.rally) a.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
@@ -511,7 +511,7 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category, ite
   upgradeNewUnit(s, u);
   fitModules(u, head.modules);
   // High tiers: Battlefield Command's field promotion (0 without one).
-  u.vet = Math.max(u.vet, promotionFor(s, owner));
+  u.vet = Math.max(u.vet, promotionFor(s, owner), UNITS[u.kind].startVet ?? 0);
   ctx.units.set(u.id, u);
   s.players[owner].stats.trained++;
   if (kind === 'hauler') {

@@ -913,14 +913,16 @@ function SitesPanel() {
           With <strong>High tiers</strong> on (the customise step; on for a new advanced skirmish), tier three adds the{' '}
           <strong>{UNITS.outrider.name}</strong> (a motorcycle troop that finds Stealth Tanks and Spies), the{' '}
           <strong>{UNITS.mechinf.name}</strong> (its squad climbs out after {seconds(DISMOUNT_TICKS)} halted, hits half as hard
-          again, reaches a tile further and takes a quarter less) and the <strong>{UNITS.scoutdrone.name}</strong>.
+          again, reaches a tile further and takes a quarter less), the <strong>{UNITS.vanguard.name}</strong> (elite warriors,
+          trained at Elite rank) and the <strong>{UNITS.scoutdrone.name}</strong>.
         </li>
         <li>
           <strong>Tier four</strong>: <strong>{BUILDINGS.battlecommand.name}</strong> needs a {BUILDINGS.protoworks.name},{' '}
           {BUILDINGS.strikecommand.name}, {BUILDINGS.helipad.name}, {BUILDINGS.researchlab.name} and{' '}
           {BUILDINGS.battlecommand.researchNeeded} finished upgrades. Every unit you make while it stands arrives a Veteran. It
           unlocks the <strong>{UNITS.rotarygun.name}</strong> (a rapid-fire gun that spins up to two and a half times its first
-          rate and reaches aircraft), the <strong>{UNITS.strikedrone.name}</strong> (a one-use diving warhead) and the{' '}
+          rate and reaches aircraft), the <strong>{UNITS.seacommando.name}</strong> (special forces, unseen like a Stealth Tank,
+          whose charges wreck structures, armour and ships), the <strong>{UNITS.strikedrone.name}</strong> (a one-use diving warhead) and the{' '}
           <strong>{UNITS.pathfinder.name}</strong> (a long-range recon jet with three minutes of fuel).
         </li>
         <li>
@@ -930,7 +932,13 @@ function SitesPanel() {
           unlocks the <strong>{UNITS.atomictank.name}</strong> (nuclear-powered: burns no fuel, mends itself, and its reactor
           breaches over enemies within {BREACH_RADIUS} tiles when it dies) and the <strong>{UNITS.stratos.name}</strong>, an
           ultra-high-altitude plane nothing can shoot down: it sees {UNITS.stratos.sight} tiles, finds anything hidden, and
-          everything within {DESIGNATE_RADIUS} tiles of it takes a fifth more from your side. One at a time.
+          everything within {DESIGNATE_RADIUS} tiles of it takes a fifth more from your side. One at a time. And the{' '}
+          <strong>{UNITS.shadowbomber.name}</strong>, a stealth bomber that flak and fighters see only close up or for a moment after
+          each bomb.
+        </li>
+        <li>
+          The Spy and the Commando are heroes, not part of the tiers: switch Heroes on in the customise step, build a Command
+          Academy, and recruit one of each.
         </li>
         <li>
           On Normal and Hard the computer climbs too: tier three from about minute {Math.round(TIER3_HIGH_AI_TICKS / 600)}, tier

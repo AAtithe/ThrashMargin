@@ -386,6 +386,15 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'stratos':
       drawStratos(ctx, team, pose);
       break;
+    case 'vanguard':
+      drawVanguard(ctx, owner, team, pose);
+      break;
+    case 'seacommando':
+      drawSeaCommando(ctx, owner, team, pose);
+      break;
+    case 'shadowbomber':
+      drawShadowBomber(ctx, team, pose);
+      break;
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -7234,4 +7243,84 @@ function drawReactor(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose
   emblem(ctx, team, dx, dy, 2.6);
   lamp(ctx, w - 10, 10, on, '#7dff9a', p.t, 3);
   lamp(ctx, w - 10, h - 10, on, '#ffb43a', p.t, 2, true);
+}
+
+/** The Vanguard: a rifleman's frame in heavier kit, with a gold beret and a gold shoulder flash. */
+function drawVanguard(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(1.18, 1.18);
+  drawTrooperCached(ctx, 'rifleman', owner, team, p);
+  ctx.rotate(p.turret);
+  // Body armour plates.
+  ctx.fillStyle = 'rgba(40,44,40,0.55)';
+  rrect(ctx, -3.2, -3.4, 4.4, 6.8, 1.4);
+  ctx.fill();
+  ctx.fillStyle = '#d9a93a';
+  circle(ctx, -0.6, 0, 1.9);
+  ctx.fill();
+  ctx.fillStyle = '#f4d27a';
+  ctx.fillRect(-2.4, 2.6, 2, 1);
+  ctx.restore();
+}
+
+/** The Sea Commando: black-clad, with a diving mask and a charge pack on the back. */
+function drawSeaCommando(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  drawTrooperCached(ctx, 'rifleman', owner, team, p);
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = 'rgba(16,20,24,0.78)';
+  circle(ctx, -0.6, 0, 3.6);
+  ctx.fill();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-3.6, -0.5, 1.2, 1);
+  // Mask glass and the charge pack.
+  ctx.fillStyle = 'rgba(120,200,230,0.85)';
+  ctx.fillRect(0.8, -1.1, 1.3, 2.2);
+  ctx.fillStyle = '#3d3a2c';
+  rrect(ctx, -4.6, -1.8, 2.2, 3.6, 0.6);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** The Shadow Bomber: a dark flying wing with a saw-tooth trailing edge and shrouded engines. */
+function drawShadowBomber(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.fillStyle = litGrad(ctx, p.hull, 20, '#3e454b', '#15191c');
+  ctx.beginPath();
+  ctx.moveTo(13, 0);
+  ctx.lineTo(-4, -22);
+  ctx.lineTo(-8, -19);
+  ctx.lineTo(-5, -13);
+  ctx.lineTo(-9, -8);
+  ctx.lineTo(-6, -3);
+  ctx.lineTo(-9, 0);
+  ctx.lineTo(-6, 3);
+  ctx.lineTo(-9, 8);
+  ctx.lineTo(-5, 13);
+  ctx.lineTo(-8, 19);
+  ctx.lineTo(-4, 22);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  // Cockpit, engine intakes and a thin side's stripe.
+  ctx.fillStyle = 'rgba(60,90,110,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(6, 0, 2.6, 1.4, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#0d1012';
+  for (const side of [-1, 1]) ctx.fillRect(-1, side * 4.5 - 1, 4, 2);
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-3, -18);
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-3, 18);
+  ctx.stroke();
+  hullDamage(ctx, hp, p.t, 20, 12, 'both');
+  ctx.restore();
 }
