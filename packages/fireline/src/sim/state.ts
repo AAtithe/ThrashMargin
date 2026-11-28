@@ -562,6 +562,8 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    // Iron Domes: tuples never edited in place.
+    ...(s.domes ? { domes: s.domes.slice() } : {}),
     // round7:fortification: counter-battery reveals, tuples never edited in place.
     ...(s.reveals ? { reveals: s.reveals.slice() } : {}),
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
@@ -868,6 +870,14 @@ export function migrateState(raw: unknown): GameState | null {
     if (Array.isArray(s.powers)) {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));
     } else delete out.powers;
+  }
+  // Iron Domes: kept when well formed, for a side in this battle.
+  if (s.domes !== undefined) {
+    const ok = (d: unknown): d is [number, number, number, number, number, number] =>
+      Array.isArray(d) && d.length === 6 && d.every(v => Number.isFinite(v)) && Number.isInteger(d[4]) && d[4] >= 0 && d[4] < n;
+    const list = Array.isArray(s.domes) ? s.domes.filter(ok).map(d => d.slice() as [number, number, number, number, number, number]) : [];
+    if (list.length) out.domes = list;
+    else delete out.domes;
   }
   if (s.blackoutUntil !== undefined) {
     if (Array.isArray(s.blackoutUntil)) out.blackoutUntil = sidesOf(out).map(o => (Number.isFinite(s.blackoutUntil![o]) ? s.blackoutUntil![o] : 0));

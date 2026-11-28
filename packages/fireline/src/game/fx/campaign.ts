@@ -32,6 +32,8 @@ const LIFE: Partial<Record<Effect['kind'], number>> = {
   recon: 22,
   barrage: 48,
   reinforce: 30,
+  dome: 18,
+  paradrop: 38,
 };
 
 /** Particles that start when an effect first appears. */
@@ -57,6 +59,9 @@ export function startCampaignEffect(e: Effect, fx: Particles): void {
       break;
     case 'reinforce':
       for (let i = 0; i < 16; i++) fx.dust(x + (Math.random() - 0.5) * 60, y + (Math.random() - 0.5) * 40, 1.6);
+      break;
+    case 'paradrop':
+      for (let i = 0; i < 10; i++) fx.dust(x + (Math.random() - 0.5) * 50, y + (Math.random() - 0.5) * 34, 1.2);
       break;
   }
 }
@@ -248,6 +253,51 @@ export function drawCampaignEffect(ctx: Ctx, e: Effect, age: number, s: GameStat
       }
       break;
     }
+    case 'dome': {
+      // The shield going up: a bright ring racing out to its radius.
+      const R = e.size * TILE;
+      ctx.strokeStyle = `rgba(150,215,255,${(1 - f) * 0.9})`;
+      ctx.lineWidth = 3 - f * 2;
+      ctx.beginPath();
+      ctx.arc(x, y, R * Math.min(1, f * 1.6), 0, TAU);
+      ctx.stroke();
+      break;
+    }
+    case 'paradrop': {
+      // Canopies drifting down over the drop zone, swaying, each landing a little after the last.
+      const n = Math.max(1, Math.round(e.size));
+      for (let i = 0; i < n; i++) {
+        const q = Math.min(1, Math.max(0, (age - i * 2) / 26));
+        if (q >= 1) continue;
+        const a = hash(e.id * 31 + i) * TAU;
+        const d = 6 + hash(e.id * 7 + i * 3) * 22;
+        const gx = x + Math.cos(a) * d;
+        const gy = y + Math.sin(a) * d * 0.7;
+        const lift = (1 - q) * 120;
+        const sway = Math.sin(t * 3 + i) * 4 * (1 - q);
+        const px = gx + sway;
+        const py = gy - lift;
+        ctx.fillStyle = `rgba(0,0,0,${0.1 + q * 0.25})`;
+        ctx.beginPath();
+        ctx.ellipse(gx, gy, 3 + q * 2, 1.5 + q, 0, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(40,40,36,0.7)';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(px - 6, py - 6);
+        ctx.lineTo(px, py + 2);
+        ctx.lineTo(px + 6, py - 6);
+        ctx.stroke();
+        ctx.fillStyle = i % 2 ? '#e9e4cf' : '#b9c29a';
+        ctx.beginPath();
+        ctx.arc(px, py - 6, 7, Math.PI, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#3d4430';
+        ctx.fillRect(px - 1, py, 2, 3);
+      }
+      break;
+    }
     case 'reinforce': {
       // Dust rolling out where the column comes in, and a green signal smoke marker.
       ctx.fillStyle = `rgba(160,140,105,${0.35 * (1 - f)})`;
@@ -413,6 +463,36 @@ export function drawReconArea(ctx: Ctx, cx: number, cy: number, r: number, t: nu
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(q) * r, cy + Math.sin(q) * r);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * A standing Iron Dome: a faint shell over its area with a slow shimmer, blue for side 0 and its
+ * allies, amber for the enemy, fading over its last two seconds.
+ */
+export function drawDome(ctx: Ctx, cx: number, cy: number, r: number, t: number, secondsLeft: number, friendly: boolean): void {
+  const fade = Math.max(0, Math.min(1, secondsLeft / 2));
+  const rgb = friendly ? '130,200,255' : '255,190,110';
+  ctx.save();
+  const g = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r);
+  g.addColorStop(0, `rgba(${rgb},0)`);
+  g.addColorStop(1, `rgba(${rgb},${0.16 * fade})`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${rgb},${(0.5 + 0.2 * Math.sin(t * 4)) * fade})`;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  // Two arcs across it, as a dome seen from above, turning slowly.
+  for (let k = 0; k < 2; k++) {
+    const a = t * 0.5 + k * (Math.PI / 2);
+    ctx.strokeStyle = `rgba(${rgb},${0.22 * fade})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r, r * 0.35, a, 0, TAU);
     ctx.stroke();
   }
   ctx.restore();

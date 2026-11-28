@@ -27,7 +27,7 @@ import { HeroPortrait } from './CampaignArt';
 
 /** Keys that select heroes 1 to 4, in hero-bar order. */
 export const HERO_KEYS = ['z', 'x', 'c', 'v'] as const;
-export const POWER_ORDER: SupportPower[] = ['recon', 'barrage', 'reinforce', 'missile'];
+export const POWER_ORDER: SupportPower[] = ['recon', 'barrage', 'reinforce', 'paradrop', 'irondome', 'cruise', 'missile'];
 
 export type Targeting = { kind: 'ability'; heroId: number; hero: HeroKind } | { kind: 'power'; power: SupportPower } | null;
 
@@ -376,7 +376,15 @@ export function HeroBar({
  * A power's name in a phone's one-line strip, where the full name would not fit beside the rest. The
  * button's accessible name and title keep the full name.
  */
-export const POWER_SHORT: Record<SupportPower, string> = { recon: 'Recon', barrage: 'Barrage', reinforce: 'Reinforce', missile: 'Missile' };
+export const POWER_SHORT: Record<SupportPower, string> = {
+  recon: 'Recon',
+  barrage: 'Barrage',
+  reinforce: 'Reinforce',
+  missile: 'Missile',
+  cruise: 'Cruise',
+  irondome: 'Dome',
+  paradrop: 'Paras',
+};
 
 /** The support-power buttons' wrapper: the console's Support drawer, or bare in a phone's strip. */
 function PowerGroup({ compact, testid, children }: { compact: boolean; testid: string; children: ReactNode }) {

@@ -21,7 +21,6 @@ import {
   RECON_TICKS,
   REINFORCEMENTS,
   SIDE_NAMES,
-  SKIRMISH_POWERS,
   SPY_BLACKOUT_TICKS,
   DETECTOR_RANGE,
   SPY_DETECT_RANGE,
@@ -32,6 +31,12 @@ import {
   ORDER_QUEUE_MAX,
   heroLevelFor,
   CHARGE_FUSE,
+  CRUISE_DAMAGE,
+  IRON_DOME_SHOTS,
+  IRON_DOME_TICKS,
+  MISSION_STRUCTURE_POWERS,
+  PARADROP,
+  PARADROP_CLEARANCE,
   type BuildingKind,
   type HeroKind,
   type Owner,
@@ -475,6 +480,16 @@ export function powerProblem(s: GameState, owner: Owner, power: SupportPower, x:
   if (cd === undefined) return `${POWERS[power].name} is not available`;
   if (cd > 0) return `${POWERS[power].name} is not ready`;
   if (!Number.isFinite(x) || !Number.isFinite(y) || !onMap(s, Math.floor(x), Math.floor(y))) return 'Choose a point on the map';
+  if (power === 'paradrop') {
+    // Paratroopers land on open ground the side has scouted (the computer sees the whole map), never
+    // on top of the enemy's base.
+    const tx = Math.floor(x);
+    const ty = Math.floor(y);
+    if (owner === 0 && s.explored[tileAt(s, tx, ty)] !== '1') return 'Paratroopers need ground you have scouted';
+    if (!passable(s, occupancy(s), tx, ty)) return 'Choose open ground for the drop';
+    if (s.buildings.some(b => b.hp > 0 && isEnemy(s, owner, b.owner) && isStructure(b) && distToBuilding(x, y, b) <= PARADROP_CLEARANCE))
+      return 'Too close to enemy structures for a drop';
+  }
   return null;
 }
 
@@ -738,6 +753,49 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
     else log(s, 'Allied missile launched.', 'info');
     return;
   }
+  if (power === 'cruise') {
+    // One fast, low missile from the base: no marker for the target, only the launch on the radio.
+    const r = POWERS.cruise.radius;
+    const from = baseCentre(s, owner);
+    s.projectiles.push({
+      id: s.nextId++,
+      owner,
+      weapon: 'cruise',
+      fromX: from.x,
+      fromY: from.y,
+      toX: x,
+      toY: y,
+      firedAt: s.tick,
+      hitAt: s.tick + FLIGHT_TICKS.cruise,
+      target: 0,
+      damage: CRUISE_DAMAGE,
+      splash: r,
+      shooter: 0,
+    });
+    s.effects.push({ id: s.nextId++, kind: 'cruise', x: from.x, y: from.y, x2: x, y2: y, at: s.tick, size: r });
+    if (owner === 0) say('Cruise missile away.');
+    else if (isEnemy(s, 0, owner)) log(s, 'Enemy cruise missile inbound.', 'bad');
+    return;
+  }
+  if (power === 'irondome') {
+    // A shield over the area: support.ts brings down what falls inside it until it is spent.
+    const r = POWERS.irondome.radius;
+    s.domes = [...(s.domes ?? []), [x, y, r, s.tick + IRON_DOME_TICKS, owner, IRON_DOME_SHOTS]];
+    s.effects.push({ id: s.nextId++, kind: 'dome', x, y, at: s.tick, size: r });
+    if (owner === 0) say('Iron Dome is up.');
+    else if (isEnemy(s, 0, owner)) log(s, 'The enemy has raised an Iron Dome.', 'info');
+    return;
+  }
+  if (power === 'paradrop') {
+    const units = placeUnits(s, owner, PARADROP, x, y);
+    s.effects.push({ id: s.nextId++, kind: 'paradrop', x, y, at: s.tick, size: units.length });
+    if (owner === 0) say('Paratroopers are down.');
+    else if (isEnemy(s, 0, owner)) {
+      const k = tileAt(s, Math.floor(x), Math.floor(y));
+      if (s.explored[k] === '1') log(s, 'Enemy paratroopers sighted.', 'bad');
+    }
+    return;
+  }
   if (power === 'barrage') {
     const r = POWERS.barrage.radius;
     const from = baseCentre(s, owner);
@@ -963,7 +1021,7 @@ function alongRoute(route: { x: number; y: number }[], x: number, y: number): nu
 
 /**
  * A mission with structurePowers: each side holds the support power its structures grant
- * (SKIRMISH_POWERS), granted on full cooldown when the first stands and lost with the last. A power
+ * (MISSION_STRUCTURE_POWERS), granted on full cooldown when the first stands and lost with the last. A power
  * the mission gave at the start is never touched. Works in place; the lists are replaced, not edited.
  */
 function syncStructurePowers(s: GameState): void {
@@ -973,7 +1031,7 @@ function syncStructurePowers(s: GameState): void {
   const held = sidesOf(s).map(o => m.structurePowers![o] ?? []);
   let changed = false;
   for (const o of sidesOf(s)) {
-    for (const [power, kind] of Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]) {
+    for (const [power, kind] of Object.entries(MISSION_STRUCTURE_POWERS) as [SupportPower, BuildingKind][]) {
       const has = s.buildings.some(b => b.owner === o && b.kind === kind && b.hp > 0);
       const mine = held[o].includes(power);
       if (has && !mine && powers[o]?.[power] === undefined) {
