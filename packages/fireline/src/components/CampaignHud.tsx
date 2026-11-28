@@ -10,6 +10,7 @@ import {
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
   POWERS,
+  MISSION_STRUCTURE_POWERS,
   SKIRMISH_POWERS,
   TICKS_PER_SECOND,
   UNITS,
@@ -387,9 +388,15 @@ export const POWER_SHORT: Record<SupportPower, string> = {
 };
 
 /** The support-power buttons' wrapper: the console's Support drawer, or bare in a phone's strip. */
-function PowerGroup({ compact, testid, children }: { compact: boolean; testid: string; children: ReactNode }) {
+function PowerGroup({ compact, testid, many = false, children }: { compact: boolean; testid: string; many?: boolean; children: ReactNode }) {
   return (
-    <div className={compact ? 'fl-barstrip-powers' : 'fl-powerbar'} data-testid={testid} role="group" aria-label="Support powers">
+    <div
+      className={compact ? 'fl-barstrip-powers' : 'fl-powerbar'}
+      data-testid={testid}
+      data-many={many ? '1' : undefined}
+      role="group"
+      aria-label="Support powers"
+    >
       {!compact && (
         <span className="fl-d-dock-label" aria-hidden="true">
           Support
@@ -418,7 +425,7 @@ export function PowerBar({
   if (!list.length) return null;
   const mul = perksFor(s, 0)?.powerCooldownMul ?? 1;
   return (
-    <PowerGroup compact={compact} testid="power-bar">
+    <PowerGroup compact={compact} testid="power-bar" many={list.length > 4}>
       {list.map(p => {
         const cd = mine[p] ?? 0;
         const full = Math.max(1, POWERS[p].cooldown * mul);
@@ -466,9 +473,13 @@ export function SkirmishPowerBar({
 }) {
   if (s.mission || !s.powers || s.setup?.tech !== 'advanced') return null;
   const mine = s.powers[0] ?? {};
-  const list = Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][];
+  // On a phone the strip is one line: the newer powers (not in MISSION_STRUCTURE_POWERS) show only
+  // once held, so six locked buttons never push the row off a 390px screen. The desktop bar shows all.
+  const list = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).filter(
+    ([p]) => !compact || p in MISSION_STRUCTURE_POWERS || mine[p] !== undefined,
+  );
   return (
-    <PowerGroup compact={compact} testid="skirmish-power-bar">
+    <PowerGroup compact={compact} testid="skirmish-power-bar" many={list.length > 4}>
       {list.map(([p, from]) => {
         const held = mine[p] !== undefined;
         const cd = mine[p] ?? 0;

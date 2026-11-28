@@ -3701,7 +3701,10 @@ paratroopers 4 to 13 times and its domes fired at 8 to 16 shells a battle.
 No measurable change at the quick pace: most battles end before both sides hold a Helipad, a Flak Cannon
 and a Strike Command. The powers matter more in longer games, which the harness's Hard air-war battle shows.
 
-**Client.** Both power bars list the new powers (short names Cruise, Dome, Paras on a phone); a cruise missile
+**Client.** Both power bars list the new powers (short names Cruise, Dome, Paras on a phone). On a phone's
+one-line strip the three new ones appear only once held, and the buttons narrow to 46px when more than four
+show: six locked buttons pushed the iPhone 13's bar row off the battlefield (the touch tour caught it in CI),
+and all six held now fit in 296px of a 390px screen; a cruise missile
 flies low with a long trail and leaves a small crater; a standing dome is drawn over the fog for every side,
 blue for side 0 and its allies and amber for the enemy; paratroopers drift down under canopies. The structure
 card lists everything a structure grants.
