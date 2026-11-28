@@ -49,7 +49,7 @@ Freeplay on advanced tech (the default for a new freeplay game; the original set
 | Repair Bay | 2x2 | 800 | -30 | War Factory |
 | Rocket Turret | 1x1 | 900 | -40 | Comms Uplink |
 | Tech Centre | 2x2 | 2000 | -60 | War Factory, Comms Uplink; grants the artillery barrage |
-| Strike Command | 3x3 | 3500 | -150 | Tech Centre; grants the missile strike every eight minutes |
+| Strike Command | 3x3 | 3500 | -150 | Tech Centre; grants the missile strike every eight minutes, and the cruise missile every four |
 
 | Unit | Cost | Role |
 |---|---|---|
@@ -59,7 +59,7 @@ Freeplay on advanced tech (the default for a new freeplay game; the original set
 | Missile Carrier | 1300 | Range 8 anti-armour, minimum range 2.5 (Comms Uplink) |
 | Bastion | 1800 | Slow heavy siege tank, mends itself (Tech Centre) |
 
-The Comms Uplink also grants the recon sweep. A freeplay setup (lobby, saved in `state.setup`)
+The Comms Uplink also grants the recon sweep, a Flak Cannon the Iron Dome, and a Helipad the paratroopers. A freeplay setup (lobby, saved in `state.setup`)
 picks the map (classic, river, highlands, lakes, plains, canyon, or random: drawn from the seed),
 the tech level, starting credits (clamped to 20,000) and ore. Maps come from
 `generateSkirmishMap` in `src/sim/maps.ts`: point-symmetric, so neither seat is favoured by the
@@ -3744,3 +3744,72 @@ Commandos (Normal 1, Hard 2), taking back a line soldier not yet started when it
 full, and flies a Shadow Bomber on Hard with its bomber strikes. Harness: the Vanguard arrives Elite;
 a Sea Commando and a Shadow Bomber sit beside a Flak Cannon and a rifleman for sixty ticks unseen and
 unhurt; the commander fields Vanguards.
+
+### 2026-11-28: Cruise missiles, the Iron Dome and paratroopers
+
+Three support powers join the four, granted in an advanced skirmish by structures the way the others are
+(`SKIRMISH_POWERS`), to both sides, charging when the first structure stands and lost with the last:
+
+| Power | From | Cooldown | What it does |
+|---|---|---|---|
+| Cruise missile | Strike Command | 4:00 | One fast, low missile from the base: 2.5 s of flight, no marker on the target, 650 at the centre of a 1.5-tile blast, hard on structures (`DAMAGE_VS.cruise`). The precision partner of the eight-minute missile strike. |
+| Iron Dome | Flak Cannon | 3:00 | A shield of radius 6 for 20 seconds that fires once at each of the next 12 enemy shells, missiles and bombs about to land inside it (whatever Point Defence would shoot at, and the cruise missile) and brings down three in four. Direct fire passes. |
+| Paratroopers | Helipad | 5:00 | Five riflemen and two Rocketeers drop at once onto open ground side 0 has scouted, never within five tiles of an enemy structure (walls do not count). |
+
+**Simulation.** The cruise missile is a new weapon kind, `cruise`, with its own damage row and flight; it
+counts for Reactive armour, Hardened shelters, counter-battery and Point Defence as the missile strike does.
+Standing domes are `state.domes` tuples `[x, y, radius, until, side, shots left]`, never edited in place,
+checked once a tick by `domeStep` (`src/sim/support.ts`) between Point Defence and the landing of projectiles:
+a dome fires once at a projectile, three ticks before impact, in the order things would land, and the roll
+(`IRON_DOME_CHANCE`, 0.75) is drawn from the battle's seed; a hit or a miss is the same `intercept` effect
+Point Defence draws. The first version brought down everything it fired at, and that was a hard counter:
+a dome every three minutes against a barrage every three minutes meant no barrage ever landed, and the
+harness's Hard air-war battle, which had ended at 38 minutes, ran past 50 into a stall with both sides' ore
+gone. At three in four, two shells of a barrage land on average and the same battle ends at 35 minutes. A battle where nobody raises a dome has no `domes` key and plays
+exactly as before. Saves keep a well-formed dome and drop the rest.
+
+**Missions are unchanged.** A mission with `structurePowers` reads `MISSION_STRUCTURE_POWERS` (the original
+three), so no campaign mission's enemy gains a dome or paratroopers its sweep never saw; a mission can still
+list a new power in its own `powers`.
+
+**The computer.** It aims the cruise missile like the missile strike, with a tighter blast and a lower bar
+(Normal and Hard; Easy fires at the nearest structure); drops paratroopers onto the middle of its attacking
+wave, or a little short of it when that is too close to the opponent's structures; and raises a dome over
+the heaviest fire about to land on its own ground (`domeSpot`: a missile strike counts as six shells, a
+cruise missile three, and it waits for three shells' worth). Its units step out of a cruise missile's blast as
+they do the missile strike's. It never drops paratroopers under a scripted opening (`aiOpening.ts`, test only),
+whose fixed army the ladder's opening card compares. In three Hard-against-Hard advanced battles it dropped
+paratroopers 4 to 13 times and its domes fired at 8 to 16 shells a battle.
+
+**Ladder** (`ladder:fire -- --map random`, 150 seeds per match, advanced tech, before and after):
+
+| Measure | Before | After |
+|---|---|---|
+| Hard beats Normal, both ways round | 65.3% | 65.3% |
+| Normal beats Easy, both ways round | 99.3% | 99.0% |
+| Normal mirror, seat 0 | 45% | 41% |
+| Unfinished, of 1,650 | 5 | 4 |
+
+No measurable change at the quick pace: most battles end before both sides hold a Helipad, a Flak Cannon
+and a Strike Command. The powers matter more in longer games, which the harness's Hard air-war battle shows.
+
+**Client.** Both power bars list the new powers (short names Cruise, Dome, Paras on a phone). On a phone's
+one-line strip the three new ones appear only once held, and the buttons narrow to 46px when more than four
+show: six locked buttons pushed the iPhone 13's bar row off the battlefield (the touch tour caught it in CI),
+and all six held now fit in 296px of a 390px screen; a cruise missile
+flies low with a long trail and leaves a small crater; a standing dome is drawn over the fog for every side,
+blue for side 0 and its allies and amber for the enemy; paratroopers drift down under canopies. The structure
+card lists everything a structure grants.
+
+**Checks.** `scripts/drive-support.ts`, four sections inside `npm run drive`: the rules (every new power held
+by a structure, none of them by a mission's structures); the cruise missile (flight, damage, recharge, the
+refusal returning the same state, the enemy launch announced, an exact replay); the Iron Dome (one shot each at
+a shell, the missile strike, the cruise missile and a bomb, none at a tank shell, fire outside it or its own
+side's fire, about three in four brought down over 200 seeds, the same ones on a replay, its twelve shots and
+its twenty seconds, saves and junk, the computer's choice of spot); the
+paratroopers (unscouted ground, water and enemy structures refused, the computer free of the scouting rule,
+seven landing round the point, and fighting). `npm run check` all passed (Fireline fast tier 352,021 assertions,
+campaign 7,713, War for the Planet 33,564, every other game's suite); `check:ui fireline` 32 of 32. In
+Chromium: the three powers called from the support bar in a live battle, the dome, the canopies, the cruise
+missile in flight and its blast drawn, no page errors.
+

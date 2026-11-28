@@ -90,6 +90,7 @@ import { sections as productionSections } from './drive-production';
 import { sections as upkeepSections } from './drive-upkeep';
 // Commander characters and battlefield events (2026-11-28): scripts/drive-variety.ts.
 import { sections as varietySections } from './drive-variety';
+import { sections as supportSections } from './drive-support';
 import { sections as continentalSections } from './drive-continental';
 // High tiers (2026-11-28): tier three's additions, tiers four and five.
 import { sections as highTiersSections } from './drive-hightiers';
@@ -2878,6 +2879,8 @@ if (!CAMPAIGN_ONLY) {
     ...upkeepSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Commander characters and battlefield events (2026-11-28): from scripts/drive-variety.ts.
     ...varietySections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // Cruise missiles, the Iron Dome and paratroopers (2026-11-28): from scripts/drive-support.ts.
+    ...supportSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // Bigger maps (2026-11-27): Continental, routes over regions, ground-from-seed saves.
     ...continentalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // High tiers (2026-11-28): tier three's additions, tiers four and five.

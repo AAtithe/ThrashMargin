@@ -224,6 +224,7 @@ const WEAPON_NAME: Record<WeaponKind, string> = {
   bomb: 'Bombs',
   rail: 'Railgun',
   torpedo: 'Torpedo',
+  cruise: 'Cruise missile',
 };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
@@ -351,8 +352,8 @@ export function statsOf(
   // round7:structures begin. The four strategic structures, and the levels a structure can rise to.
   rows.push(...structureStatRows(kind, state));
   // round7:structures end.
-  const grants = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).find(([, k]) => k === kind);
-  if (grants) rows.push({ label: 'Grants', value: `${POWERS[grants[0]].name} (skirmish, advanced tech)` });
+  const grants = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).filter(([, k]) => k === kind).map(([p]) => POWERS[p].name);
+  if (grants.length) rows.push({ label: 'Grants', value: `${grants.join(' and ')} (skirmish, advanced tech)` });
   if (spec.requires.length) rows.push({ label: 'Needs', value: spec.requires.map(r => BUILDINGS[r].name).join(', ') });
   return rows;
 }

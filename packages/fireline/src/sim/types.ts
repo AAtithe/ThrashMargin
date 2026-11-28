@@ -324,6 +324,12 @@ export interface Effect {
     | 'barrage'
     | 'reinforce'
     | 'missile'
+    /** A cruise missile called at (x, y); size is its blast radius. */
+    | 'cruise'
+    /** An Iron Dome raised over (x, y); size is its radius. */
+    | 'dome'
+    /** Paratroopers landing at (x, y); size is how many. */
+    | 'paradrop'
     | 'heal'
     | 'repair'
     /** A bomb's impact in a Bomber's line; size is the splash radius. */
@@ -622,6 +628,11 @@ export interface GameState {
   blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
+  /**
+   * Iron Domes standing: [centre x, centre y, radius, until, side, shots left]. Each brings down the
+   * enemy shells, missiles and bombs falling inside it (support.ts). Absent until one is raised.
+   */
+  domes?: [number, number, number, number, number, number][];
   // round7:fortification begin.
   /**
    * Counter-battery: firing positions revealed to a side's team until a tick: [x, y, radius, until,

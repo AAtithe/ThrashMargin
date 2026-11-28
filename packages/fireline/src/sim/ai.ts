@@ -10,6 +10,7 @@ import { SURPLUS_BARRACKS, SURPLUS_FACTORIES, extraLine, reserveRadius, scaledFo
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
+  CRUISE_DAMAGE,
   DAMAGE_VS,
   MISSILE_DAMAGE,
   PACED_HOLD_ARMY,
@@ -44,12 +45,13 @@ import { generalLeads, generalPlan } from './aiGenerals';
 // round7:fortification. The Fortification line: structures' full health and Point Defence's place.
 import { structureMaxHp } from './fortify';
 import { pointDefenceFocus } from './aiFortification';
+import { interceptable } from './fortification';
 // round7:structures begin.
 import { strategicExtra, strategicFocus, strategicPlanFor, structuresPlan } from './aiStructures';
 import { apparentHp, apparentKind, apparentSpecOf } from './structures';
 // round7:structures end.
 // round7:adaptive begin. The adaptive commander (fireline-round7-adaptive.md): every hook returns its input unchanged when off.
-import { openingGuard } from './aiOpening';
+import { openingGuard, openingOf } from './aiOpening';
 import { WAVE_PATIENCE, armourThreat, bracing, counterPunch, holdWave, outmatched, sampleFoe } from './aiStrength';
 import { upkeepAllows } from './upkeep';
 import { holdOn } from './victory';
@@ -1473,7 +1475,7 @@ function bayStands(s: GameState, bay: Building): number[] {
 /** Units within reach of an enemy missile's blast walk out of it while it is in the air. */
 function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   for (const m of s.projectiles) {
-    if (m.weapon !== 'missile' || isAlly(s, m.owner, owner)) continue;
+    if ((m.weapon !== 'missile' && m.weapon !== 'cruise') || isAlly(s, m.owner, owner)) continue;
     const r = m.splash + 1;
     for (const u of units) {
       if (u.kind === 'hauler' || u.order.type === 'harvest') continue;
@@ -1584,6 +1586,61 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
       if (at && at.worth >= 1500) fire('missile', at);
     }
   }
+  if (pw.cruise === 0) {
+    if (!t.aimPowers) fire('cruise', crude());
+    else {
+      // A tight blast: worth most on a valuable structure, and on armour that has stopped moving.
+      const r = POWERS.cruise.radius;
+      const at = bestBlast(s, enemy, foes, r, (d, armor) => CRUISE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.cruise[armor], 0.3, () => 1, owner);
+      if (at && at.worth >= 700) fire('cruise', at);
+    }
+  }
+  // Not under a scripted opening (aiOpening.ts, test only): it fields a fixed army, and the drop is not in it.
+  if (pw.paradrop === 0 && wave.length >= 3 && openingOf(owner) === null) {
+    // Paratroopers join the attacking wave: at its middle, or a little short of it when the middle
+    // is too close to the opponent's structures for a drop.
+    const c = middle(wave);
+    for (const at of [c, toward(c, home, 4), toward(c, home, 8)]) {
+      if (powerProblem(s, owner, 'paradrop', at.x, at.y) !== null) continue;
+      doPower(s, owner, 'paradrop', at.x, at.y);
+      break;
+    }
+  }
+  if (pw.irondome === 0) {
+    const at = domeSpot(s, owner);
+    if (at) fire('irondome', at);
+  }
+}
+
+/**
+ * Where an Iron Dome would save most right now: the centre of the heaviest enemy fire about to land
+ * on this side's structures or units (a missile strike counts as six shells, a cruise missile as
+ * three), if it is worth at least three shells. Null when nothing much is coming.
+ */
+export function domeSpot(s: GameState, owner: Owner): Pt | null {
+  if (!s.projectiles.length) return null;
+  const units = new Map(s.units.map(u => [u.id, u]));
+  const own = s.buildings.filter(b => b.owner === owner && b.hp > 0);
+  const mine = s.units.filter(u => u.owner === owner && u.hp > 0 && UNITS[u.kind].category !== 'air');
+  const incoming = s.projectiles.filter(p => {
+    if (!isEnemy(s, owner, p.owner) || p.hitAt - s.tick < 4 || !interceptable(units, p)) return false;
+    const reach = p.splash + 0.5;
+    return own.some(b => distToBuilding(p.toX, p.toY, b) <= reach) || mine.some(u => dist(p.toX, p.toY, u.x, u.y) <= reach);
+  });
+  if (!incoming.length) return null;
+  const weight = (p: { weapon: string }) => (p.weapon === 'missile' ? 6 : p.weapon === 'cruise' ? 3 : 1);
+  const r = POWERS.irondome.radius;
+  let best: Pt | null = null;
+  let bestW = 2;
+  for (const c of incoming) {
+    let w = 0;
+    for (const p of incoming) if (dist(c.toX, c.toY, p.toX, p.toY) <= r - 0.5) w += weight(p);
+    if (w > bestW) {
+      bestW = w;
+      best = { x: c.toX, y: c.toY };
+    }
+  }
+  return best;
 }
 
 /**

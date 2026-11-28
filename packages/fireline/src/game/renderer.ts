@@ -30,7 +30,7 @@ import { buildTicksFor, powerOf, productionLines, sabotaged, teamVisibility } fr
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { AIR_LIFT, drawAirShadow, drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
-import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
+import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawDome, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
 import { Atmosphere } from './fx/atmosphere';
 import { Particles } from './fx/particles';
 import { Scars } from './fx/scars';
@@ -99,6 +99,8 @@ const CAMPAIGN_SOUND: Partial<Record<Effect['kind'], SoundKind>> = {
   recon: 'recon',
   barrage: 'barrage',
   reinforce: 'reinforce',
+  paradrop: 'reinforce',
+  dome: 'recon',
 };
 
 /**
@@ -901,6 +903,35 @@ export class Renderer {
         ctx.arc(x, y - lift, 2.6, 0, Math.PI * 2);
         ctx.fill();
         if (Math.random() < 0.5) this.fx.add({ kind: 'smoke', x, y, z: lift, life: 0.5, size: 2, grow: 2 });
+      } else if (p.weapon === 'cruise') {
+        // A cruise missile: low and fast, nose down over the last stretch, a bright motor and a long trail.
+        const lift = 26 * (1 - f * f);
+        const ang = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 5, 1.6, ang, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(x, y - lift);
+        ctx.rotate(ang);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(sprites().fire, -17, -5, 10, 10);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#d9dcd2';
+        ctx.fillRect(-8, -1.6, 13, 3.2);
+        ctx.fillStyle = '#3a3d3e';
+        ctx.beginPath();
+        ctx.moveTo(5, -1.6);
+        ctx.lineTo(8.5, 0);
+        ctx.lineTo(5, 1.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#8b9088';
+        ctx.fillRect(-2, -4, 2.4, 8);
+        ctx.restore();
+        this.fx.add({ kind: 'smoke', x: x - Math.cos(ang) * 8, y: y - Math.sin(ang) * 8, z: lift, vx: 0, vy: 0, life: 1.2, size: 2.4, grow: 3 });
       } else if (p.weapon === 'rocket') {
         // Missile Carriers' rockets are bigger, climb a little, and leave a long trail.
         const big = shooterKind(p) === 'missilecarrier';
@@ -1051,7 +1082,7 @@ export class Renderer {
         if (e.kind === 'boom' && (e.weapon === 'flak' || e.weapon === 'aamissile')) this.flakBurst(x, y, e.weapon === 'aamissile');
         else if (e.kind === 'boom') {
           this.burst(x, y, e.size, e.weapon);
-          if (e.size < 0.5 && e.weapon !== 'flame' && e.weapon !== 'artillery' && e.weapon !== 'missile' && e.weapon !== 'torpedo') {
+          if (e.size < 0.5 && e.weapon !== 'flame' && e.weapon !== 'artillery' && e.weapon !== 'missile' && e.weapon !== 'cruise' && e.weapon !== 'torpedo') {
             const dir = shotInto(cur, e.x, e.y);
             this.fx.impact(x, y, dir.x, dir.y);
           }
@@ -1240,6 +1271,12 @@ export class Renderer {
         if (until <= cur.tick) continue;
         drawReconArea(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
       }
+    // Iron Domes, every side's, above the fog: a shield is plain to see.
+    if (cur.domes)
+      for (const [cx, cy, r, until, owner, left] of cur.domes) {
+        if (until <= cur.tick || left <= 0) continue;
+        drawDome(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND, owner === 0 || isAlly(cur, owner as Owner, 0));
+      }
     // round7:fortification: counter-battery marks on enemy batteries traced by side 0's team, above the fog.
     if (cur.reveals)
       for (const [cx, cy, r, until, side] of cur.reveals) {
@@ -1327,13 +1364,18 @@ export class Renderer {
     const k = Math.floor(e.y) * this.mapW + Math.floor(e.x);
     // A recon sweep, a barrage or a missile is called by a commander and heard on the radio, fog
     // or not; so is a missile's impact, which its marker has already shown to both sides.
-    const radio = e.kind === 'recon' || e.kind === 'barrage' || e.kind === 'missile' || (e.kind === 'boom' && e.weapon === 'missile');
+    const radio =
+      e.kind === 'recon' || e.kind === 'barrage' || e.kind === 'missile' || e.kind === 'cruise' || e.kind === 'dome' || (e.kind === 'boom' && (e.weapon === 'missile' || e.weapon === 'cruise'));
     if (!vis[k] && !radio) return;
     let kind: SoundKind;
     let gain = 1;
     const campaign = CAMPAIGN_SOUND[e.kind];
     if (campaign) kind = campaign;
     else if (e.kind === 'missile') kind = 'missileLaunch';
+    else if (e.kind === 'cruise') {
+      kind = 'missileLaunch';
+      gain = 0.6;
+    }
     else if (e.kind === 'heal') {
       kind = 'heal';
       gain = 0.5;
@@ -1359,6 +1401,10 @@ export class Renderer {
                       : 'shell';
     } else if (e.kind === 'sold') kind = 'sold';
     else if (e.kind === 'boom' && e.weapon === 'missile') kind = 'missileImpact';
+    else if (e.kind === 'boom' && e.weapon === 'cruise') {
+      kind = 'missileImpact';
+      gain = 0.7;
+    }
     else if (e.kind === 'boom' && e.weapon === 'flame') return;
     // round7:fortification: a Point Defence shot sounds like a short burst.
     else if (e.kind === 'intercept') {
@@ -1493,6 +1539,14 @@ export class Renderer {
       this.fx.explode(x, y, 2, true);
       this.fx.megaBlast(x, y, r);
       this.scars?.crater(x, y, r * 0.55, this.lastNow / 1000);
+      return;
+    }
+    if (weapon === 'cruise') {
+      // A cruise missile: a tight, violent blast and a small crater.
+      const r = POWERS.cruise.radius * TILE;
+      this.fx.explode(x, y, 2, true);
+      this.fx.megaBlast(x, y, r);
+      this.scars?.crater(x, y, r * 0.5, this.lastNow / 1000);
       return;
     }
     if (weapon === 'flame') {

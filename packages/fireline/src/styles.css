@@ -7198,6 +7198,9 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   font-size: 0.64rem;
   letter-spacing: -0.01em;
 }
+.fl-barstrip-powers[data-many] .fl-power {
+  width: 46px;
+}
 .fl-barstrip .fl-power small {
   font-size: 0.6rem;
   letter-spacing: 0;

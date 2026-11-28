@@ -35,11 +35,11 @@ const shooterOf = (units: Map<number, Unit>, p: Projectile): Unit | undefined =>
 /**
  * True for a projectile Point Defence will shoot at: an artillery shell (a gun's or the barrage's,
  * never a Grenadier's grenade), a Missile Carrier's missile, a bomb (a Firebrand's incendiary as it
- * falls, not the fire it leaves), and the missile strike. Never a bullet, tank shell, rocket from
+ * falls, not the fire it leaves), the missile strike and the cruise missile. Never a bullet, tank shell, rocket from
  * anything else, flak or anti-air missile.
  */
 export function interceptable(units: Map<number, Unit>, p: Projectile): boolean {
-  if (p.weapon === 'missile' || p.weapon === 'bomb') return true;
+  if (p.weapon === 'missile' || p.weapon === 'cruise' || p.weapon === 'bomb') return true;
   if (p.weapon === 'flame') return p.fromX !== p.toX || p.fromY !== p.toY; // a burning patch's pulses start where they land
   const u = shooterOf(units, p);
   if (p.weapon === 'artillery') return !u || UNITS[u.kind].category !== 'infantry';
@@ -51,7 +51,7 @@ export function interceptable(units: Map<number, Unit>, p: Projectile): boolean 
 function batteryOf(units: Map<number, Unit>, p: Projectile): { x: number; y: number; shooter: number } | null {
   if (!p.shooter) {
     // The barrage and the missile strike (shooter 0, splash): traced to where they were called from.
-    if ((p.weapon === 'artillery' || p.weapon === 'missile') && p.splash > 0) return { x: p.fromX, y: p.fromY, shooter: 0 };
+    if ((p.weapon === 'artillery' || p.weapon === 'missile' || p.weapon === 'cruise') && p.splash > 0) return { x: p.fromX, y: p.fromY, shooter: 0 };
     return null;
   }
   const u = units.get(p.shooter);
@@ -73,7 +73,7 @@ export function notePressure(s: GameState, b: Building, p: Projectile): void {
   if (pace !== 'long' && pace !== 'epic') return;
   const u = p.shooter ? s.units.find(v => v.id === p.shooter) : undefined;
   let air = false;
-  if (p.weapon === 'bomb' || p.weapon === 'missile') air = true;
+  if (p.weapon === 'bomb' || p.weapon === 'missile' || p.weapon === 'cruise') air = true;
   else if (p.weapon === 'flame') air = !!u && UNITS[u.kind].category === 'air';
   else if (p.weapon === 'artillery') air = !p.shooter;
   else if (p.weapon !== 'rocket') return;

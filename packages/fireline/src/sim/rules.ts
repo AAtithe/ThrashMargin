@@ -34,7 +34,7 @@ export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft' | '
  * exhaustive tables (DAMAGE_VS, FLIGHT_TICKS, the build tip's weapon names) are complete; nothing
  * fires it until workstream D adds a unit that carries it.
  */
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail' | 'torpedo';
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail' | 'torpedo' | 'cruise';
 
 /**
  * How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. The
@@ -55,6 +55,8 @@ export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
   rail: { infantry: 0.35, light: 1, heavy: 1.25, building: 0.8, aircraft: 0, ship: 1.1 },
   // The naval war: the Submarine's torpedo reaches ships and nothing else (hitsNaval, hitsGround).
   torpedo: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 0, ship: 1 },
+  // The cruise missile support power: a precision warhead, hardest on structures and armour.
+  cruise: { infantry: 0.8, light: 1, heavy: 1, building: 1.15, aircraft: 0, ship: 1 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
@@ -70,6 +72,7 @@ export const FLIGHT_TICKS: Record<WeaponKind, number> = {
   bomb: 6,
   rail: 0,
   torpedo: 10,
+  cruise: 25,
 };
 
 export interface Weapon {
@@ -1865,7 +1868,7 @@ export function heroLevelFor(xp: number): number {
   return l;
 }
 
-export type SupportPower = 'recon' | 'barrage' | 'reinforce' | 'missile';
+export type SupportPower = 'recon' | 'barrage' | 'reinforce' | 'missile' | 'cruise' | 'irondome' | 'paradrop';
 
 export interface PowerSpec {
   name: string;
@@ -1885,7 +1888,38 @@ export const POWERS: Record<SupportPower, PowerSpec> = {
     cooldown: 4800,
     radius: 4,
   },
+  cruise: {
+    name: 'Cruise missile',
+    blurb: 'A fast, low precision strike on one target: little warning, a tight blast, hard on structures.',
+    cooldown: 2400,
+    radius: 1.5,
+  },
+  irondome: {
+    name: 'Iron Dome',
+    blurb: 'For 20 seconds a defence shield over the area fires at up to 12 incoming shells, missiles and bombs, bringing down three in four.',
+    cooldown: 1800,
+    radius: 6,
+  },
+  paradrop: {
+    name: 'Paratroopers',
+    blurb: 'Five riflemen and two Rocketeers parachute onto ground you have scouted, clear of enemy structures.',
+    cooldown: 3000,
+    radius: 0,
+  },
 };
+
+/** Cruise missile: damage at the centre (half at the edge of POWERS.cruise.radius). Lands FLIGHT_TICKS.cruise after the call. */
+export const CRUISE_DAMAGE = 650;
+/** Iron Dome: how long the shield stands, and how many projectiles it brings down before it is spent. */
+export const IRON_DOME_TICKS = 200;
+export const IRON_DOME_SHOTS = 12;
+/** Iron Dome: the chance each shot brings its projectile down (drawn from the battle's seed). A miss still spends the shot. */
+export const IRON_DOME_CHANCE = 0.75;
+/** Iron Dome: it fires at a projectile once, this many ticks before it would land (at launch, for a shorter flight). */
+export const IRON_DOME_LEAD = 3;
+/** Paratroopers: who drops, and how close to an enemy structure they may not land. */
+export const PARADROP: UnitKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'rifleman', 'rocketeer', 'rocketeer'];
+export const PARADROP_CLEARANCE = 5;
 
 /** Missile strike: damage at the centre (half at the edge of POWERS.missile.radius). Lands FLIGHT_TICKS.missile after the call. */
 export const MISSILE_DAMAGE = 800;
@@ -1896,6 +1930,20 @@ export const MISSILE_DAMAGE = 800;
  * first). Missions keep their own powers and ignore this.
  */
 export const SKIRMISH_POWERS: Partial<Record<SupportPower, BuildingKind>> = {
+  recon: 'uplink',
+  barrage: 'techcentre',
+  missile: 'strikecommand',
+  cruise: 'strikecommand',
+  irondome: 'flakcannon',
+  paradrop: 'helipad',
+};
+
+/**
+ * The powers a mission with structurePowers grants from its structures: the original three only, so
+ * the campaign's missions, balanced and swept with these, play exactly as they did. A mission may
+ * still list a newer power in its own `powers`.
+ */
+export const MISSION_STRUCTURE_POWERS: Partial<Record<SupportPower, BuildingKind>> = {
   recon: 'uplink',
   barrage: 'techcentre',
   missile: 'strikecommand',
@@ -2502,7 +2550,7 @@ export const PLATING2_HP = 1.125; // a step on top of PLATING_HP (applied by rai
 export const ENGINES2_SPEED = 1.25; // the total, replacing ENGINES_SPEED
 export const REFINING2_INCOME = 1.25; // the total, replacing REFINING_INCOME
 export const REACTIVE_TAKEN = 0.8;
-export const REACTIVE_KINDS: WeaponKind[] = ['rocket', 'bomb', 'missile'];
+export const REACTIVE_KINDS: WeaponKind[] = ['rocket', 'bomb', 'missile', 'cruise'];
 export const COMPOSITE_TAKEN = 0.8;
 export const COMPOSITE_KINDS: WeaponKind[] = ['shell', 'artillery'];
 export const MOTORISED_SPEED = 1.15;
@@ -2538,7 +2586,7 @@ export const upgradeLineOf = (id: UpgradeId): { line: BattleLineId; mark: 1 | 2 
 export const CONCRETE_HP = 1.2;
 /** Hardened shelters (Mk II): what a structure takes from the splash of these weapon kinds. */
 export const SHELTERS_TAKEN = 0.75;
-export const SHELTERS_KINDS: WeaponKind[] = ['artillery', 'bomb', 'missile'];
+export const SHELTERS_KINDS: WeaponKind[] = ['artillery', 'bomb', 'missile', 'cruise'];
 /** Counter-battery (Mk III A): how long a firing battery stays revealed, and the radius revealed round it. */
 export const COUNTER_BATTERY_TICKS = 80;
 export const COUNTER_BATTERY_RADIUS = 3;

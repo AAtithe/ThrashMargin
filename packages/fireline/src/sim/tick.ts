@@ -135,6 +135,7 @@ import { noteBuildingDeath, noteKill, noteUnitDeath, recordHistory } from './his
 // round7:review end.
 // round7:fortification. The Fortification line (fireline-round7-fortification.md).
 import { fortificationStep, notePressure } from './fortification';
+import { domeStep } from './support';
 import { shelterMul, structureMaxHp } from './fortify';
 // round7:structures begin. Structure upgrades and strategic structures (fireline-round7-structures.md).
 import { apparentSpecOf, bunkersFallen, bunkersStep, isOutpost, levelRateOf, loadIncomeMulOf, structuresStep, unloadMulOf, upgradeTakenOf } from './structures';
@@ -282,6 +283,8 @@ export function step(s: GameState): void {
   // before any lands. A no-op in a battle without the Fortification line.
   fortificationStep(s);
   // round7:fortification end.
+  // Iron Domes (support.ts): what falls inside one is brought down. A no-op without s.domes.
+  domeStep(s);
   landProjectiles(s, ctx);
   separate(s, ctx);
   // High tiers: Atomic Tanks and Reactor Complexes destroyed this tick blow up before they go.
@@ -839,7 +842,7 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
   }
   if (p.weapon === 'bomb') s.effects.push({ id: s.nextId++, kind: 'bomb', x: p.toX, y: p.toY, at: s.tick, size: p.splash, weapon: p.weapon });
   else if (p.weapon !== 'bullet')
-    s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: p.weapon === 'missile' ? 2 : 0, weapon: p.weapon });
+    s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: p.weapon === 'missile' ? 2 : p.weapon === 'cruise' ? 1 : 0, weapon: p.weapon });
 }
 
 function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
