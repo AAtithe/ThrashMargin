@@ -19,7 +19,7 @@ import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuil
 // round7:review begin. The after-action review: its button, on the end card, the paused card and the menu.
 import { ReviewButton } from '../components/Review';
 // round7:review end.
-import BuildWindow from '../game/BuildWindow';
+import BuildWindow, { BuildRail, RAIL_W } from '../game/BuildWindow';
 // Round 8: the build window's groups, unlock watch, planning numbers and quick bar (fireline-round8-build-window.md).
 import QuickBar from '../game/QuickBar';
 import { buildingSpecFor, factionOf as armyOf, unitSpecFor } from '../sim/specs';
@@ -328,6 +328,24 @@ export function Battle({
     if (!buildOpenRef.current && placingRef.current) setPlacing(null);
     setBuildOpen(!buildOpenRef.current);
   }, [setBuildOpen, setPlacing]);
+
+  /**
+   * A button on the build rail: the window slides out on that list, or goes away if that list is
+   * already showing. Focus stays on the rail. Opening while placing puts the structure back to Ready.
+   */
+  const pickRail = useCallback(
+    (t: Tab) => {
+      reopenAfterPlacing.current = false;
+      if (buildOpenRef.current && tabRef.current === t) {
+        setBuildOpen(false, false);
+        return;
+      }
+      if (placingRef.current) setPlacing(null);
+      setTab(t);
+      setBuildOpen(true);
+    },
+    [setBuildOpen, setPlacing],
+  );
 
   // Placing a structure closes the window, so the placement cursor is never under it; it comes back
   // on the same tab when the structure is placed or placement is cancelled.
@@ -1573,8 +1591,10 @@ export function Battle({
   const viewBtn: CSSProperties = { height: 26, padding: '0 7px', border: '1px solid transparent', background: 'transparent', color: UI.textSoft, fontSize: '0.72rem', borderRadius: 3 };
   const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
   const modal = !!(placing || targeting);
-  // Phones and touch screens get the build window as a full-screen sheet.
+  // Phones and touch screens get the build window as a full-screen sheet; everywhere else it slides
+  // out of the build rail down the battlefield's left edge.
   const sheet = layout.touch || layout.stacked;
+  const railShown = !sheet && !help && !ended;
   // On a touch screen the command bar takes the foot of the map; the campaign's hero and power
   // bar and the battle feed sit above it.
   const barLift = layout.touch && !ended ? 56 : 0;
@@ -1788,7 +1808,19 @@ export function Battle({
       {saveError && <div style={errorStrip}>{saveError}</div>}
 
       <div style={{ ...body, flexDirection: layout.stacked ? 'column' : 'row', flexWrap: 'nowrap' }}>
-        <div ref={wrapRef} style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: layout.stacked ? 180 : 0, overflow: 'hidden', background: '#050707' }}>
+        <div
+          ref={wrapRef}
+          style={{
+            position: 'relative',
+            flex: 1,
+            minWidth: 0,
+            minHeight: layout.stacked ? 180 : 0,
+            overflow: 'hidden',
+            background: '#050707',
+            // The build rail's width, so the quick bar and the battle feed sit clear of it.
+            ...(railShown ? ({ '--fl-rail': `${RAIL_W}px` } as CSSProperties) : null),
+          }}
+        >
           <canvas
             ref={canvasRef}
             id="fl-battlefield"
@@ -2051,6 +2083,7 @@ export function Battle({
               Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
               implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
           {/* round6:C end. */}
+          {railShown && <BuildRail state={s} tab={tab} open={buildOpen} touch={layout.touch} onPick={pickRail} />}
           {buildOpen && !help && !ended && (
             <BuildWindow
               state={s}
@@ -2118,7 +2151,7 @@ export function Battle({
         {tourOpen && (
           <GuidedTour
             key={tourRun}
-            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !help && !ended, sheet }}
+            view={{ s, selected: [...overlay.current.selected], placing, tab, group, touch: layout.touch, buildOpen: buildOpen && !help && !ended, sheet }}
             onFinish={() => setTourOpen(false)}
             hidden={paused || help || menu || ended}
           />

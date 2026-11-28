@@ -1,9 +1,11 @@
 /**
  * The build window: the tech tree, popped out of the sidebar (fireline-round5-design.md, section 3).
  *
- * Desktop: a panel over the battlefield (never over the sidebar), dragged by its title bar, its
- * place remembered per viewer. Phones and touch: a full-screen sheet. Either way it is not modal:
- * the battle keeps running, and on a desktop the map outside it stays clickable.
+ * Desktop (2026-11-28): a rail down the left edge of the battlefield (BuildRail) names every list,
+ * and the window slides out of it, docked against it from top to bottom. Structures pops out once
+ * more: a column of its groups, and beside it the chosen group's items. Phones and touch: a
+ * full-screen sheet with the lists as tabs. Either way it is not modal: the battle keeps running,
+ * and on a desktop the map outside it stays clickable.
  *
  * Round 8 (fireline-round8-build-window.md): two views. Build, the default, shows what can be built
  * now as full cards (Structures in four groups, one of them active for the hotkeys), then Coming next
@@ -11,7 +13,7 @@
  * drawing lines only for the chain of the item under the pointer or focus. Everything comes from
  * rules.ts: no kind is named here.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BUILDINGS, PRODUCER, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
 import { buildTicksFor, costFor, hasBuilding, hasProducer, powerOf, readyStructure, researchModeOf } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
@@ -21,32 +23,96 @@ import { advise, groupLabel, groupOf, groupsFor, keyedList, planList, type Advic
 import { advisorOn, advisorPref, buildView, fresh, scouted, seenTab, setAdvisor, setBuildView, useStore } from './buildStores';
 import { rulesCatalogue, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
 import { factionOf } from '../sim/specs';
+import { iconFor } from './icons';
 
-const POS_KEY = 'fl_build_window';
+/** The rail's width, in pixels: the window docks against its right edge, and the map's own furniture moves over by it. */
+export const RAIL_W = 76;
 
-/** Where the viewer last left the window, as a fraction of the room it can move in. */
-interface Spot {
-  fx: number;
-  fy: number;
+/** The art on each list's rail button: the list's first item, or the Command Yard for Structures. */
+const RAIL_ICON: Record<Tab, BuildingKind | UnitKind> = {
+  building: 'hq',
+  infantry: 'rifleman',
+  vehicle: 'tank',
+  air: 'helipad',
+  naval: 'shipyard',
+  research: 'researchlab',
+};
+
+/** Short names for the rail, which is narrow. */
+const RAIL_LABEL: Record<Tab, string> = {
+  building: 'Structures',
+  infantry: 'Infantry',
+  vehicle: 'Vehicles',
+  air: 'Air',
+  naval: 'Naval',
+  research: 'Research',
+};
+
+export interface BuildRailProps {
+  state: GameState;
+  /** The list the hotkeys act on: marked on the rail whether or not the window is open. */
+  tab: Tab;
+  open: boolean;
+  touch: boolean;
+  /** A rail button: opens the window on that list, or closes it if that list is already showing. */
+  onPick: (t: Tab) => void;
 }
 
-function loadSpot(): Spot | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(POS_KEY) ?? 'null');
-    if (v && typeof v.fx === 'number' && typeof v.fy === 'number' && Number.isFinite(v.fx) && Number.isFinite(v.fy))
-      return { fx: Math.max(0, Math.min(1, v.fx)), fy: Math.max(0, Math.min(1, v.fy)) };
-  } catch {
-    /* Blocked or spoiled storage: the default place. */
-  }
-  return null;
-}
-
-function saveSpot(s: Spot): void {
-  try {
-    localStorage.setItem(POS_KEY, JSON.stringify(s));
-  } catch {
-    /* Blocked storage: the window opens in its default place next time. */
-  }
+/**
+ * The build rail (desktop): the menu bar down the left edge of the battlefield. Each button is a
+ * list; pressing one slides the build window out beside the rail on that list, pressing it again
+ * puts the window away. The buttons carry the same ids and markers the window's tabs do on a sheet
+ * (`fl-tab-<list>`, a dot for something new, the advisor's ring, the queue length).
+ */
+export function BuildRail({ state, tab, open, touch, onPick }: BuildRailProps) {
+  const tabs = tabsFor(state);
+  const shown: Tab = tabs.includes(tab) ? tab : tabs[0];
+  const newTabs = useStore(fresh).tabs;
+  const advisorChoice = useStore(advisorPref);
+  const advice = advisorOn(advisorChoice, state) ? advise(state, scouted(state)) : null;
+  return (
+    <nav className="fl-rail" aria-label="Build menu" data-testid="build-rail" style={{ width: RAIL_W }}>
+      <span className="fl-rail-title" aria-hidden="true">
+        Build
+      </span>
+      <div role="tablist" aria-orientation="vertical" aria-label="Build lists" className="fl-rail-list">
+        {tabs.map(t => {
+          const producer = t === 'research' || hasProducer(state, 0, t);
+          const busy = t === 'research' ? (state.players[0].research ? 1 : 0) : state.players[0].queues[t].length;
+          const showing = open && shown === t;
+          const isNew = newTabs.has(t) && !showing;
+          return (
+            <button
+              key={t}
+              id={`fl-tab-${t}`}
+              role="tab"
+              type="button"
+              className="fl-rail-btn"
+              aria-selected={shown === t}
+              aria-expanded={showing}
+              aria-controls={showing ? 'fl-build-window' : undefined}
+              data-open={showing ? '1' : '0'}
+              data-producer={producer ? '1' : '0'}
+              data-new={isNew ? '1' : '0'}
+              data-advice={advice && advice.tab === t && !showing ? '1' : '0'}
+              data-testid={`rail-${t}`}
+              onClick={() => onPick(t)}
+              title={`${tabLabel(t)}${isNew ? ': something new unlocked' : ''} (${showing ? 'click again to close' : touch ? 'tap to open' : 'click to open; Tab cycles the lists'})`}
+            >
+              <img src={iconFor(RAIL_ICON[t])} alt="" width={48} height={32} draggable={false} />
+              <span className="fl-rail-label">{RAIL_LABEL[t]}</span>
+              {busy > 0 && (
+                <span className="fl-rail-busy" aria-label={`${busy} in production`}>
+                  {busy}
+                </span>
+              )}
+              {isNew && <span className="fl-rail-new" aria-label="new" />}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
 }
 
 /**
@@ -91,10 +157,8 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   // A tab this battle does not offer (Research with its Lab sold) shows the first one instead.
   const shown: Tab = tabs.includes(tab) ? tab : tabs[0];
 
-  // ---- Place and drag (desktop) ---------------------------------------------------------------
+  // ---- Docked against the rail (desktop) ------------------------------------------------------
   const [room, setRoom] = useState<{ w: number; h: number } | null>(null);
-  const [spot, setSpot] = useState<Spot | null>(loadSpot);
-  const drag = useRef<{ id: number; dx: number; dy: number } | null>(null);
   useLayoutEffect(() => {
     if (sheet) return;
     const parent = ref.current?.parentElement;
@@ -105,38 +169,6 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
     ro.observe(parent);
     return () => ro.disconnect();
   }, [sheet]);
-  // About 64% of the battlefield wide (never narrower than six tiers of the tree need, if the field
-  // allows), at most 80% of it tall.
-  const width = room ? Math.round(Math.min(room.w - 16, Math.max(room.w * 0.64, Math.min(660, room.w - 16)))) : 0;
-  const maxHeight = room ? Math.round(room.h * 0.8) : 0;
-  const height = ref.current?.offsetHeight ?? maxHeight;
-  const freeX = room ? Math.max(0, room.w - width) : 0;
-  const freeY = room ? Math.max(0, room.h - height) : 0;
-  // First time: the centre of the battlefield, a little below the top banners. The top edge is a
-  // fraction of the field's height (round 8), so a tab with less in it does not move the window.
-  const at = spot ?? { fx: 0.5, fy: 0.06 };
-  const left = Math.round(freeX * at.fx);
-  const top = room ? Math.round(Math.min(freeY, room.h * at.fy)) : 0;
-
-  const onHeadDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (sheet || e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { id: e.pointerId, dx: e.clientX - left, dy: e.clientY - top };
-  };
-  const onHeadMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    const x = Math.max(0, Math.min(freeX, e.clientX - d.dx));
-    const y = Math.max(0, Math.min(freeY, e.clientY - d.dy));
-    setSpot({ fx: freeX ? x / freeX : 0, fy: room && room.h ? y / room.h : 0 });
-  };
-  const onHeadUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    drag.current = null;
-    if (spot) saveSpot(spot);
-  };
 
   // ---- Focus: into the window on open (GameScreen moves it back to the Build button on close) ----
   // Once it is visible: a desktop panel stays hidden until its room is measured, and a hidden
@@ -146,7 +178,9 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   useEffect(() => {
     if (!visible || focused.current) return;
     focused.current = true;
-    const el = document.getElementById(`fl-tab-${shown}`) ?? ref.current;
+    // On a sheet the list's tab; docked, the window's first control (the rail's buttons stay where
+    // they are, outside it).
+    const el = sheet ? (document.getElementById(`fl-tab-${shown}`) ?? ref.current) : (ref.current?.querySelector<HTMLElement>('[aria-pressed="true"].fl-bw-grp') ?? ref.current);
     el?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -161,11 +195,18 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
   useEffect(() => {
     seenTab(shown);
   }, [shown, newTabs]);
-  const style = sheet
-    ? undefined
-    : room
-      ? { left, top, width, maxHeight }
-      : { visibility: 'hidden' as const };
+  // Docked: the full height of the battlefield, as wide as the view needs. The tech tree wants six
+  // tiers side by side; the Build view of Structures a group column and a grid of cards; any other
+  // list a grid alone. Never wider than the field leaves beside the rail.
+  const free = room ? room.w - RAIL_W - 12 : 0;
+  const structures = shown === 'building' && view === 'build';
+  const want = shown === 'research' ? 560 : view === 'tree' ? Math.max(660, Math.round(free * 0.72)) : structures ? 720 : 560;
+  const width = Math.max(0, Math.min(free, want));
+  const style = sheet ? undefined : room ? { left: RAIL_W, width } : { visibility: 'hidden' as const };
+  // Structures' groups, for the column that pops out beside the rail: what each can build now.
+  const groups = structures && !sheet ? groupsFor(state) : [];
+  const nowPlan = groups.length ? planList(state, menuFor('building', state)) : null;
+  const freshKinds = useStore(fresh).kinds;
 
   return (
     <div
@@ -176,12 +217,13 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
       aria-label="Build"
       data-testid="build-window"
       data-sheet={sheet ? '1' : '0'}
+      data-docked={sheet ? '0' : '1'}
       data-tip-host="1"
       tabIndex={-1}
       style={style}
     >
-      <div className="fl-bw-head" onPointerDown={onHeadDown} onPointerMove={onHeadMove} onPointerUp={onHeadUp} onPointerCancel={onHeadUp} data-testid="build-window-head">
-        <strong className="fl-bw-title">Build</strong>
+      <div className="fl-bw-head" data-testid="build-window-head">
+        <strong className="fl-bw-title">{sheet ? 'Build' : tabLabel(shown)}</strong>
         <div className="fl-bw-views" role="group" aria-label="View">
           <button type="button" id="fl-view-build" data-testid="view-build" aria-pressed={view === 'build'} onClick={() => setBuildView('build')}>
             Build
@@ -202,7 +244,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           Advisor
         </button>
         <span className="fl-bw-hint">
-          {touch ? 'Long press an item for its numbers.' : 'Drag here to move. Point at an item for its numbers.'}
+          {touch ? 'Long press an item for its numbers.' : 'Point at an item for its numbers.'}
         </span>
         <button
           type="button"
@@ -216,6 +258,7 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           ×
         </button>
       </div>
+      {sheet && (
       <div role="tablist" className="fl-bw-tabs" aria-label="Build lists">
         {tabs.map(t => {
           const producer = t === 'research' || hasProducer(state, 0, t);
@@ -241,6 +284,37 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
           );
         })}
       </div>
+      )}
+      <div className="fl-bw-main" data-split={groups.length ? '1' : '0'}>
+      {groups.length > 0 && nowPlan && (
+        // The second pop-out: Structures' groups. The one pressed is the one the hotkeys build from,
+        // and its items fill the panel beside it.
+        <div className="fl-bw-groups" role="group" aria-label="Structure groups" data-testid="build-groups">
+          {groups.map(g => {
+            const count = nowPlan.now.filter(k => groupOf(k) === g).length;
+            const active = g === group;
+            const isNew = !active && [...freshKinds.keys()].some(k => groupOf(k) === g && menuFor('building', state).includes(k));
+            return (
+              <button
+                key={g}
+                type="button"
+                id={`fl-group-${g}`}
+                className="fl-bw-grp"
+                aria-pressed={active}
+                data-new={isNew ? '1' : '0'}
+                data-advice={advice && advice.tab === 'building' && groupOf(advice.kind) === g && !active ? '1' : '0'}
+                data-testid={`group-btn-${g}`}
+                title={active ? 'The hotkeys build from this group' : 'Show this group; the hotkeys build from it (or press Tab)'}
+                onClick={() => setGroup(g)}
+              >
+                <span className="fl-bw-grp-name">{groupLabel(g)}</span>
+                <span className="fl-bw-grp-count">{count ? `${count} ready to build` : 'nothing yet'}</span>
+                {isNew && <span className="fl-rail-new" aria-label="new" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="fl-bw-body fl-scroll" data-testid="build-window-body">
         {shown === 'research' ? (
           <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
@@ -256,11 +330,13 @@ export default function BuildWindow({ state, tab, setTab, group, setGroup, dispa
             touch={touch}
             lowPower={pw.low}
             advice={advice}
+            only={groups.length ? group : undefined}
             onTree={() => setBuildView('tree')}
           />
         ) : (
           <BuildTab state={state} tab={shown} group={group} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} orient={sheet ? 'down' : 'across'} lowPower={pw.low} advice={advice} />
         )}
+      </div>
       </div>
     </div>
   );
@@ -312,6 +388,7 @@ function BuildList({
   touch,
   lowPower,
   advice,
+  only,
   onTree,
 }: {
   state: GameState;
@@ -324,12 +401,23 @@ function BuildList({
   touch: boolean;
   lowPower: boolean;
   advice: Advice | null;
+  /** Docked Structures: the one group popped out. Every section keeps to its items. */
+  only?: Group;
   onTree: () => void;
 }) {
   const faction = factionOf(state, 0);
   const cat = rulesCatalogue(faction);
   const menu = menuFor(tab, state);
-  const plan = planList(state, menu);
+  const full = planList(state, menu);
+  const inGroup = (k: string) => !only || groupOf(k) === only;
+  const plan = only
+    ? {
+        ...full,
+        now: full.now.filter(inGroup),
+        next: full.next.map(r => ({ ...r, items: r.items.filter(inGroup) })).filter(r => r.items.length > 0),
+        later: full.later.filter(inGroup),
+      }
+    : full;
   const { tip, bind, clear, show } = useTip<BuildingKind | UnitKind>();
   useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (k: string) => cat.spec(k)?.name ?? k;
@@ -350,7 +438,7 @@ function BuildList({
       onLongPress={el => (el ? show(k, el) : clear())}
     />
   );
-  const groups = tab === 'building' ? groupsFor(state) : [];
+  const groups = tab === 'building' ? (only ? [only] : groupsFor(state)) : [];
   // Later: folded or open as the viewer last left it on this tab; null until they choose.
   const [laterOpen, setLaterOpen] = useState<boolean | null>(null);
   useEffect(() => setLaterOpen(null), [tab]);
@@ -385,6 +473,16 @@ function BuildList({
         groups.map(g => {
           const items = plan.now.filter(k => groupOf(k) === g);
           const active = g === group;
+          if (only)
+            return (
+              <section key={g} className="fl-bl-group" data-group={g} data-active="1" data-testid={`group-${g}`}>
+                <h4 className="fl-bl-group-title">
+                  {groupLabel(g)}
+                  {!touch && <span className="fl-bl-group-keys">Q W E R T Y</span>}
+                </h4>
+                {items.length > 0 ? <div className="fl-bl-grid">{items.map(k => button(k, 'card'))}</div> : <p className="fl-bl-empty">Nothing in this group can be built yet.</p>}
+              </section>
+            );
           return (
             <section key={g} className="fl-bl-group" data-group={g} data-active={active ? '1' : '0'} data-testid={`group-${g}`}>
               <button

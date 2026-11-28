@@ -215,6 +215,10 @@ async function main() {
       // that thing and explain, not a disabled button, and come back once it is cancelled.
       if (!busyOnce && cs.title === 'Build a Refinery' && cs.target === 'fl-build-refinery') {
         busyOnce = true;
+        // On a desktop the Barracks is in Structures' Production group, popped out beside the rail;
+        // with the Barracks queued and Economy still showing, the card first rings that group.
+        await page.locator('#fl-group-production').click();
+        await sleep(300);
         await page.locator('#fl-build-barracks').click();
         await sleep(500);
         const busy = await cardState(page);
@@ -223,7 +227,8 @@ async function main() {
         await page.locator('#fl-build-barracks').click({ button: 'right' });
         await sleep(500);
         const back = await cardState(page);
-        if (!back || back.target !== 'fl-build-refinery') problems.push(`after cancelling the Barracks the Refinery step rings ${back?.target || 'nothing'}`);
+        // Cancelled, the Refinery is back in reach one click away: its group (Economy), then itself.
+        if (!back || back.target !== 'fl-group-economy') problems.push(`after cancelling the Barracks the Refinery step rings ${back?.target || 'nothing'}, not the Economy group`);
         cs = back;
         if (!cs) break;
         continue;

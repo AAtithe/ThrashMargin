@@ -104,3 +104,24 @@ scroll in the window at 1280 by 720; the stat card never overlaps the sidebar.
 - Not fixed here: `npm run tours fireline-touch` fails on the mission objectives panel on the iPhone SE
   and iPhone 13 landscape (panel 33px tall, rows covered). The same failures appear on the commit before
   this round, so they predate it; phones were out of scope.
+
+**2026-11-28. The build rail and its pop-outs (desktop).**
+
+- The floating, draggable window is gone on a desktop. A rail down the battlefield's left edge
+  (`BuildRail` in `BuildWindow.tsx`, 76px, `RAIL_W`) carries one button per list: Structures, Infantry,
+  Vehicles, Air, Naval and, with a Lab, Research. Each shows the list's art, its queue length, a dot for
+  a new unlock and the advisor's ring. Pressing one slides the window out docked against the rail, full
+  height, on that list; pressing the open list again puts it away. The rail buttons take over the ids
+  the window's tabs had (`fl-tab-<list>`), so the tour, Tab walk and hotkeys are unchanged.
+- Structures pops out once more: a column of its groups (Economy, Production, Defence, Intel and Tech,
+  each saying how many items are ready to build), and beside it only the pressed group's items, with
+  Coming next and Later kept to that group. The pressed group is still the one the hotkeys build from.
+  The tech tree view shows every structure, as before.
+- The guided tour rings a structure's group button before the structure when another group is showing
+  (`windowed` in `GuidedTour.tsx`).
+- The quick bar and the battle feed move right by the rail's width (`--fl-rail` on the battlefield).
+- Phones and touch keep the full-screen sheet with tabs and all groups; nothing there changed.
+- Tests: `fireline-build-window.cjs` checks the rail (on the field's left edge, the window docked
+  against it and full height, a second press closes, Structures pops out its groups) and pops out each
+  structure's group before checking it; the drag check is replaced by the sidebar check alone.
+  `fireline.cjs` presses Production before queueing the Barracks mid-run.
