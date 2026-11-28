@@ -488,3 +488,17 @@ check: 423,565 assertions, none failed. Tours, `check:ui` and `check:loading` as
    against Hard at 150 wars a row.
 3. The computer founds slowly when poor (the truck's price is saved half a decision at a time).
 4. Five or more powers (section 5.1): deferred, as decided.
+
+### 2026-11-28: merged with main (high tiers, commander characters, battlefield events, the build rail)
+
+Eight files conflicted, every one two additions side by side; both kept. Main's three new setup options
+(`characters`, `events`, `highTiers`) are stated off in the Grand War presets, since every Grand War measurement
+above was taken without them; turning them on wants a ladder run first. The stylesheet's resolution dropped a
+closing brace, so `.fl-sr` swallowed main's build-rail rules; the Fireline tour's build-window checks caught it
+(main passed them, the merge did not), and bisecting in a clean checkout of main found the file.
+
+Checks on the merged build: `npm run check` all passed (Fireline 352,507); tours, `check:ui` (224 of 224) and
+`check:loading` (184 of 184) all passed. The deep tier reports 15 failures (pinned replays in "Size: quick is
+today", "Lines: the computer", one larger-maps length check, "Railgun Tanks follow", and "the computers claim
+events"), and a deep run on a clean checkout of main before the merge reports the same 15, line for line: they
+came in with main's own changes, not with Grand War. They are the next thing to fix on main.
