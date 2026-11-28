@@ -1,3 +1,5 @@
+import { foundingProblem, grandOn } from './grand';
+import { grandWantsCity } from './aiGrand';
 import { canQueue, doMove, doQueue, placementProblem } from './commands';
 import { deployProblem, deploySpot, doDeploy } from './engineering';
 import { buildingCentre, dist, distToBuilding, occupancy, onMap, tileAt } from './grid';
@@ -138,7 +140,7 @@ function expansion(s: GameState, owner: Owner, home: Pt, units: Unit[], foes: Un
   const ex = mem.expansion;
   if (!ex) {
     if (s.tick < (mem.expandAfter ?? 0)) return;
-    if (countBuildings(s, owner, 'refinery') < 2) return;
+    if (countBuildings(s, owner, 'refinery') < 2 && !grandWantsCity(s, owner)) return;
     const threat = s.tick - mem.hurtTick < 40 || foes.some(f => unitSpecOf(s, f).weapon && dist(f.x, f.y, home.x, home.y) < 15);
     if (threat || !unlocked(s, owner, 'basetruck') || !techAllowed(s, owner, 'basetruck')) return;
     const spot = expansionField(s, owner, foes);
@@ -295,6 +297,8 @@ function expansionField(s: GameState, owner: Owner, foes: Unit[]): Pt | null {
     if (mine.some(b => distToBuilding(x, y, b) < EXPAND_FROM)) continue;
     if (theirs.some(b => distToBuilding(x, y, b) < EXPAND_CLEAR)) continue;
     if (foes.some(f => dist(f.x, f.y, x, y) < EXPAND_CLEAR)) continue;
+    // Grand War: a new city must stand well away from every other city and town.
+    if (grandOn(s) && foundingProblem(s, owner, x, y) !== null) continue;
     fields.push([x, y, dist(x, y, anchor.x, anchor.y)]);
   }
   fields.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
@@ -321,6 +325,7 @@ function yardSpotNear(s: GameState, owner: Owner, x: number, y: number, from: nu
       if (Math.max(Math.abs(dx), Math.abs(dy)) < from) continue;
       const fx = cx + dx - 1;
       const fy = cy + dy - 1;
+      if (grandOn(s) && foundingProblem(s, owner, fx + 1, fy + 1) !== null) continue;
       cands.push([fx, fy, dx * dx + dy * dy]);
     }
   cands.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);

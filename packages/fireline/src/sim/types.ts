@@ -152,6 +152,12 @@ export interface HeroState {
     | { kind: 'capture'; target: number; progress: number };
 }
 
+/** Grand War's own state (grand.ts). */
+export interface GrandState {
+  /** The team holding the dominion share (its lowest side) and since when; null while none does. */
+  dominion: { team: Owner; since: number } | null;
+}
+
 export interface Building {
   id: number;
   owner: Owner;
@@ -165,6 +171,8 @@ export interface Building {
   /** Where units leaving this building head, if set. */
   rally: { x: number; y: number } | null;
   cooldown: number;
+  /** Grand War (cities.ts): a city's population, on a Command Yard or a Field Yard. Absent: not a city. */
+  pop?: number;
   engage: number;
   /** Turret facing, for buildings with a weapon. */
   tx: number;
@@ -219,6 +227,8 @@ export interface Site {
   owner: Owner | null;
   /** The side capturing it now and its progress from 0 to 1 (held at 1); null while nobody is. */
   capture: { by: Owner; progress: number } | null;
+  /** Grand War, a town only: its militia's strength. While above nought the town cannot be taken. */
+  garrison?: number;
 }
 
 export interface QueueItem {
@@ -361,6 +371,8 @@ export interface LogEntry {
 
 /** What the computer side remembers between decisions. Lives in state so replays stay exact. */
 export interface AiMemory {
+  /** Grand War (aiGrand.ts): the town the wave out now is taking. Absent: none. */
+  grandTown?: number;
   nextAttack: number;
   wave: number;
   /** The last time and place one of its structures was hit. */
@@ -629,6 +641,8 @@ export interface GameState {
   sites?: Site[];
   /** Hold victory (victory.ts): each side's points from the sites it has held. Absent: none scored. */
   holdScore?: number[];
+  /** Grand War (grand.ts): the dominion clock. Absent in every other battle. */
+  grand?: GrandState;
 
   // ---- Round 6 (all optional: absent on older saves, missions and setups without them) ----------
   /**

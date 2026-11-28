@@ -23,6 +23,10 @@ import {
   MAP_TYPES,
   MAP_W,
   MAX_SIDES,
+  GRAND_PRESETS,
+  GRAND_PRESET_ORDER,
+  type GrandOptions,
+  type GrandPreset,
   PRODUCER,
   ALSO_PRODUCES,
   SETUP_CREDITS_MAX,
@@ -66,6 +70,7 @@ import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, 
 import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
+import { migrateGrand, startGrand } from './grand';
 import { PROJECTS, RELAY_RADIUS } from './rules';
 import { INDUSTRY_BUILDINGS, creditsPart, industryOn, startIndustry } from './industry';
 import { isProducer, supplyOn } from './supply';
@@ -108,6 +113,26 @@ export interface NewGameOptions {
 }
 
 /** A setup with every field valid: unknown values fall back to DEFAULT_SETUP's, credits are clamped. */
+/** A Grand War options block with every key sound: each bad or missing value takes its preset's. Null: not a block. */
+export function normaliseGrand(raw: unknown): GrandOptions | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<GrandOptions>;
+  if (!GRAND_PRESET_ORDER.includes(r.preset as GrandPreset)) return null;
+  const base = GRAND_PRESETS[r.preset as GrandPreset].grand!;
+  const int = (v: unknown, lo: number, hi: number, def: number): number => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : def);
+  const num = (v: unknown, lo: number, hi: number, def: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : def);
+  return {
+    preset: r.preset as GrandPreset,
+    townsPerSide: int(r.townsPerSide, 0, 6, base.townsPerSide),
+    townStrength: num(r.townStrength, 0.25, 4, base.townStrength),
+    diplomacy: typeof r.diplomacy === 'boolean' ? r.diplomacy : base.diplomacy,
+    trade: typeof r.trade === 'boolean' ? r.trade : base.trade,
+    dominionShare: int(r.dominionShare, 51, 100, base.dominionShare),
+    dominionMinutes: int(r.dominionMinutes, 1, 120, base.dominionMinutes),
+    timeLimit: int(r.timeLimit, 0, 1440, base.timeLimit),
+  };
+}
+
 export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, base: SkirmishSetup = DEFAULT_SETUP): SkirmishSetup {
   const r = raw && typeof raw === 'object' ? raw : {};
   const map = r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : base.map;
@@ -180,7 +205,9 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const upkeep = production && (typeof r.upkeep === 'boolean' ? r.upkeep : (base.upkeep ?? false));
   // Seasons and spoilage (2026-11-27): on only when exactly true, and only with army upkeep.
   const seasons = upkeep && (typeof r.seasons === 'boolean' ? r.seasons : (base.seasons ?? false));
-  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive };
+  // Grand War (fireline-grand-war-design.md): kept only with advanced tech, sites and advanced production.
+  const grand = tech === 'advanced' && sites && production ? normaliseGrand(r.grand) : null;
+  return { map, tech, credits, ore, sides, mode, size, sites, victory, /* round7:fortification */ fortification, research, pace, factions, heroes, generals, generalPicks, industry, supply, territory, production, upkeep, seasons, structureUpgrades, strategicBuildings, adaptive, ...(grand ? { grand } : {}) };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -398,6 +425,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       addUnit(s, owner, 'rifleman', st.x + 1.5 + dir * (i - 1) * 0.9, st.y + 1.5 - dir * 2.6);
     }
   }
+  // Grand War (grand.ts): the Command Yards become cities, the towns are placed. A no-op without setup.grand.
+  if (s.setup?.grand) startGrand(s);
   updateExplored(s);
   // round7:review begin. The after-action review: every new battle records its history (src/sim/history.ts).
   s.history = newHistory(s.players.length);
@@ -845,6 +874,13 @@ export function migrateState(raw: unknown): GameState | null {
     return rest as AiMemory;
   });
   migrateNaval(out);
+  // Grand War: the town a wave is taking, kept only as a whole id in a Grand War battle.
+  out.ai = out.ai.map(m => {
+    if (!m || typeof m !== 'object' || !('grandTown' in m)) return m;
+    if (out.setup?.grand && Number.isInteger(m.grandTown)) return m;
+    const { grandTown: _drop, ...rest } = m;
+    return rest as AiMemory;
+  });
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));
@@ -869,6 +905,16 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.sites;
   }
   // round5:D end.
+  // Grand War: the dominion clock and each city's population, kept only in a Grand War battle.
+  if ('grand' in out) {
+    const g = migrateGrand(out.grand, out);
+    if (g) out.grand = g;
+    else delete out.grand;
+  }
+  for (const b of out.buildings) {
+    if (b.pop === undefined) continue;
+    if (!out.setup?.grand || (b.kind !== 'hq' && b.kind !== 'fieldyard') || !Number.isInteger(b.pop) || b.pop < 0 || b.pop > 1000) delete b.pop;
+  }
   // Hold victory (2026-11-27): one whole number of points per side, kept only with hold victory on.
   if ('holdScore' in out) {
     const hs = out.holdScore as unknown;

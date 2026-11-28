@@ -1797,9 +1797,48 @@ export interface SkirmishSetup {
    * it off without). Absent: off.
    */
   seasons?: boolean;
+  /**
+   * Grand War (2026-11-28, fireline-grand-war-design.md; grand.ts): cities that grow, independent
+   * towns, dominion victory, and in later phases diplomacy and trade. Needs advanced tech, neutral
+   * sites and advanced production (normaliseSetup drops it without). Absent: an ordinary skirmish,
+   * which is Grand War's Battle preset exactly.
+   */
+  grand?: GrandOptions;
 }
 
-/** How the sides of a battle of three or four are grouped. */
+// ---- Grand War (fireline-grand-war-design.md) --------------------------------------------------
+
+export type GrandPreset = 'frontier' | 'grand' | 'epic';
+export const GRAND_PRESET_ORDER: GrandPreset[] = ['frontier', 'grand', 'epic'];
+
+export interface GrandOptions {
+  preset: GrandPreset;
+  /** Independent towns per side, placed with the map's symmetry. */
+  townsPerSide: number;
+  /** Multiplier on a town's militia. */
+  townStrength: number;
+  /** The powers make and break treaties (G2). */
+  diplomacy: boolean;
+  /** Trade convoys between cities (G3). */
+  trade: boolean;
+  /** Percentage of all cities a team must hold for dominion. */
+  dominionShare: number;
+  /** Minutes the share must be held without a break. */
+  dominionMinutes: number;
+  /** Minutes until the war is decided on cities held; 0 for no limit. */
+  timeLimit: number;
+}
+
+/** Every key of GrandOptions, in order. The harness compares each preset's keys with it. */
+export const GRAND_OPTION_KEYS: (keyof GrandOptions)[] = ['preset', 'townsPerSide', 'townStrength', 'diplomacy', 'trade', 'dominionShare', 'dominionMinutes', 'timeLimit'];
+
+export const GRAND_PRESET_NAMES: Record<GrandPreset, string> = { frontier: 'Frontier', grand: 'Grand War', epic: 'Epic' };
+export const GRAND_PRESET_BLURBS: Record<GrandPreset, string> = {
+  frontier: 'Three powers on a huge map. Found cities, take the towns between you. About an hour.',
+  grand: 'Four powers on a vast map, with treaties and trade. Two to four hours.',
+  epic: 'Four powers on a Continental map. Four hours or more, decided on cities held at eight.',
+};
+
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
@@ -1873,6 +1912,45 @@ export const LEGACY_SETUP: SkirmishSetup = {
   adaptive: false,
   // round7:adaptive end
 };
+/**
+ * Grand War's presets (fireline-grand-war-design.md, section 4). Each states every key of the setup
+ * and of GrandOptions; the harness compares the key sets. The Battle preset is DEFAULT_SETUP: an
+ * ordinary skirmish, with no grand block.
+ */
+const grandSetup = (sides: 2 | 3 | 4, size: MapSize, pace: GamePace, grand: GrandOptions): SkirmishSetup => ({
+  map: 'random',
+  tech: 'advanced',
+  credits: 5000,
+  ore: 'normal',
+  sides,
+  mode: 'ffa',
+  size,
+  sites: true,
+  victory: 'conquest',
+  fortification: true,
+  research: 'lines',
+  pace,
+  factions: Array.from({ length: sides }, () => 'meridian' as Faction),
+  heroes: false,
+  generals: false,
+  generalPicks: Array.from({ length: sides }, () => null),
+  industry: true,
+  supply: true,
+  territory: true,
+  production: true,
+  upkeep: true,
+  seasons: true,
+  structureUpgrades: true,
+  strategicBuildings: true,
+  adaptive: true,
+  grand,
+});
+export const GRAND_PRESETS: Record<GrandPreset, SkirmishSetup> = {
+  frontier: grandSetup(3, 'huge', 'long', { preset: 'frontier', townsPerSide: 1, townStrength: 1, diplomacy: true, trade: true, dominionShare: 60, dominionMinutes: 8, timeLimit: 0 }),
+  grand: grandSetup(4, 'vast', 'long', { preset: 'grand', townsPerSide: 2, townStrength: 1.2, diplomacy: true, trade: true, dominionShare: 65, dominionMinutes: 12, timeLimit: 240 }),
+  epic: grandSetup(4, 'continental', 'epic', { preset: 'epic', townsPerSide: 3, townStrength: 1.4, diplomacy: true, trade: true, dominionShare: 70, dominionMinutes: 15, timeLimit: 480 }),
+};
+
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 
@@ -2463,8 +2541,11 @@ export const MAX_FIELD_YARDS = 3;
 
 // round5:D begin. Neutral sites and tier three.
 /** A neutral site's kind (Site in types.ts): Oil Derrick, Field Hospital, Comms Relay. D adds SITES, their numbers. */
-export type SiteKind = 'derrick' | 'hospital' | 'relay';
-export const SITE_KINDS: SiteKind[] = ['derrick', 'hospital', 'relay'];
+/** Grand War adds the independent town ('town', grand.ts), which is placed by its own rule and is never in SITE_KINDS. */
+export type SiteKind = 'derrick' | 'hospital' | 'relay' | 'town';
+/** The neutral sites placed by count per side (SITES_PER_SIDE). */
+export type PlacedSiteKind = Exclude<SiteKind, 'town'>;
+export const SITE_KINDS: PlacedSiteKind[] = ['derrick', 'hospital', 'relay'];
 
 /** A neutral site's look and footprint. Every site is 2 by 2 and blocks the ground under it. */
 export interface SiteSpec {
@@ -2477,6 +2558,7 @@ export const SITES: Record<SiteKind, SiteSpec> = {
   derrick: { name: 'Oil Derrick', w: 2, h: 2, blurb: 'Pays its holder 25 credits every five seconds: 300 a minute.' },
   hospital: { name: 'Field Hospital', w: 2, h: 2, blurb: "Heals its holder's infantry within three tiles." },
   relay: { name: 'Comms Relay', w: 2, h: 2, blurb: 'Shows its holder and allies everything within ten tiles.' },
+  town: { name: 'Independent Town', w: 3, h: 3, blurb: 'A militia holds it until its strength is broken; then infantry take it. Pays, houses workers and claims ground for its holder, and counts as a city.' },
 };
 /** Ticks of one team's infantry beside a site, alone, to take it: 10 seconds. */
 export const SITE_CAPTURE_TICKS = 100;
@@ -2492,7 +2574,7 @@ export const HOSPITAL_TICKS = 10;
 /** Tiles a Comms Relay reveals round its centre, to its holder and the holder's allies. */
 export const RELAY_RADIUS = 10;
 /** Sites of each kind in every side's share of the map, by map size. */
-export const SITES_PER_SIDE: Record<MapSize, Record<SiteKind, number>> = {
+export const SITES_PER_SIDE: Record<MapSize, Record<PlacedSiteKind, number>> = {
   standard: { derrick: 1, hospital: 0, relay: 0 },
   large: { derrick: 2, hospital: 1, relay: 1 },
   huge: { derrick: 3, hospital: 1, relay: 2 },
@@ -3006,3 +3088,40 @@ export const BLAST_FURNACE_ALLOYS = 13;
 export const RELAY_LINK_BONUS = 3;
 export const RELAY_SERVE_BONUS = 2;
 export const SHELL_CASTING_MADE = 15;
+
+// ---- Grand War: cities and towns (fireline-grand-war-design.md, G1; grand.ts) -------------------
+
+/** A city's beat: its population moves one toward its housing every 30 seconds. */
+export const CITY_BEAT = 300;
+/** Population a new city starts with: a Command Yard's (its housing), and one founded by a truck (a Field Yard's). */
+export const CITY_START_POP = 12;
+export const CITY_FOUNDED_POP = 6;
+/** Population a city gives up to found another (it keeps its floor, its yard's housing), and a floor for a yard without housing. */
+export const CITY_FOUNDING_COST = 6;
+export const CITY_MIN_POP = 2;
+/** Population at which a city reaches levels 2, 3, 4 and 5. */
+export const CITY_LEVEL_POP = [16, 28, 44, 64];
+/** Extra claim radius per level above the first. */
+export const CITY_CLAIM_PER_LEVEL = 2;
+/** District structures a city may hold: this, plus CITY_DISTRICTS_PER_LEVEL a level. */
+export const CITY_DISTRICTS_BASE = 3;
+export const CITY_DISTRICTS_PER_LEVEL = 2;
+/** Closest a new city may stand to another city or a town, centre to centre. */
+export const CITY_GAP = 22;
+
+/** An independent town: 3 by 3, its militia's full strength, and how it fights. */
+export const TOWN_SIZE = 3;
+export const TOWN_GARRISON = 1500;
+export const TOWN_RANGE = 7;
+export const TOWN_FIRE_TICKS = 10;
+export const TOWN_DAMAGE = 24;
+/** A held town's militia grows back to this share of full, this much a beat of TOWN_FIRE_TICKS. */
+export const TOWN_HELD_SHARE = 0.5;
+export const TOWN_REGROW = 4;
+/** What a held town pays every DERRICK_TICKS, the workers it houses and the ground it claims. */
+export const TOWN_INCOME = 30;
+export const TOWN_HOUSING = 8;
+export const TOWN_CLAIM = 8;
+/** Closest a town stands to a Command Yard, and to another town or site. */
+export const TOWN_YARD_GAP = 30;
+export const TOWN_GAP = 18;

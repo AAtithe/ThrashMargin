@@ -14,8 +14,9 @@
  *
  * Imports rules.ts, supply.ts and types only.
  */
-import { BUILDINGS, CLAIM_RADIUS, CREW, CREW_ORDER, HOUSING, PREFAB_HOUSING, TECH_CREW, TECHNICIANS_PER_CENTRE, type BuildingKind, type Owner, type ProjectId } from './rules';
+import { BUILDINGS, CLAIM_RADIUS, TOWN_CLAIM, TOWN_HOUSING, CREW, CREW_ORDER, HOUSING, PREFAB_HOUSING, TECH_CREW, TECHNICIANS_PER_CENTRE, type BuildingKind, type Owner, type ProjectId } from './rules';
 import { supplyOn } from './supply';
+import { cityClaimBonus, grandOn, isCity, townCentre, townsHeld } from './cities';
 import type { Building, GameState } from './types';
 
 /** True in a skirmish with industry, supply lines and territory all on. */
@@ -37,8 +38,16 @@ function claimsOf(s: GameState): Claim[] {
     const r = CLAIM_RADIUS[b.kind];
     if (!r || b.hp <= 0) continue;
     const spec = BUILDINGS[b.kind];
-    out.push({ owner: b.owner, cx: b.x + spec.w / 2, cy: b.y + spec.h / 2, r });
+    // Grand War: a city claims further as it grows.
+    out.push({ owner: b.owner, cx: b.x + spec.w / 2, cy: b.y + spec.h / 2, r: isCity(s, b) ? r + cityClaimBonus(b) : r });
   }
+  // Grand War: a held town claims the ground round it.
+  if (grandOn(s))
+    for (const t of s.sites ?? []) {
+      if (t.kind !== 'town' || t.owner === null) continue;
+      const c = townCentre(t);
+      out.push({ owner: t.owner, cx: c.x, cy: c.y, r: TOWN_CLAIM });
+    }
   return out;
 }
 
@@ -119,6 +128,8 @@ export function housed(s: GameState, owner: Owner): number {
     const full = b.kind === 'quarters' && prefab ? PREFAB_HOUSING : (HOUSING[b.kind] ?? 0);
     n += b.hungry ? Math.floor(full / 2) : full;
   }
+  // Grand War: a held town houses workers of its own.
+  if (grandOn(s)) n += TOWN_HOUSING * townsHeld(s, owner).length;
   return n;
 }
 

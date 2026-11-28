@@ -98,7 +98,7 @@ Every preset states every option (invariant 3); the harness compares key sets.
 | map size | as chosen (standard to continental) | huge | vast | continental |
 | sides | 2 to 4 | 3 | 4 | 4 |
 | cities | off | on | on | on |
-| independent towns | 0 | 4 | 8 | 14 |
+| independent towns | 0 | 1 per side (3) | 2 per side (8) | 3 per side (12) |
 | diplomacy | off | on | on | on |
 | trade convoys | off | on | on | on |
 | industry, supply, territory, production | as chosen | on | on | on |
@@ -165,6 +165,27 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 
 ---
 
+## To do (ticked as each lands; the build log below says how)
+
+- [x] G0 Save compaction (tables) and target finding by map cell
+- [x] G1a `setup.grand` options and the four presets, every key stated
+- [x] G1b Cities: population from food and housing, level 1 to 5, claim radius and district cap by level, workforce limited by population
+- [x] G1c Settler founding: a Forward Base Truck founds a city on unclaimed ground away from other cities
+- [x] G1d Independent towns with garrisons, taken by force
+- [x] G1e Dominion victory and score at the time limit
+- [x] G1f The computer founds cities and takes towns
+- [x] G1g G1 harness sections, `npm run check`, build log, push
+- [ ] G2a Diplomacy: stances, treaties in minutes, trust, the 60-second beat, actions and refusals
+- [ ] G2b Diplomacy in battle (no fire between non-war pairs, allied vision) and computer temperaments
+- [ ] G2c G2 harness sections, check, log, push
+- [ ] G3 Trade routes and convoys: pay on arrival, raidable, blockade, computer escorts and raids, conservation tests
+- [ ] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
+- [ ] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
+- [ ] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
+- [ ] G5 Computer grand strategy by temperament; ladder 150 seeds per preset and difficulty; `check:deep`; final log
+
+---
+
 ## Build log
 
 ### 2026-11-28: G0, foundations (saves and target finding)
@@ -223,3 +244,72 @@ minutes under 150 KB. `npm run drive -- --fast --near-check`: 348,770 assertions
 `npm run drive -- --near-check` (the deep tier, with every pinned byte-identical replay): 423,354
 assertions, none failed, so the indexed search changed no battle anywhere. `npm run check`: all passed
 (Fireline 348,770, campaign 7,713, War for the Planet 33,564, every other game's suite).
+
+### 2026-11-28: G1, cities, founding, towns and dominion
+
+**Options and presets** (`rules.ts`). `SkirmishSetup.grand?: GrandOptions` (preset, townsPerSide,
+townStrength, diplomacy, trade, dominionShare, dominionMinutes, timeLimit) and `GRAND_PRESETS`
+(Frontier, Grand War, Epic), each a full setup stating every key. `normaliseSetup` keeps the block only
+with advanced tech, neutral sites and advanced production, and adds no key at all to any other setup,
+so every older save, pinned hash and the Battle preset (today's skirmish) are untouched.
+`normaliseGrand` replaces each bad value with its preset's.
+
+**Cities** (`cities.ts`, `grand.ts`). A city is a Command Yard or Field Yard carrying `pop`. Every 30
+seconds a city's population moves one toward the housing round it (its yard, and the Quarters nearer
+it than any other of its side's cities; a hungry Quarters houses half), never under its floor, its
+yard's own housing. Level 1 to 5 at 16, 28, 44 and 64 people; each level widens the city's claim by two
+tiles and its district cap (structures that need a crew) is 3 plus 2 a level.
+
+A first model made the population a stock that capped the workforce and grew by spending food. It
+deadlocked the economy in play: Quarters eat whether or not anyone lives in them, so food ran out, cities
+starved, and the computer sat on 50,000 credits with nothing to build with. The model kept builds on the
+economy that already works: the workers are the existing housing rule; the population follows fed
+housing, and is what levels a city and what it pays to found another. Food matters because a hungry
+Quarters halves its housing and the city shrinks.
+
+**Founding.** A Forward Base Truck deploys into a city only at least 22 tiles from every city and town,
+and only while a city can spare 6 people above its floor; the new city starts at 6. A city cannot pack
+up. Refusals return the same state.
+
+**Towns.** `townsPerSide` independent towns (a new site kind, 3 by 3, outside `SITE_KINDS` so no
+existing placement stream moves), placed from every legal spot in side 0's share of the map with the
+map's own symmetry: every side's nearest town is at the same distance (within 1.5 tiles; 6 on three-sided
+maps, as the sites). A town's militia (1,500 times townStrength) fires on every unit in reach while
+independent and is worn down by the fire of the units round it, worked out as a siege; at nothing,
+infantry take it as a neutral site. Held: it pays 30 credits every 5 seconds, houses 8 workers, claims 8
+tiles round it, counts as a city, and its militia regrows to half. A first search along the line from
+the yard to the middle found no ground on coast and canyon maps; the share-wide search places every
+preset on every seed tried.
+
+**Dominion and the time limit.** A team holding `dominionShare` of all cities (towns included) for
+`dominionMinutes` without a break wins; at `timeLimit` the team with most cities wins, level teams play
+on; conquest still wins outright.
+
+**The computer** (`aiGrand.ts`). Every other wave, or any wave for which a town is nearer than the
+enemy it was aimed at, takes a town and keeps to it until its team holds it (the first version re-aimed
+at the enemy base every decision once under way, and never touched a town). Capture parties leave
+garrisoned towns to the waves. From minute 8 it wants a city more every 15 minutes up to four, and its
+expansions go ahead for that without a second Refinery, on ground a city may stand on. Its build plan
+skips a district while every city is full and builds Quarters instead (it had stalled on a district it
+could not place and never reached the Comms Uplink the truck needs), and puts districts by a city with
+room.
+
+**Measured** (computer-only, Normal): Frontier seed g1-a, cities level 3 by minute 25, all three towns
+taken by minute 25 and changing hands after; Grand War seed g1-b (four sides, vast), every town attacked
+and four taken by minute 35; a side founded two cities by minute 28. Battles still end by conquest at
+about 30 minutes: the dominion clock and the balance of a long game are G5's.
+
+**Not yet.** Towns draw with the Comms Relay's art at 2 by 2 until G4b gives them their own. The
+computer founds slowly when poor (the truck costs 2,500 and the fund saves half its credits): G5.
+
+**Checks** (`scripts/drive-grand.ts`, in `npm run drive`): presets (every key, own normal form, the
+block dropped without its needs, junk values), the start on every preset and three seeds (cities, town
+count, clear ground, fair distances, the same placement every time), cities (growth by the beat, filling
+housing, level, a wider claim, shrinking to the floor, the district cap and its refusal), founding (too
+close to a city or a town, no settlers to spare, a legal founding through `processAction` with the
+input untouched, a city refusing to pack up, refused actions returning the same state), towns (fire,
+siege, broken then taken, income, a city for dominion, claimed ground, regrowth to half, no capture
+while garrisoned), dominion (clock, a break, victory at the time), the time limit (level plays on, most
+cities wins), saves (exact, junk repaired, fields dropped outside a Grand War) and, deep only, three
+whole computer Frontier battles checked every minute plus an exact replay: 125 assertions.
+`npm run check`: all passed, Fireline 348,890 assertions.

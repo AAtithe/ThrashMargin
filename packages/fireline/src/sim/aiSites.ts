@@ -180,6 +180,8 @@ function captureParties(s: GameState, owner: Owner, t: SiteTactics, home: Pt, un
       let bestScore = Infinity;
       for (const site of sites) {
         if (ours(site) || targeted.has(site.id) || skip.has(site.id)) continue;
+        // Grand War: a town whose militia still stands is a wave's work, not a party's.
+        if (site.kind === 'town' && (site.garrison ?? 0) > 0) continue;
         const c = siteCentre(site);
         const guard = foes.filter(f => unitSpecOf(s, f).weapon && dist(f.x, f.y, c.x, c.y) < 7).length;
         if (guard > t.partySize) continue;

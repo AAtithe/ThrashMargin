@@ -1,3 +1,4 @@
+import { foundCity, foundingProblem, grandOn } from './grand';
 import { placementProblem } from './commands';
 import { dist } from './grid';
 import { upgradeNewUnit } from './research';
@@ -92,6 +93,10 @@ export function deployProblem(s: GameState, owner: Owner, id: number): string | 
   if (!kind) return 'Cannot deploy';
   if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return 'Busy';
   const at = deploySpot(u);
+  const spec = BUILDINGS[kind];
+  // Grand War: a deployed truck founds a city, away from every other and paid for in settlers.
+  const founding = foundingProblem(s, owner, at.x + spec.w / 2, at.y + spec.h / 2);
+  if (founding) return founding;
   return placementProblem(s, owner, kind, at.x, at.y, undefined, { ignoreUnit: u.id, anywhere: true });
 }
 
@@ -104,6 +109,7 @@ export function doDeploy(s: GameState, owner: Owner, id: number): Building {
   s.units = s.units.filter(v => v.id !== id);
   const b = addBuilding(s, owner, kind, at.x, at.y);
   b.hp = Math.max(1, Math.round(/* round7:fortification */ structureMaxHpFor(s, owner, kind) * share));
+  foundCity(s, b);
   if (owner === 0) log(s, `${buildingSpec(s, owner, kind).name} deployed.`, 'good');
   return b;
 }
@@ -117,6 +123,7 @@ export function undeployProblem(s: GameState, owner: Owner, id: number): string 
   const b = s.buildings.find(v => v.id === id);
   if (!b || b.owner !== owner || b.hp <= 0) return 'Not your structure';
   if (!BUILDINGS[b.kind].undeploysTo) return 'Cannot pack up';
+  if (b.pop !== undefined && grandOn(s)) return 'A city does not move';
   if (!s.buildings.some(o => o !== b && o.owner === owner && isStructure(o))) return 'Your last structure';
   if (readyStructure(s, owner)) {
     const rest = { ...s, buildings: s.buildings.filter(o => o !== b) };

@@ -185,6 +185,7 @@ const DEEP_SECTIONS = new Set([
   'Continental: replay through a save',
   'Hold victory: computer battles',
   'Grand War G0: a long battle saved',
+  'Grand War G1: whole computer battles',
 ]);
 let skipped = 0;
 /** `--campaign` runs only the campaign sections (missions, heroes, powers, perks). */

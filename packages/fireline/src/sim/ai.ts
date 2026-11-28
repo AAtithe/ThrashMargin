@@ -1,3 +1,5 @@
+import { grandWaveHeld, grandWaveTarget } from './aiGrand';
+import { cityWithRoom, grandOn, isDistrict } from './cities';
 import { creepFocus, navalPlan, navalSpot } from './aiNaval';
 import { isShip } from './naval';
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
@@ -754,7 +756,9 @@ function commander(s: GameState, owner: Owner): void {
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
       // round7:adaptive begin. From waveStage; a raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
-      const target = adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home, s, owner), waveStage);
+      const aim = adaptTarget(s, owner, pickTarget(enemy, foes, waveStage, t.focus, home, s, owner), waveStage);
+      // Grand War: every other wave, or whenever a town is nearer than the enemy, the wave takes a town.
+      const target = grandWaveTarget(s, owner, waveStage, aim, mem.wave) ?? aim;
       // round7:adaptive end.
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
@@ -790,7 +794,8 @@ function commander(s: GameState, owner: Owner): void {
         centre = middle(near);
       }
       // round7:adaptive begin. A raid or an expansion hunt aims at what it has seen (aiAdapt.ts).
-      const target = adaptTarget(s, owner, pickTarget(enemy, foes, centre, t.focus, home, s, owner), centre);
+      // Grand War: a wave sent for a town keeps to it until its team holds it (aiGrand.ts).
+      const target = grandWaveHeld(s, owner) ?? adaptTarget(s, owner, pickTarget(enemy, foes, centre, t.focus, home, s, owner), centre);
       // round7:adaptive end.
       let spread = 0;
       for (const u of core) spread = Math.max(spread, dist(u.x, u.y, centre.x, centre.y));
@@ -1194,11 +1199,16 @@ function nextStructure(
   // Surplus production (aiScale.ts): money banked and not being spent becomes more producers.
   if (surplusOn(s, s.players[owner].credits))
     plan.push(['factory', Math.max(1, d.factories) + SURPLUS_FACTORIES], ['barracks', 1 + SURPLUS_BARRACKS]);
+  // Grand War: with every city's districts full, a district waits for a city to grow (or be founded).
+  const roomless = grandOn(s) && !cityWithRoom(s, owner);
   for (const [k, n] of plan) {
     if (count(k) >= n) continue;
     if (!unlocked(s, owner, k)) continue;
+    if (roomless && isDistrict(k)) continue;
     return powerFor(k);
   }
+  // Grand War: and the cities grow on housing.
+  if (roomless && count('quarters') < MAX_QUARTERS && unlocked(s, owner, 'quarters')) return powerFor('quarters');
   return null;
 }
 
@@ -1225,6 +1235,11 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     return findSpotNear(s, owner, kind, ore ?? toward(home, enemyHome, 9));
   }
   let focus = (kind === 'power' && creepFocus(s, owner)) || home;
+  // Grand War: a district goes by a city with room for it.
+  if (isDistrict(kind) && grandOn(s)) {
+    const city = cityWithRoom(s, owner);
+    if (city) focus = { x: city.x + 1, y: city.y + 1 };
+  }
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
   if (kind === 'repairbay') focus = toward(home, enemyHome, 4);

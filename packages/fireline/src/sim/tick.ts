@@ -4,6 +4,7 @@ import { labWorking, productionOn, productionStep, spendMunition, truckStep } fr
 import { SHORT_RELOAD, shortOfUpkeep, upkeepStep } from './upkeep';
 import { seasonsStep } from './seasons';
 import { holdStep } from './victory';
+import { grandStep } from './grand';
 import { staffed, territoryOn, unstaffed } from './territory';
 import { cutOff, supplied, supplyOn, supplyStep } from './supply';
 import { industryStep } from './industry';
@@ -396,8 +397,10 @@ export function step(s: GameState): void {
   // A mission is decided by its objectives; a skirmish by who still has structures.
   if (s.mission) evaluateMission(s);
   else {
+    // Grand War (grand.ts): cities eat and grow, towns fight and pay, dominion and the time limit. A no-op otherwise.
+    grandStep(s, log);
     // Hold victory (2026-11-27): the sites score on the minute, and a team at the target wins.
-    holdStep(s, log);
+    if (s.winner === null) holdStep(s, log);
     if (s.winner === null) checkVictory(s);
   }
   // round7:review begin. The after-action review: the history's sample and events (a no-op without s.history).

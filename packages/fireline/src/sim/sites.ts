@@ -21,6 +21,7 @@ import {
   UNITS,
   type MapSize,
   type Owner,
+  type PlacedSiteKind,
   type SiteKind,
   type SkirmishSetup,
 } from './rules';
@@ -77,7 +78,7 @@ const NUDGE = 3;
  * share of the distance from that yard to the middle of the map. The first Oil Derrick is near
  * home, the second further out, Comms Relays toward the middle where seeing matters most.
  */
-const BANDS: Record<SiteKind, [number, number][]> = {
+const BANDS: Record<PlacedSiteKind, [number, number][]> = {
   derrick: [
     [0.4, 0.65],
     [0.65, 0.9],
@@ -402,7 +403,9 @@ export function migrateSites(raw: unknown, s: GameState): Site[] | null {
   for (const r of raw) {
     if (!r || typeof r !== 'object') continue;
     const v = r as Partial<Site>;
-    if (typeof v.kind !== 'string' || !SITE_KINDS.includes(v.kind as SiteKind)) continue;
+    // Grand War: an independent town, kept only in a Grand War battle.
+    const town = v.kind === 'town' && !!s.setup?.grand;
+    if (typeof v.kind !== 'string' || (!town && !SITE_KINDS.includes(v.kind as PlacedSiteKind))) continue;
     const spec = SITES[v.kind as SiteKind];
     if (!Number.isInteger(v.id) || v.id! <= 0 || taken.has(v.id!) || (Number.isInteger(s.nextId) && v.id! >= s.nextId)) continue;
     if (!Number.isInteger(v.x) || !Number.isInteger(v.y) || v.x! < 0 || v.y! < 0 || v.x! + spec.w > s.mapW || v.y! + spec.h > s.mapH) continue;
@@ -413,7 +416,9 @@ export function migrateSites(raw: unknown, s: GameState): Site[] | null {
       capture = { by: c.by as Owner, progress: Math.min(1, Math.round(c.progress! * SITE_CAPTURE_TICKS) / SITE_CAPTURE_TICKS) };
     }
     taken.add(v.id!);
-    out.push({ id: v.id!, kind: v.kind as SiteKind, x: v.x!, y: v.y!, owner, capture });
+    const site: Site = { id: v.id!, kind: v.kind as SiteKind, x: v.x!, y: v.y!, owner, capture };
+    if (town) site.garrison = Number.isFinite(v.garrison) ? Math.max(0, Math.round(v.garrison!)) : 0;
+    out.push(site);
   }
   return out.length ? out : null;
 }
@@ -454,7 +459,9 @@ function captureStep(s: GameState): void {
       if (!present.has(team)) present.set(team, u.owner);
     }
     const defended = present.has(holder);
-    const capturers = [...present.entries()].filter(([team]) => team !== holder);
+    // Grand War: a town's militia must be broken before anyone can take it.
+    const garrisoned = site.kind === 'town' && (site.garrison ?? 0) > 0;
+    const capturers = garrisoned ? [] : [...present.entries()].filter(([team]) => team !== holder);
     const steps = cap ? Math.round(cap.progress * T) : 0;
     const wind = () => (steps > 1 ? { by: cap!.by, progress: (steps - 1) / T } : null);
     if (capturers.length === 1 && !defended) {

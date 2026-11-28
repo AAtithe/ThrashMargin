@@ -1,3 +1,4 @@
+import { districtProblem } from './cities';
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { territoryOn, territoryProblem } from './territory';
 import { isBridge, isWalkable } from './map';
@@ -215,6 +216,9 @@ export function placementProblem(
   // round7:structures begin. A Supply Cache may also go down beside any of your ground troops, borders or not.
   if (kind === 'supplycache' && cacheNearTroops(s, owner, x, y)) return null;
   // round7:structures end.
+  // Grand War: a city holds as many districts as its level allows.
+  const district = districtProblem(s, owner, kind, x, y);
+  if (district) return district;
   // Territory and workforce (2026-11-21): inside your borders, in place of the build radius.
   if (territoryOn(s)) return territoryProblem(s, owner, kind, x, y);
   // Near something we already own (walls do not count: they cannot creep a base across the map).
