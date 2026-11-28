@@ -2100,6 +2100,7 @@ export function Battle({
               setPlacing={choosePlacing}
               touch={layout.touch}
               sheet={sheet}
+              onLocate={centreOn}
               onClose={() => {
                 reopenAfterPlacing.current = false;
                 setBuildOpen(false);

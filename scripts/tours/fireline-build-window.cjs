@@ -28,6 +28,7 @@
  * - pinning puts an item on the quick bar, F1 queues it, unpinning removes it;
  * - the window is docked against the rail at the battlefield's top, inside it, never over the sidebar;
  * - pinned items sit in the rail, under the lists, where the window never covers them;
+ * - Research is on the rail before its Lab, greyed, and opens on the way to one (Structures, Intel and Tech);
  * - no sideways scroll in the window at 1280 by 720, in either view.
  * No page or console errors.
  */
@@ -150,6 +151,31 @@ async function checkBuildWindow(browser, base, problems, out) {
       await sleep(200);
       if (!(await isOpen())) await fail('moving to another list on the rail closed the window');
       if ((await page.getByTestId('build-groups').count()) !== 1) await fail('Structures did not pop out its group column');
+      // Moving the mouse onto a group and resting pops it out, as a cascading menu does.
+      const pg = await page.locator('#fl-group-production').boundingBox();
+      await page.mouse.move(pg.x + 10, pg.y + pg.height / 2, { steps: 4 });
+      await page.mouse.move(pg.x + 20, pg.y + pg.height / 2, { steps: 2 });
+      await sleep(450);
+      if ((await page.locator('#fl-group-production').getAttribute('aria-pressed')) !== 'true') await fail('resting the mouse on a group did not pop it out');
+      await page.locator('#fl-group-economy').click();
+      await page.mouse.move(5, 300);
+      await sleep(120);
+      // Research is on the rail before its Lab, greyed, and opens on the way to one.
+      if (!(await page.locator('#fl-tab-research').count())) await fail('no Research on the rail before the Research Lab stands');
+      else {
+        if ((await page.locator('#fl-tab-research').getAttribute('data-producer')) !== '0') await fail('Research is not greyed before its Lab');
+        await page.locator('#fl-tab-research').click();
+        if (!(await until(async () => (await page.getByTestId('tech-locked').count()) > 0, 2000))) await fail('Research before its Lab does not say what it needs');
+        else {
+          await page.getByTestId('tech-locked-go').click();
+          await sleep(200);
+          if ((await page.locator('#fl-tab-building').getAttribute('aria-expanded')) !== 'true' || (await page.locator('#fl-group-tech').getAttribute('aria-pressed')) !== 'true')
+            await fail('the way to the Research Lab did not open Structures on Intel and Tech');
+          if (!(await page.locator('#fl-build-researchlab').count())) await fail('the way to the Research Lab does not show it');
+        }
+        await page.locator(`#fl-group-economy`).click();
+        await sleep(120);
+      }
     }
     const missingOf = item => item.needs.filter(n => !has.has(n));
     let seen = 0;

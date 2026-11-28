@@ -138,3 +138,20 @@ scroll in the window at 1280 by 720; the stat card never overlaps the sidebar.
   --quick` (ok), `npm run check:ui fireline` (32 of 32). Not run here: the whole of `npm run check`,
   which stops in this container at Thrash Margin's missing install; Fireline's client and API typecheck
   clean, and no file under `src/sim/` changed.
+
+**2026-11-28, later still. Research and Upgrades on the rail.**
+
+- Research sits on the rail under a rule from the start of any battle that allows a Research Lab:
+  greyed until the Lab stands, when it opens on what research needs and a button to the Lab (Structures,
+  Intel and Tech). With development lines it pops out a column of the lines (each saying not started,
+  Mk I done, researching with its percentage, choose a doctrine, complete) and the chosen line's nodes
+  beside it. Classic research and the phone sheet keep the plain list.
+- Upgrades (`Tab` gained `'upgrades'`; `tabsFor` offers it with structure upgrades on) pops out a column
+  of the structure kinds you hold that have levels, and beside it every structure of the kind: level of
+  maximum, the next level and what it does, the price, Upgrade or a progress bar and Cancel, and Show to
+  centre the map on it. Until then it names the kinds that have levels. The selection panel's Upgrade
+  stays as it was.
+- The group hover now starts on a real pointer move, not on entering: opening Structures from Research
+  slid a group under the resting mouse, which picked it.
+- Tests: the build window check covers Research before its Lab and the hover opening a group.
+  Verified: `npm run tours fireline` (ok), `fireline-touch --quick` (ok), `check:ui fireline` (32 of 32).

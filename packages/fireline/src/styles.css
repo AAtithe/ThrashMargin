@@ -9671,3 +9671,132 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   transform: translateY(-2px);
   box-shadow: 0 6px 14px var(--ui-shadow);
 }
+
+/* ---- The rail's panels: Tech and Upgrades (2026-11-28) -------------------------------------------- */
+.fl-rail-rule {
+  display: block;
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--ui-tree-rule);
+}
+.fl-bw-views[hidden],
+.fl-bw-advisor[hidden] {
+  display: none;
+}
+/* A column of choices and the chosen one beside it, inside the window's body. */
+.fl-pop {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: -10px -12px -12px;
+  min-height: 100%;
+}
+.fl-pop-col {
+  flex: 0 0 176px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0 10px 8px;
+  border-right: 1px solid var(--ui-tree-rule);
+  background: var(--ui-panel-raised);
+  animation: fl-bw-out calc(220ms * var(--tm-motion, 1)) ease-out;
+}
+.fl-pop-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px 0;
+  animation: fl-bw-swap calc(200ms * var(--tm-motion, 1)) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fl-pop-main .fl-research {
+  margin: 0;
+}
+.fl-bw-grp[data-running="1"] .fl-bw-grp-count {
+  color: var(--ui-accent);
+  font-weight: 600;
+}
+.fl-bw-grp[data-choose="1"] .fl-bw-grp-count {
+  color: var(--ui-info);
+  font-weight: 600;
+}
+.fl-panel-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+.fl-panel-locked p {
+  margin: 0;
+  color: var(--ui-text-soft, var(--ui-text));
+  line-height: 1.45;
+}
+.fl-up-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fl-up-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 6px;
+  background: var(--ui-panel-raised);
+  font-size: 0.78rem;
+}
+.fl-up-row[data-state="running"] {
+  border-color: var(--ui-accent);
+}
+.fl-up-row[data-state="done"] {
+  opacity: 0.75;
+}
+.fl-up-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fl-up-level {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-up-show {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.fl-up-show:hover {
+  border-color: var(--ui-accent);
+}
+.fl-up-next {
+  color: var(--ui-text);
+}
+.fl-up-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fl-up-act .fl-research-bar {
+  flex: 1 1 auto;
+}
+.fl-up-why {
+  font-size: 0.7rem;
+  color: var(--ui-text-faint);
+}
+/* The line's name is the panel's heading already. */
+.fl-pop-main .fl-line-label {
+  display: none;
+}

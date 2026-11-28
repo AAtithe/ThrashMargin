@@ -54,7 +54,7 @@ export interface TourView {
   selected: number[];
   placing: BuildingKind | null;
   /** The build window's tab (the one the Build button names while it is closed). */
-  tab: Category | 'research';
+  tab: Category | 'research' | 'upgrades';
   /** A finger, not a mouse: the steps say tap, and name the command bar instead of keys. */
   touch?: boolean;
   /** The build window is open (and showing): build buttons and list tabs exist only while it is. */
