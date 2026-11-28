@@ -9403,6 +9403,8 @@ div:not(.fl-dock):has(> .fl-objectives-pill[data-touch]) > .fl-banners {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
 /* ---- The build rail and its pop-outs (desktop, 2026-11-28) ---------------------------------------
    The rail is the menu bar down the battlefield's left edge, one button per list. The build window
    slides out of it, docked from top to bottom; on Structures a column of groups pops out first, and
