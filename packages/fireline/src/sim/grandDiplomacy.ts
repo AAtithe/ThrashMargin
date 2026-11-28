@@ -64,6 +64,9 @@ const BREACH_TRUST_MAX = 60;
 
 export const idx = (a: Owner, b: Owner): number => a * MAX_SIDES + b;
 
+/** The list turned by `by` places: [a, b, c] by 1 is [b, c, a]. */
+const rotate = <T>(xs: readonly T[], by: number): T[] => (xs.length ? [...xs.slice(by % xs.length), ...xs.slice(0, by % xs.length)] : []);
+
 /** True in a Grand War with diplomacy (free-for-all, the stance table present). */
 export const diplomacyOn = (s: GameState): boolean => grandOn(s) && s.setup!.grand!.diplomacy && s.setup!.mode === 'ffa' && typeof s.grand?.stance === 'string';
 
@@ -389,7 +392,10 @@ export function diplomacyStep(s: GameState, say: Say): void {
   // 3. Lapsed offers.
   if (s.grand!.offers!.some(o => o.expires <= s.tick)) s.grand = { ...s.grand!, offers: s.grand!.offers!.filter(o => o.expires > s.tick) };
   // 4. Each computer side's move.
-  for (const j of alive) if (bot(s, j)) computerMove(s, j, alive, say);
+  // In turn, and the turn rotates each beat: moving in seat order gave seat 1 first pick of every
+  // partner every beat, and left the last seat the odd one out of every alliance.
+  const beat = Math.floor(s.tick / DIPLO_BEAT);
+  for (const j of rotate(alive, beat)) if (bot(s, j)) computerMove(s, j, alive, say);
 }
 
 function propose(s: GameState, j: Owner, b: Owner, kind: TreatyKind, say: Say): void {
@@ -411,7 +417,8 @@ function computerMove(s: GameState, j: Owner, alive: Owner[], say: Say): void {
   const T = temperFor(s, j);
   if (!T) return;
   const ready = (b: Owner) => (s.grand!.cool![idx(j, b)] ?? 0) <= s.tick;
-  const others = alive.filter(b => b !== j);
+  // Partners in turn too, rotated by the beat and the side, for the same reason.
+  const others = rotate(alive.filter(b => b !== j), Math.floor(s.tick / DIPLO_BEAT) + j);
   // War: through a running treaty only for a temperament that breaks them, and only while trust is low.
   for (const b of others) {
     const st = stanceOf(s, j, b);

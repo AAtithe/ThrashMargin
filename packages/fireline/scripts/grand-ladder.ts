@@ -24,6 +24,7 @@ import { processAction } from '../src/sim/actions';
 import { townsOf } from '../src/sim/cities';
 import { GRAND_PRESETS, type Difficulty, type GrandPreset } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
+import { isAlly, sidesOf } from '../src/sim/sides';
 import type { GameState } from '../src/sim/types';
 
 const args = process.argv.slice(2);
@@ -49,6 +50,8 @@ export interface WarResult {
   end: 'conquest' | 'dominion' | 'time' | 'eliminated' | 'unfinished';
   minute: number;
   winner: number | null;
+  /** Every side on the winning side at the end: the winner and its allies (an alliance wins together). */
+  winners: number[];
   treaties: number;
   wars: number;
   breaches: number;
@@ -88,6 +91,7 @@ export function playWar(preset: GrandPreset, diff: Difficulty, seed: string, cap
     end,
     minute: Math.round(s.tick / 60) / 10,
     winner: s.winner,
+    winners: s.winner === null ? [] : sidesOf(s).filter(o => isAlly(s, o, s.winner!)),
     treaties: treaties / 2,
     wars: wars / 2,
     breaches: breaches / 2,
@@ -114,8 +118,10 @@ function report(rs: WarResult[]): void {
   console.log(`  side 0 (the player's seat) won ${pct(rs.filter(r => r.winner === 0).length, n)}`);
   // The seats' spread, from wars that name a real winner (not the player's elimination).
   const decided = rs.filter(r => r.end !== 'eliminated' && r.end !== 'unfinished');
-  const seats = [0, 1, 2, 3].map(o => decided.filter(r => r.winner === o).length);
-  console.log(`  won by seat, of ${decided.length} wars with a real winner: ${seats.map((c, o) => `${o}: ${pct(c, decided.length)}`).join(', ')}`);
+  // An alliance's win is shared: each member gets its share of the war.
+  const seats = [0, 1, 2, 3].map(o => decided.reduce((a, r) => a + (r.winners.includes(o) ? 1 / r.winners.length : 0), 0));
+  const shared = decided.filter(r => r.winners.length > 1).length;
+  console.log(`  won by seat, of ${decided.length} wars with a real winner (${shared} by an alliance, shared): ${seats.map((c, o) => `${o}: ${pct(c, decided.length)}`).join(', ')}`);
   if (OUT) writeFileSync(OUT, rs.map(r => JSON.stringify(r)).join('\n') + '\n');
   console.log(`  per war: ${mean(r => r.treaties)} treaties signed, ${mean(r => r.wars)} wars declared or resumed (${mean(r => r.breaches)} breaches), ${mean(r => r.founded)} cities founded, ${mean(r => r.towns)} towns held at the end, ${mean(r => r.trips)} trade trips`);
 }

@@ -182,7 +182,7 @@ build log entry here. Balance-affecting phases also run `ladder:fire` at 150 see
 - [x] G4a Lobby: one New game with four presets; Continue for old skirmish and planet saves
 - [x] G4b In-battle panels: cities, diplomacy, trade, dominion gauge (tokens in both modes, kit controls)
 - [x] G4c Guided first ten minutes, `fireline-grand` tour driver, `npm run tours`, `check:ui`, `check:loading`
-- [ ] G5 Computer grand strategy by temperament; ladder 150 seeds per preset and difficulty; `check:deep`; final log (in progress: see the G5 entries)
+- [x] G5 Computer grand strategy; Frontier measured at 150 and 60-war rows; larger presets smoke-measured; `check:deep`; final log (open items below)
 
 ---
 
@@ -443,3 +443,48 @@ with a real winner.
 
 `npm run check`: all passed (Fireline 348,966). Deep tier with the exactness check: 423,565 assertions, none
 failed, so none of this moved an ordinary battle.
+
+### 2026-11-28: G5, fairness and the measurements on the final build
+
+**Seat 2 was the odd one out of every alliance.** Among wars with a real winner, seat 2 won 13% (seats 0 and
+1 most of the rest) on two seed sets. It won time-limit endings as often as seat 1 (9 each) but dominion almost
+never (3 against 22). Every beat the computer powers moved in seat order and tried partners in seat order, so
+seat 1 had first pick of allies every beat. Both orders now rotate with the beat (`rotate`, grandDiplomacy.ts).
+The ladder also credited an alliance's win to its lowest seat; it now records the whole winning alliance and
+shares the credit. After both: seats 28%, 30% and 42%, within the noise of 60 wars.
+
+**Frontier, final build** (prefix order, 60 wars a row, cap 100 minutes; the player's seat at Normal under
+the autopilot, which answers and proposes as a defensive power; a win counts sharing in a winning alliance):
+
+| Rivals | Player wins | Player eliminated | Dominion / time / conquest | Median length |
+|---|---|---|---|---|
+| Easy | 70% | 5% | 62% / 25% / 8% | 38.8 min |
+| Normal | 38% | 17% | 58% / 22% / 3% | 48.3 min |
+| Hard | 35% | 17% | 53% / 22% / 8% | 48.2 min |
+
+None unfinished. Every row: about 7 treaties signed, 1.8 wars declared or resumed (1.3 breaches), 4 cities
+founded, 2.5 of 3 towns held at the end, 45 to 64 trade trips. Easy against Normal is clear; Normal against Hard
+is not separable at 60 wars. Hard's income bonus reaches every rival (`tick.ts`), but a Grand War turns more on
+towns and alliances than on income.
+
+**Epic** (4 wars to minute 60 of 480; a smoke run): no failure; 16.5 treaties, 9.8 cities founded, 10.8 of 12
+towns held, 71 trade trips a war. One Epic war's packed save, every ten minutes to minute 60: 41, 54, 86, 80, 134
+and 94 KB, each reloading exactly; the largest 134 KB of the portal's 512 KB, inside G0's 150 KB target.
+
+**Grand War preset** (12 wars, capped at 130 of 240 minutes): dominion 50% at a median of 108 minutes, 17% still
+running at the cap, the player's seat eliminated in 33% and winning 8%; 19 treaties, 4.2 wars (3 breaches), 6.8
+cities founded, 7.6 of 8 towns held, 112 trade trips a war. Twelve wars carry about 25 points of noise, so this
+says nothing firm, but it is a flag: in a four-power war the defensive autopilot may be a poor stand-in for a
+player, or the player's seat may be weaker; only a larger run tells which.
+
+**Checks on the final build.** `npm run check`: all passed (Fireline 348,966). Deep tier with the exactness
+check: 423,565 assertions, none failed. Tours, `check:ui` and `check:loading` as in G4 (no client change since).
+
+**Open, in order of what to do next.**
+1. Grand War preset at 150 wars to the full 240 minutes (about 40 hours of computer time at four cores, so a
+   nightly job, not a session), and a four-power run with side 0 at each temperament to separate the seat from
+   the autopilot's diplomacy.
+2. A Hard lever that bites in a Grand War (sharper town-taking or diplomacy rather than income), then Normal
+   against Hard at 150 wars a row.
+3. The computer founds slowly when poor (the truck's price is saved half a decision at a time).
+4. Five or more powers (section 5.1): deferred, as decided.
